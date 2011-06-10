@@ -1,0 +1,59 @@
+0.77    interpolation routines improved a lot, thanks to hints on ffmpeg list
+	added bicubic interpolation that uses 4x4 pixel (useful for large zoom values)
+	bilinear interpolation is now the default
+	transform plugin uses last transform for the remaining frames 
+	 -> this enables to use the transform plugin for constant transformations
+	
+0.76    BUGFIX in calcFieldTransYUV caused SEGFAULT
+	
+0.75    two meta parameter introduces: shakiness and accuracy and
+	removal of fieldnum, fielsize, maxshift, maxfieldnum
+	field placement changed: Now they fill the frame perfectly
+	added bluring such that stepsize can be much larger: much faster now!
+        linear interpolation is now the default
+	uncertain angles are set to 0 (more robustness)
+
+0.70    selects a maximal number of fields according to their contrast
+	nicely distributed over the frame
+	Todo: remove fieldnum, allowmax (now false), and compressed parameter
+	Todo: add accuracy parameter instead of maxfields
+        Bugfix of contrast routine (error in the calculation of maxi)
+	
+0.62     
+	different interpolation functions. No interpolation is default and
+	 seems fine in most applications.
+	field placement changed. Now they fill the frame better.
+	"compress" option moves them more to the center (vertically)
+	fields and their areas and transforms can be drawn on the frame.
+	
+0.6    
+	new field placement allows for any number of fields 
+	 and respects aspect ratio
+	fields with low contrast are ignored
+	non-symmetric field setups are possible	
+
+0.5    
+	global and per-frame zooming supported
+	optimal zoom value is calculated to avoid moving border	effect	
+	add filter unsharp to sharpen the frames
+	write parameters to transforms file
+
+0.44	
+	bugfixing
+	finished RGB #support
+	transforms file format supports comments
+
+0.42
+	input filename and tc_list stuff used
+0.41    
+	code style from transcode used
+0.4	
+	moved to CVS version we use a cleaned median to select the right
+	transform from the fields
+0.3
+	Support RGB (untestet)
+	maxshift default 50
+	allowmax added
+	scan only every second shift and then make a second small
+          scan around the best match
+	removed black rectangle around transformed frame

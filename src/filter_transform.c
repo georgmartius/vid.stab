@@ -43,6 +43,8 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 #include "transformtype.h"
+#include "frameinfo.h"
+#include "deshakedefines.h"
 
 #include <math.h>
 #include <libgen.h>
@@ -56,19 +58,34 @@
 #define PIXELN(img, x, y, w, h, N,channel , def) ((x) < 0 || (y) < 0) ? def  \
     : (((x) >=w || (y) >= h) ? def : img[((x) + (y) * w)*N + channel]) 
 
+typedef struct transformations {
+    Transform* ts; // array of transformations
+    int current;   // index to current transformation
+    int len;       // length of trans array
+    short warned_end; // whether we warned that there is no transform left
+} Transformations;
+
+/// returns the next Transform and increases the internal counter by one.
+Transform getNextTransform(Transformations* trans){
+    if (trans->current >= trans->len) {        
+        trans->current = trans->len-1;
+        if(!trans->warned_end)
+            ds_log_warn(MOD_NAME, "not enough transforms found, use last transformation!\n");
+        trans->warned_end = 1;        
+    }
+    return trans->ts[trans->current];
+}
+
 typedef struct {
-    size_t framesize_src;  // size of frame buffer in bytes (src)
-    size_t framesize_dest; // size of frame buffer in bytes (dest)
+    DSFrameInfo fi_src;
+    DSFrameInfo fi_dest;
+
     unsigned char* src;  // copy of the current frame buffer
     unsigned char* dest; // pointer to the current frame buffer (to overwrite)
 
     vob_t* vob;          // pointer to information structure
-    int width_src, height_src;
-    int width_dest, height_dest;
-    Transform* trans;    // array of transformations
-    int current_trans;   // index to current transformation
-    int trans_len;       // length of trans array
-    short warned_transform_end; // whether we warned that there is no transform left
+
+    Transformations trans; // transformations
  
     /* Options */
     int maxshift;        // maximum number of pixels we will shift
@@ -143,8 +160,8 @@ void interpolateZero(unsigned char *rv, float x, float y,
 void interpolateN(unsigned char *rv, float x, float y, 
                   unsigned char* img, int width, int height, 
                   unsigned char N, unsigned char channel, unsigned char def);
-int transformRGB(TransformData* td);
-int transformYUV(TransformData* td);
+int transformRGB(TransformData* td, Transform t);
+int transformYUV(TransformData* td, Transform t);
 int read_input_file(TransformData* td);
 int preprocess_transforms(TransformData* td);
 
@@ -349,19 +366,17 @@ void interpolateN(unsigned char *rv, float x, float y,
  * Preconditions:
  *  The frame must be in RGB format
  */
-int transformRGB(TransformData* td)
+int transformRGB(TransformData* td, Transform t)
 {
-    Transform t;
     int x = 0, y = 0, z = 0;
     unsigned char *D_1, *D_2;
-    t = td->trans[td->current_trans];
   
     D_1  = td->src;  
     D_2  = td->dest;  
-    float c_s_x = td->width_src/2.0;
-    float c_s_y = td->height_src/2.0;
-    float c_d_x = td->width_dest/2.0;
-    float c_d_y = td->height_dest/2.0;    
+    float c_s_x = td->fi_src.width/2.0;
+    float c_s_y = td->fi_src.height/2.0;
+    float c_d_x = td->fi_dest.width/2.0;
+    float c_d_y = td->fi_dest.height/2.0;    
 
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation: 
@@ -373,8 +388,8 @@ int transformRGB(TransformData* td)
      */
     /* All 3 channels */
     if (fabs(t.alpha) > td->rotation_threshhold) {
-        for (x = 0; x < td->width_dest; x++) {
-            for (y = 0; y < td->height_dest; y++) {
+        for (x = 0; x < td->fi_dest.width; x++) {
+            for (y = 0; y < td->fi_dest.height; y++) {
                 float x_d1 = (x - c_d_x);
                 float y_d1 = (y - c_d_y);
                 float x_s  =  cos(-t.alpha) * x_d1 
@@ -382,9 +397,9 @@ int transformRGB(TransformData* td)
                 float y_s  = -sin(-t.alpha) * x_d1 
                     + cos(-t.alpha) * y_d1 + c_s_y -t.y;                
                 for (z = 0; z < 3; z++) { // iterate over colors 
-                    unsigned char* dest = &D_2[(x + y * td->width_dest)*3+z];
+                    unsigned char* dest = &D_2[(x + y * td->fi_dest.width)*3+z];
                     interpolateN(dest, x_s, y_s, D_1, 
-                                 td->width_src, td->height_src, 
+                                 td->fi_src.width, td->fi_src.height, 
                                  3, z, td->crop ? 16 : *dest);
                 }
             }
@@ -395,16 +410,16 @@ int transformRGB(TransformData* td)
          */
         int round_tx = myround(t.x);
         int round_ty = myround(t.y);
-        for (x = 0; x < td->width_dest; x++) {
-            for (y = 0; y < td->height_dest; y++) {
+        for (x = 0; x < td->fi_dest.width; x++) {
+            for (y = 0; y < td->fi_dest.height; y++) {
                 for (z = 0; z < 3; z++) { // iterate over colors
                     short p = PIXELN(D_1, x - round_tx, y - round_ty, 
-                                     td->width_src, td->height_src, 3, z, -1);
+                                     td->fi_src.width, td->fi_src.height, 3, z, -1);
                     if (p == -1) {
                         if (td->crop == 1)
-                            D_2[(x + y * td->width_dest)*3+z] = 16;
+                            D_2[(x + y * td->fi_dest.width)*3+z] = 16;
                     } else {
-                        D_2[(x + y * td->width_dest)*3+z] = (unsigned char)p;
+                        D_2[(x + y * td->fi_dest.width)*3+z] = (unsigned char)p;
                     }
                 }
             }
@@ -423,23 +438,21 @@ int transformRGB(TransformData* td)
  * Preconditions:
  *  The frame must be in YUV format
  */
-int transformYUV(TransformData* td)
+int transformYUV(TransformData* td, Transform t)
 {
-    Transform t;
     int x = 0, y = 0;
     unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2;
-    t = td->trans[td->current_trans];
   
     Y_1  = td->src;  
     Y_2  = td->dest;  
-    Cb_1 = td->src + td->width_src * td->height_src;
-    Cb_2 = td->dest + td->width_dest * td->height_dest;
-    Cr_1 = td->src + 5*td->width_src * td->height_src/4;
-    Cr_2 = td->dest + 5*td->width_dest * td->height_dest/4;
-    float c_s_x = td->width_src/2.0;
-    float c_s_y = td->height_src/2.0;
-    float c_d_x = td->width_dest/2.0;
-    float c_d_y = td->height_dest/2.0;    
+    Cb_1 = td->src + td->fi_src.width * td->fi_src.height;
+    Cb_2 = td->dest + td->fi_dest.width * td->fi_dest.height;
+    Cr_1 = td->src + 5*td->fi_src.width * td->fi_src.height/4;
+    Cr_2 = td->dest + 5*td->fi_dest.width * td->fi_dest.height/4;
+    float c_s_x = td->fi_src.width/2.0;
+    float c_s_y = td->fi_src.height/2.0;
+    float c_d_x = td->fi_dest.width/2.0;
+    float c_d_y = td->fi_dest.height/2.0;    
     
     float z = 1.0-t.zoom/100;
     float zcos_a = z*cos(-t.alpha); // scaled cos
@@ -455,17 +468,17 @@ int transformYUV(TransformData* td)
      */
     /* Luminance channel */
     if (fabs(t.alpha) > td->rotation_threshhold || t.zoom != 0) {
-        for (x = 0; x < td->width_dest; x++) {
-            for (y = 0; y < td->height_dest; y++) {
+        for (x = 0; x < td->fi_dest.width; x++) {
+            for (y = 0; y < td->fi_dest.height; y++) {
                 float x_d1 = (x - c_d_x);
                 float y_d1 = (y - c_d_y);
                 float x_s  =  zcos_a * x_d1 
                     + zsin_a * y_d1 + c_s_x -t.x;
                 float y_s  = -zsin_a * x_d1 
                     + zcos_a * y_d1 + c_s_y -t.y;
-                unsigned char* dest = &Y_2[x + y * td->width_dest];
+                unsigned char* dest = &Y_2[x + y * td->fi_dest.width];
                 interpolate(dest, x_s, y_s, Y_1, 
-                            td->width_src, td->height_src, 
+                            td->fi_src.width, td->fi_src.height, 
                             td->crop ? 16 : *dest);
             }
         }
@@ -475,25 +488,25 @@ int transformYUV(TransformData* td)
          */
         int round_tx = myround(t.x);
         int round_ty = myround(t.y);
-        for (x = 0; x < td->width_dest; x++) {
-            for (y = 0; y < td->height_dest; y++) {
+        for (x = 0; x < td->fi_dest.width; x++) {
+            for (y = 0; y < td->fi_dest.height; y++) {
                 short p = PIXEL(Y_1, x - round_tx, y - round_ty, 
-                                td->width_src, td->height_src, -1);
+                                td->fi_src.width, td->fi_src.height, -1);
                 if (p == -1) {
                     if (td->crop == 1)
-                        Y_2[x + y * td->width_dest] = 16;
+                        Y_2[x + y * td->fi_dest.width] = 16;
                 } else {
-                    Y_2[x + y * td->width_dest] = (unsigned char)p;
+                    Y_2[x + y * td->fi_dest.width] = (unsigned char)p;
                 }
             }
         }
     }
 
     /* Color channels */
-    int ws2 = td->width_src/2;
-    int wd2 = td->width_dest/2;
-    int hs2 = td->height_src/2;
-    int hd2 = td->height_dest/2;
+    int ws2 = td->fi_src.width/2;
+    int wd2 = td->fi_dest.width/2;
+    int hs2 = td->fi_src.height/2;
+    int hd2 = td->fi_dest.height/2;
     if (fabs(t.alpha) > td->rotation_threshhold || t.zoom != 0) {
         for (x = 0; x < wd2; x++) {
             for (y = 0; y < hd2; y++) {
@@ -581,17 +594,17 @@ int read_input_file(TransformData* td)
             else
                 s*=2;
             /* tc_log_info(MOD_NAME, "resize: %i\n", s); */
-            td->trans = tc_realloc(td->trans, sizeof(Transform)* s);
-            if (!td->trans) {
+            td->trans.ts = tc_realloc(td->trans.ts, sizeof(Transform)* s);
+            if (!td->trans.ts) {
                 tc_log_error(MOD_NAME, "Cannot allocate memory"
                                        " for transformations: %i\n", s);
                 return 0;
             }
         }
-        td->trans[i] = t;
+        td->trans.ts[i] = t;
         i++;
     }
-    td->trans_len = i;
+    td->trans.len = i;
 
     return i;
 }
@@ -614,18 +627,18 @@ int read_input_file(TransformData* td)
  */
 int preprocess_transforms(TransformData* td)
 {
-    Transform* ts = td->trans;
+    Transform* ts = td->trans.ts;
     int i;
 
-    if (td->trans_len < 1)
+    if (td->trans.len < 1)
         return 0;
     if (verbose & TC_DEBUG) {
         tc_log_msg(MOD_NAME, "Preprocess transforms:");
     }
     if (td->smoothing>0) {
         /* smoothing */
-        Transform* ts2 = tc_malloc(sizeof(Transform) * td->trans_len);
-        memcpy(ts2, ts, sizeof(Transform) * td->trans_len);
+        Transform* ts2 = tc_malloc(sizeof(Transform) * td->trans.len);
+        memcpy(ts2, ts, sizeof(Transform) * td->trans.len);
 
         /*  we will do a sliding average with minimal update
          *   \hat x_{n/2} = x_1+x_2 + .. + x_n
@@ -648,14 +661,14 @@ int preprocess_transforms(TransformData* td)
          */
         Transform s_sum = null; 
         for (i = 0; i < td->smoothing; i++){
-            s_sum = add_transforms(&s_sum, i < td->trans_len ? &ts2[i]:&null);
+            s_sum = add_transforms(&s_sum, i < td->trans.len ? &ts2[i]:&null);
         }
         mult_transform(&s_sum, 2); // choice b (comment out for choice a)
 
-        for (i = 0; i < td->trans_len; i++) {
+        for (i = 0; i < td->trans.len; i++) {
             Transform* old = ((i - td->smoothing - 1) < 0) 
                 ? &null : &ts2[(i - td->smoothing - 1)];
-            Transform* new = ((i + td->smoothing) >= td->trans_len) 
+            Transform* new = ((i + td->smoothing) >= td->trans.len) 
                 ? &null : &ts2[(i + td->smoothing)];
             s_sum = sub_transforms(&s_sum, old);
             s_sum = add_transforms(&s_sum, new);
@@ -688,7 +701,7 @@ int preprocess_transforms(TransformData* td)
   
     /*  invert? */
     if (td->invert) {
-        for (i = 0; i < td->trans_len; i++) {
+        for (i = 0; i < td->trans.len; i++) {
             ts[i] = mult_transform(&ts[i], -1);      
         }
     }
@@ -696,7 +709,7 @@ int preprocess_transforms(TransformData* td)
     /* relative to absolute */
     if (td->relative) {
         Transform t = ts[0];
-        for (i = 1; i < td->trans_len; i++) {
+        for (i = 1; i < td->trans.len; i++) {
             if (verbose  & TC_DEBUG) {
                 tc_log_msg(MOD_NAME, "shift: %5lf   %5lf   %lf \n", 
                            t.x, t.y, t.alpha *180/M_PI);
@@ -707,32 +720,32 @@ int preprocess_transforms(TransformData* td)
     }
     /* crop at maximal shift */
     if (td->maxshift != -1)
-        for (i = 0; i < td->trans_len; i++) {
+        for (i = 0; i < td->trans.len; i++) {
             ts[i].x     = TC_CLAMP(ts[i].x, -td->maxshift, td->maxshift);
             ts[i].y     = TC_CLAMP(ts[i].y, -td->maxshift, td->maxshift);
         }
     if (td->maxangle != - 1.0)
-        for (i = 0; i < td->trans_len; i++)
+        for (i = 0; i < td->trans.len; i++)
             ts[i].alpha = TC_CLAMP(ts[i].alpha, -td->maxangle, td->maxangle);
 
     /* Calc optimal zoom 
      *  cheap algo is to only consider transformations
      *  uses cleaned max and min 
      */
-    if (td->optzoom != 0 && td->trans_len > 1){    
+    if (td->optzoom != 0 && td->trans.len > 1){    
         Transform min_t, max_t;
-        cleanmaxmin_xy_transform(ts, td->trans_len, 10, &min_t, &max_t); 
+        cleanmaxmin_xy_transform(ts, td->trans.len, 10, &min_t, &max_t); 
         // the zoom value only for x
-        double zx = 2*TC_MAX(max_t.x,fabs(min_t.x))/td->width_src;
+        double zx = 2*TC_MAX(max_t.x,fabs(min_t.x))/td->fi_src.width;
         // the zoom value only for y
-        double zy = 2*TC_MAX(max_t.y,fabs(min_t.y))/td->height_src;
+        double zy = 2*TC_MAX(max_t.y,fabs(min_t.y))/td->fi_src.height;
         td->zoom += 100* TC_MAX(zx,zy); // use maximum
         tc_log_info(MOD_NAME, "Final zoom: %lf\n", td->zoom);
     }
         
     /* apply global zoom */
     if (td->zoom != 0){
-        for (i = 0; i < td->trans_len; i++)
+        for (i = 0; i < td->trans.len; i++)
             ts[i].zoom += td->zoom;       
     }
 
@@ -786,26 +799,26 @@ static int transform_configure(TCModuleInstance *self,
     /* td->framesize = td->vob->im_v_width *
      *  MAX_PLANES * sizeof(char) * 2 * td->vob->im_v_height * 2;    
      */
-    td->framesize_src = td->vob->im_v_size;    
-    td->src = tc_zalloc(td->framesize_src); /* FIXME */
+    td->fi_src.framesize = td->vob->im_v_size;    
+    td->src = tc_zalloc(td->fi_src.framesize); /* FIXME */
     if (td->src == NULL) {
         tc_log_error(MOD_NAME, "tc_malloc failed\n");
         return TC_ERROR;
     }
   
-    td->width_src  = td->vob->ex_v_width;
-    td->height_src = td->vob->ex_v_height;
+    td->fi_src.width  = td->vob->ex_v_width;
+    td->fi_src.height = td->vob->ex_v_height;
   
     /* Todo: in case we can scale the images, calc new size later */
-    td->width_dest  = td->vob->ex_v_width;
-    td->height_dest = td->vob->ex_v_height;
-    td->framesize_dest = td->vob->im_v_size;
+    td->fi_dest.width  = td->vob->ex_v_width;
+    td->fi_dest.height = td->vob->ex_v_height;
+    td->fi_dest.framesize = td->vob->im_v_size;
     td->dest = 0;
   
-    td->trans = 0;
-    td->trans_len = 0;
-    td->current_trans = 0;
-    td->warned_transform_end = 0;  
+    td->trans.ts = 0;
+    td->trans.len = 0;
+    td->trans.current = 0;
+    td->trans.warned_end = 0;  
 
     /* Options */
     td->maxshift = -1;
@@ -884,10 +897,10 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "    sharpen   = %f", td->sharpen);
     }
   
-    if (td->maxshift > td->width_dest/2
-        ) td->maxshift = td->width_dest/2;
-    if (td->maxshift > td->height_dest/2)
-        td->maxshift = td->height_dest/2;
+    if (td->maxshift > td->fi_dest.width/2
+        ) td->maxshift = td->fi_dest.width/2;
+    if (td->maxshift > td->fi_dest.height/2)
+        td->maxshift = td->fi_dest.height/2;
   
     if (!preprocess_transforms(td)) {
         tc_log_error(MOD_NAME, "error while preprocessing transforms!");
@@ -934,23 +947,18 @@ static int transform_filter_video(TCModuleInstance *self,
     td = self->userdata;
 
     td->dest = frame->video_buf;
-    memcpy(td->src, frame->video_buf, td->framesize_src);
-    if (td->current_trans >= td->trans_len) {        
-        td->current_trans = td->trans_len-1;
-        if(!td->warned_transform_end)
-            tc_log_warn(MOD_NAME, "not enough transforms found, use last transformation!\n");
-        td->warned_transform_end = 1;        
-    }
+    memcpy(td->src, frame->video_buf, td->fi_src.framesize);
   
+                     
     if (td->vob->im_v_codec == CODEC_RGB) {
-        transformRGB(td);
+        transformRGB(td, getNextTransform(&td->trans));
     } else if (td->vob->im_v_codec == CODEC_YUV) {
-        transformYUV(td);
+        transformYUV(td, getNextTransform(&td->trans));
     } else {
         tc_log_error(MOD_NAME, "unsupported Codec: %i\n", td->vob->im_v_codec);
         return TC_ERROR;
     }
-    td->current_trans++;
+    td->trans.current++;
     return TC_OK;
 }
 
@@ -983,9 +991,9 @@ static int transform_stop(TCModuleInstance *self)
         tc_free(td->src);
         td->src = NULL;
     }
-    if (td->trans) {
-        tc_free(td->trans);
-        td->trans = NULL;
+    if (td->trans.ts) {
+        tc_free(td->trans.ts);
+        td->trans.ts = NULL;
     }
     if (td->f) {
         fclose(td->f);

@@ -1,0 +1,13 @@
+# The vid.stab project
+workspace vidstab {
+	project stabilize {
+		ipath "../../../transcode"
+		ipath "../../../transcode/src"
+		file filter_stabilize.c transformtype.c motiondetect.c libdeshake.c dslist.c
+	}
+	project transform {
+		ipath "../../../transcode"
+		ipath "../../../transcode/src"
+		file filter_transform.c transformtype.c transform.c libdeshake.c dslist.c
+	}
+}

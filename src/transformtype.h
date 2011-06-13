@@ -20,10 +20,8 @@
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
  *
  */
-#ifndef __TRANSFORM_H
-#define __TRANSFORM_H
-
-#define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
+#ifndef __TRANSFORMTYPE_H
+#define __TRANSFORMTYPE_H
 
 /* structure to hold information about frame transformations 
    x,y are translations, alpha is a rotation around the center in RAD,

@@ -28,8 +28,8 @@
  *  all parameters are optional
  */
 
-#define MOD_NAME    "filter_stabilizeCuda.so"
-#define MOD_VERSION "v0.77 (2011-02-01)"
+#define MOD_NAME    "filter_stabilize.so"
+#define MOD_VERSION "v0.8 (2011-06-13)"
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -46,6 +46,9 @@
     TC_MODULE_FEATURE_FILTER|TC_MODULE_FEATURE_VIDEO
 #define MOD_FLAGS                                               \
     TC_MODULE_FLAG_RECONFIGURABLE | TC_MODULE_FLAG_DELAY
+
+
+#define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
 #include <math.h>
 #include <libgen.h>
@@ -214,9 +217,9 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "result",     "%[^:]", sd->result);
         optstr_get(options, "shakiness",  "%d", &md->shakiness);
         optstr_get(options, "accuracy",   "%d", &md->accuracy);
-        optstr_get(options, "stepsize",   "%d", &md->stepsize);
+        optstr_get(options, "stepsize",   "%d", &md->stepSize);
         optstr_get(options, "algo",       "%d", &md->algo);
-        optstr_get(options, "mincontrast","%lf",&md->contrast_threshold);
+        optstr_get(options, "mincontrast","%lf",&md->contrastThreshold);
         optstr_get(options, "show",       "%d", &md->show);
     }
 
@@ -229,9 +232,9 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "Image Stabilization Settings:");
         tc_log_info(MOD_NAME, "     shakiness = %d", md->shakiness);
         tc_log_info(MOD_NAME, "      accuracy = %d", md->accuracy);
-        tc_log_info(MOD_NAME, "      stepsize = %d", md->stepsize);
+        tc_log_info(MOD_NAME, "      stepsize = %d", md->stepSize);
         tc_log_info(MOD_NAME, "          algo = %d", md->algo);
-        tc_log_info(MOD_NAME, "   mincontrast = %f", md->contrast_threshold);
+        tc_log_info(MOD_NAME, "   mincontrast = %f", md->contrastThreshold);
         tc_log_info(MOD_NAME, "          show = %d", md->show);
         tc_log_info(MOD_NAME, "        result = %s", sd->result);
     }
@@ -244,7 +247,7 @@ static int stabilize_configure(TCModuleInstance *self,
 
     /* load unsharp filter to smooth the frames. This allows larger stepsize.*/
     char unsharp_param[128];
-    int masksize = TC_MIN(13,md->stepsize*1.8); // only works up to 13.
+    int masksize = TC_MIN(13,md->stepSize*1.8); // only works up to 13.
     sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1", 
             masksize, masksize);
     if (!tc_filter_add("unsharp", unsharp_param)) {
@@ -298,9 +301,9 @@ static int stabilize_stop(TCModuleInstance *self)
         // write parameters as comments to file 
         fprintf(sd->f, "#      accuracy = %d\n", md->accuracy);
         fprintf(sd->f, "#     shakiness = %d\n", md->shakiness);
-        fprintf(sd->f, "#      stepsize = %d\n", md->stepsize);
+        fprintf(sd->f, "#      stepsize = %d\n", md->stepSize);
         fprintf(sd->f, "#          algo = %d\n", md->algo);
-        fprintf(sd->f, "#   mincontrast = %f\n", md->contrast_threshold);
+        fprintf(sd->f, "#   mincontrast = %f\n", md->contrastThreshold);
         fprintf(sd->f, "#        result = %s\n", sd->result);
         // write header line
         fprintf(sd->f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");
@@ -347,8 +350,8 @@ static int stabilize_inspect(TCModuleInstance *self,
     }
     CHECKPARAM("shakiness","shakiness=%d", md->shakiness);
     CHECKPARAM("accuracy", "accuracy=%d",  md->accuracy);
-    CHECKPARAM("stepsize", "stepsize=%d",  md->stepsize);
-    CHECKPARAM("allowmax", "allowmax=%d",  md->allowmax);
+    CHECKPARAM("stepsize", "stepsize=%d",  md->stepSize);
+    CHECKPARAM("allowmax", "allowmax=%d",  md->allowMax);
     CHECKPARAM("algo",     "algo=%d",      md->algo);
     CHECKPARAM("result",   "result=%s",    sd->result);
     return TC_OK;

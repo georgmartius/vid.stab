@@ -12,7 +12,7 @@ add_definitions( -Wall -DTRANSCODE)
 include_directories (${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/) 
  
 # Create the stabilize and transform libraries
-add_library (filter_transform SHARED filter_transform.c transformtype.c libdeshake.c dslist.c) 
+add_library (filter_transform SHARED filter_transform.c transformtype.c libdeshake.c transform.c dslist.c) 
 add_library (filter_stabilize SHARED filter_stabilize.c transformtype.c libdeshake.c motiondetect.c dslist.c) 
 
  

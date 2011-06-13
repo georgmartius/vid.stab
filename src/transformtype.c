@@ -20,15 +20,10 @@
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
  *
  */
-
-#ifdef HAVE_CONFIG_H
-# include "config.h"
-#endif
-#include "transcode.h"
-#include "libtc/libtc.h"
 #include <stdlib.h>
 #include <math.h>
 #include "transformtype.h"
+#include "deshakedefines.h"
 
 /***********************************************************************
  * helper functions to create and operate with transforms.
@@ -150,7 +145,7 @@ int cmp_double(const void *t1, const void* t2)
  */
 Transform median_xy_transform(const Transform* transforms, int len)
 {
-    Transform* ts = tc_malloc(sizeof(Transform) * len);
+    Transform* ts = ds_malloc(sizeof(Transform) * len);
     Transform t;
     memcpy(ts,transforms, sizeof(Transform)*len ); 
     int half = len/2;
@@ -161,7 +156,7 @@ Transform median_xy_transform(const Transform* transforms, int len)
     t.alpha = 0;
     t.zoom = 0;
     t.extra = 0;
-    tc_free(ts);
+    ds_free(ts);
     return t;
 }
 
@@ -183,7 +178,7 @@ Transform median_xy_transform(const Transform* transforms, int len)
  */
 Transform cleanmean_xy_transform(const Transform* transforms, int len)
 {
-    Transform* ts = tc_malloc(sizeof(Transform) * len);
+    Transform* ts = ds_malloc(sizeof(Transform) * len);
     Transform t = null_transform();
     int i, cut = len / 5;
     memcpy(ts, transforms, sizeof(Transform) * len); 
@@ -195,7 +190,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
     for (i = cut; i < len - cut; i++){ // all but cutted
         t.y += ts[i].y;
     }
-    tc_free(ts);
+    ds_free(ts);
     return mult_transform(&t, 1.0 / (len - (2.0 * cut)));
 }
 
@@ -221,7 +216,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
 void cleanmaxmin_xy_transform(const Transform* transforms, int len, 
                               int percentil, 
                               Transform* min, Transform* max){
-    Transform* ts = tc_malloc(sizeof(Transform) * len);
+    Transform* ts = ds_malloc(sizeof(Transform) * len);
     int cut = len * percentil / 100;
     memcpy(ts, transforms, sizeof(Transform) * len); 
     qsort(ts,len, sizeof(Transform), cmp_trans_x);
@@ -230,7 +225,7 @@ void cleanmaxmin_xy_transform(const Transform* transforms, int len,
     qsort(ts, len, sizeof(Transform), cmp_trans_y);
     min->y = ts[cut].y;
     max->y = ts[len-cut-1].y;
-    tc_free(ts);
+    ds_free(ts);
 }
 
 

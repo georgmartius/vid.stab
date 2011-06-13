@@ -99,6 +99,8 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     td->optZoom = 1;
     td->interpolType = BiLinear;
     td->sharpen = 0.8;  
+
+    td->verbose = 0;
     return DS_OK;
 }
 
@@ -108,7 +110,7 @@ int configureTransformData(TransformData* td){
     if (td->maxShift > td->fiDest.height/2)
         td->maxShift = td->fiDest.height/2;
     
-    td->interpolType = TC_MIN(td->interpolType,BiCubic);
+    td->interpolType = DS_MIN(td->interpolType,BiCubic);
 
     switch(td->interpolType){
       case Zero:     interpolate = &interpolateZero; break;
@@ -123,7 +125,7 @@ int configureTransformData(TransformData* td){
 
 void cleanupTransformData(TransformData* td){
     if (td->src) {
-        tc_free(td->src);
+        ds_free(td->src);
         td->src = NULL;
     }
 }
@@ -526,7 +528,7 @@ int transformYUV(TransformData* td, Transform t)
             }
         }
     }
-    return 1;
+    return DS_OK;
 }
 
 
@@ -548,7 +550,7 @@ int transformYUV(TransformData* td, Transform t)
  */
 int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
 {
-    char l[TC_BUF_MAX];
+    char l[1024];
     int s = 0;
     int i = 0;
     int ti; // time (ignored)
@@ -564,7 +566,7 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
                    &t.zoom, &t.extra) != 6) {
             if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha, 
                        &t.extra) != 5) {                
-                tc_log_error(td->modName, "Cannot parse line: %s", l);
+                ds_log_error(td->modName, "Cannot parse line: %s", l);
                 return 0;
             }
             t.zoom=0;
@@ -575,10 +577,10 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
                 s = 256;
             else
                 s*=2;
-            /* tc_log_info(td->modName, "resize: %i\n", s); */
-            trans->ts = tc_realloc(trans->ts, sizeof(Transform)* s);
+            /* ds_log_info(td->modName, "resize: %i\n", s); */
+            trans->ts = ds_realloc(trans->ts, sizeof(Transform)* s);
             if (!trans->ts) {
-                tc_log_error(td->modName, "Cannot allocate memory"
+                ds_log_error(td->modName, "Cannot allocate memory"
                                        " for transformations: %i\n", s);
                 return 0;
             }
@@ -614,12 +616,12 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
 
     if (trans->len < 1)
         return 0;
-    if (verbose & TC_DEBUG) {
-        tc_log_msg(td->modName, "Preprocess transforms:");
+    if (td->verbose & DS_DEBUG) {
+        ds_log_msg(td->modName, "Preprocess transforms:");
     }
     if (td->smoothing>0) {
         /* smoothing */
-        Transform* ts2 = tc_malloc(sizeof(Transform) * trans->len);
+        Transform* ts2 = ds_malloc(sizeof(Transform) * trans->len);
         memcpy(ts2, ts, sizeof(Transform) * trans->len);
 
         /*  we will do a sliding average with minimal update
@@ -666,18 +668,18 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
                                    mult_transform(&ts[i], tau));
             ts[i] = sub_transforms(&ts[i], &avg2);
 
-            if (verbose & TC_DEBUG) {
-                tc_log_msg(td->modName, 
+            if (td->verbose & DS_DEBUG) {
+                ds_log_msg(td->modName, 
                            "s_sum: %5lf %5lf %5lf, ts: %5lf, %5lf, %5lf\n", 
                            s_sum.x, s_sum.y, s_sum.alpha, 
                            ts[i].x, ts[i].y, ts[i].alpha);
-                tc_log_msg(td->modName, 
+                ds_log_msg(td->modName, 
                            "  avg: %5lf, %5lf, %5lf avg2: %5lf, %5lf, %5lf", 
                            avg.x, avg.y, avg.alpha, 
                            avg2.x, avg2.y, avg2.alpha);      
             }
         }
-        tc_free(ts2);
+        ds_free(ts2);
     }
   
   
@@ -692,8 +694,8 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
     if (td->relative) {
         Transform t = ts[0];
         for (i = 1; i < trans->len; i++) {
-            if (verbose  & TC_DEBUG) {
-                tc_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n", 
+            if (td->verbose  & DS_DEBUG) {
+                ds_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n", 
                            t.x, t.y, t.alpha *180/M_PI);
             }
             ts[i] = add_transforms(&ts[i], &t); 
@@ -703,12 +705,12 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
     /* crop at maximal shift */
     if (td->maxShift != -1)
         for (i = 0; i < trans->len; i++) {
-            ts[i].x     = TC_CLAMP(ts[i].x, -td->maxShift, td->maxShift);
-            ts[i].y     = TC_CLAMP(ts[i].y, -td->maxShift, td->maxShift);
+            ts[i].x     = DS_CLAMP(ts[i].x, -td->maxShift, td->maxShift);
+            ts[i].y     = DS_CLAMP(ts[i].y, -td->maxShift, td->maxShift);
         }
     if (td->maxAngle != - 1.0)
         for (i = 0; i < trans->len; i++)
-            ts[i].alpha = TC_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
+            ts[i].alpha = DS_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
 
     /* Calc optimal zoom 
      *  cheap algo is to only consider transformations
@@ -718,11 +720,11 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
         Transform min_t, max_t;
         cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t); 
         // the zoom value only for x
-        double zx = 2*TC_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
+        double zx = 2*DS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
         // the zoom value only for y
-        double zy = 2*TC_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
-        td->zoom += 100* TC_MAX(zx,zy); // use maximum
-        tc_log_info(td->modName, "Final zoom: %lf\n", td->zoom);
+        double zy = 2*DS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
+        td->zoom += 100* DS_MAX(zx,zy); // use maximum
+        ds_log_info(td->modName, "Final zoom: %lf\n", td->zoom);
     }
         
     /* apply global zoom */
@@ -731,7 +733,7 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
             ts[i].zoom += td->zoom;       
     }
 
-    return 1;
+    return DS_OK;
 }
 
 

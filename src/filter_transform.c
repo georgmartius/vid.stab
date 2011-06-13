@@ -120,6 +120,7 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
+    td->verbose=verbose;
 
     initTransformations(&fd->trans);
       

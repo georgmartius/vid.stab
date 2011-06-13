@@ -15,13 +15,15 @@
 /* clamp x between a and b */
 #define DS_CLAMP(x, a, b)	DS_MIN(DS_MAX((a), (x)), (b))
 
+#define DS_DEBUG 2
+
 // define here the functions to be used in the framework we are in
 // for transcode
 #ifdef TRANSCODE
 #include <transcode.h>
 #define ds_malloc(size) tc_malloc(size)
 #define ds_zalloc(size) tc_zalloc(size)
-#define ds_realloc(size) tc_realloc(size)
+#define ds_realloc(ptr, size) tc_realloc(ptr, size)
 #define ds_free(ptr) tc_free(ptr)
 
 #define ds_log_error(tag, format, args...) \

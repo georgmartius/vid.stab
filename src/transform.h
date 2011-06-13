@@ -79,6 +79,8 @@ typedef struct {
     InterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
     double sharpen;   // amount of sharpening
 
+    int verbose;     // level of logging
+
     int initialized; // 1 if initialized and 2 if configured
 } TransformData;
 

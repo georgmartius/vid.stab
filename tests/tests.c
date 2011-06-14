@@ -12,7 +12,8 @@
 
 int test_checkCompareImg=0;
 int test_motionDetect=1;
-int test_transform=1;
+int test_transform=0;
+int test_orc=1;
 
 struct iterdata {
     FILE *f;
@@ -132,9 +133,51 @@ int main(int argc, char** argv){
     storePGMImage("transformed.pgm", td.dest, fi);
     fprintf(stderr,"stored transformed.pgm\n");
     fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n\n", numruns, end-start );
-    
-    
+       
   }
   
+  if(test_orc){
+    Field f;
+    f.size=144;
+    f.x = 400;
+    f.y = 300;
+    fprintf(stderr,"********** orc Compare:\n");
+
+    int numruns =5000;
+    double diffsC[numruns];
+    double diffsOrc[numruns];
+    int timeC, timeOrc;
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	diffsC[i]=compareSubImg_C(frames[0], frames[1], 
+				&f, fi.width, fi.height, 2, i%200, i/200);
+      }
+      int end = timeOfDayinMS();   
+      timeC=end-start;
+      fprintf(stderr,"***C   time for %i runs: %i ms ****\n", numruns, timeC);
+    }
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	diffsOrc[i]=compareSubImg(frames[0], frames[1], &f, 
+				  fi.width, fi.height, 2, i%200, i/200);
+      }
+      int end = timeOfDayinMS();   
+      timeOrc=end-start;
+      fprintf(stderr,"***Orc time for %i runs: %i ms ****\n", numruns, timeOrc);      
+    }
+    fprintf(stderr,"***Speedup %3.1f\n", (double)timeC/timeOrc);      
+    for(i=0; i<numruns; i++){
+      if(i==0){
+	printf("Orc difference %f, C difference %f\n",diffsOrc[i], diffsC[i]); 
+      }
+      assert(diffsC[i]==diffsOrc[i]);
+    }
+
+
+
+  }
+
   return 1;
 }

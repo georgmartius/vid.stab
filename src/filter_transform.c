@@ -195,7 +195,7 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "    sharpen   = %f", td->sharpen);
     }
     
-    if (!preprocessTransforms(td, &fd->trans)) {
+    if (preprocessTransforms(td, &fd->trans)!= DS_OK ) {
         tc_log_error(MOD_NAME, "error while preprocessing transforms!");
         return TC_ERROR;            
     }  

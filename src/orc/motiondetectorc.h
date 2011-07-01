@@ -66,7 +66,10 @@ typedef union { orc_int64 i; double f; orc_int32 x2[2]; float x2f[2]; orc_int16 
 #define ORC_RESTRICT
 #endif
 #endif
-void image_difference_optimized (int * ORC_RESTRICT a1, const char * ORC_RESTRICT s1, int s1_stride, const char * ORC_RESTRICT s2, int s2_stride, int n, int m);
+void image_difference_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, const orc_uint8 * ORC_RESTRICT s2, int s2_stride, int n, int m);
+void image_sum_optimized2 (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int n, int m);
+void image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int n, int m);
+void image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p2, int n, int m);
 
 #ifdef __cplusplus
 }

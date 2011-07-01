@@ -8,7 +8,7 @@ set(TRANSCODE_ROOT ../../../transcode)
 
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -DTESTING ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3  -DTESTING ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ${ORC_INCLUDE_DIRS}) 

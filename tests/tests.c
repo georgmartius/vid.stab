@@ -10,10 +10,12 @@
 
 #include "testutils.c"
 
+int num=2000;
 int test_checkCompareImg=0;
-int test_motionDetect=1;
-int test_transform=0;
-int test_orc=1;
+int test_motionDetect=0;
+int test_transform=1;
+int test_compareImg=1;
+int test_contrastImg=1;
 
 struct iterdata {
     FILE *f;
@@ -41,7 +43,7 @@ long timeOfDayinMS() {
 
 int checkCompareImg(MotionDetect* md, unsigned char* frame){
   int i;
-  double error;
+  int error;
   uint8_t *Y_c;
   Field field;
   field.x=400;
@@ -54,7 +56,7 @@ int checkCompareImg(MotionDetect* md, unsigned char* frame){
     printf("\nCheck: shiftX = %i\n",i);
     error = compareSubImg(Y_c, Y_c, &field, md->fi.width, md->fi.height, 
 			  1, i, 0);
-    fprintf(stderr,"mismatch %i: %f\n", i, error);
+    fprintf(stderr,"mismatch %i: %i\n", i, error);
   }
   return 1;
 }
@@ -91,6 +93,8 @@ int main(int argc, char** argv){
   md.shakiness=6;
   assert(configureMotionDetect(&md)== DS_OK);
 
+  fflush(stdout);
+  printf("\n");
   if(test_checkCompareImg){
     checkCompareImg(&md,frames[0]);
   }
@@ -114,38 +118,61 @@ int main(int argc, char** argv){
 
   if(test_transform){
     unsigned char* dest = (unsigned char*)malloc(fi.framesize);
+    int start, numruns;
+    int timeC, timeCFP, timeOrc;
+    numruns =3;
+
+    assert(initTransformData(&td, &fi, &fi, "test") == DS_OK);  
     memcpy(dest, frames[0], fi.framesize);
     assert(configureTransformData(&td)== DS_OK);
     
     fprintf(stderr,"Transform:");
-    int start = timeOfDayinMS();
-    int numruns =3;
+    start = timeOfDayinMS();
     for(i=0; i<numruns; i++){
       Transform t = null_transform();
       t.x = i*10+10;
-      t.alpha = i*2*M_PI/(180.0);
+      t.alpha = (i+1)*2*M_PI/(180.0);
       assert(transformPrepare(&td,dest)== DS_OK);
       assert(transformYUV(&td, t)== DS_OK);      
     }
-    int end = timeOfDayinMS();
-   
+    timeC = timeOfDayinMS() - start;  
+    fprintf(stderr,"\n***C   elapsed time for %i runs: %i ms ****\n", 
+	    numruns, timeC );    
 
     storePGMImage("transformed.pgm", td.dest, fi);
     fprintf(stderr,"stored transformed.pgm\n");
-    fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n\n", numruns, end-start );
-       
+
+    assert(initTransformData(&td, &fi, &fi, "test") == DS_OK);  
+    memcpy(dest, frames[0], fi.framesize);
+    assert(configureTransformData(&td)== DS_OK);
+    start = timeOfDayinMS();
+    for(i=0; i<numruns; i++){
+      Transform t = null_transform();
+      t.x = i*10+10;
+      t.alpha = (i+1)*2*M_PI/(180.0);
+      assert(transformPrepare(&td,dest)== DS_OK);
+      assert(transformYUVFP(&td, t)== DS_OK);      
+    }
+    timeCFP = timeOfDayinMS() - start;  
+    fprintf(stderr,"\n***FP  elapsed time for %i runs: %i ms ****\n", 
+	    numruns, timeCFP );
+
+    storePGMImage("transformed_FP.pgm", td.dest, fi);
+    fprintf(stderr,"stored transformed_FP.pgm\n");
+    fprintf(stderr,"***Speedup %3.1f\n", (double)timeC/timeCFP);      
+
   }
   
-  if(test_orc){
+  if(test_compareImg){
     Field f;
     f.size=144;
     f.x = 400;
     f.y = 300;
     fprintf(stderr,"********** orc Compare:\n");
 
-    int numruns =5000;
-    double diffsC[numruns];
-    double diffsOrc[numruns];
+    int numruns =num;
+    int diffsC[numruns];
+    int diffsOrc[numruns];
     int timeC, timeOrc;
     {
       int start = timeOfDayinMS();
@@ -170,14 +197,54 @@ int main(int argc, char** argv){
     fprintf(stderr,"***Speedup %3.1f\n", (double)timeC/timeOrc);      
     for(i=0; i<numruns; i++){
       if(i==0){
-	printf("Orc difference %f, C difference %f\n",diffsOrc[i], diffsC[i]); 
+	fprintf(stderr, "Orc difference %i, C difference %i\n",diffsOrc[i], diffsC[i]); 
       }
       assert(diffsC[i]==diffsOrc[i]);
+    }
+  }
+  if(test_contrastImg){
+    Field f;
+    // difference between michelson and absolute differences from mean 
+    //  is large for 100x100 at 500,300
+    f.size=144;
+    f.x = 400;
+    f.y = 300;
+    fprintf(stderr,"********** orc Contrast:\n");
+    int numruns = num;
+    double contrastC[numruns];
+    double contrastOrc[numruns];
+    int timeC, timeOrc;
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	contrastC[i]=contrastSubImg_C(frames[0], &f, fi.width, fi.height);
+      }
+      int end = timeOfDayinMS();   
+      timeC=end-start;
+      fprintf(stderr,"***C   time for %i runs: %i ms ****\n", numruns, timeC);
+    }
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	contrastOrc[i]=contrastSubImg(frames[0], &f, fi.width, fi.height);
+      }
+      int end = timeOfDayinMS();   
+      timeOrc=end-start;
+      fprintf(stderr,"***Orc time for %i runs: %i ms ****\n", numruns, timeOrc);      
+    }
+    double timeCD = timeC;
+    fprintf(stderr,"***Speedup %3.1f\n", timeCD/timeOrc);      
+    for(i=0; i<numruns; i++){
+      if(i==0){
+	printf("Orc contrast %3.2f, C contrast %3.2f\n",contrastOrc[i], contrastC[i]); 
+      }
+      assert(contrastC[i]==contrastOrc[i]);
     }
 
 
 
   }
+
 
   return 1;
 }

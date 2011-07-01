@@ -27,6 +27,18 @@
 #include <math.h>
 #include <libgen.h>
 
+typedef int32_t fp8;
+typedef int32_t fp16;
+#define iToFp8(v)  ((v)<<8)
+#define fToFp8(v)  ((int32_t)((v)*((float)0xFF)))
+#define iToFp16(v) ((v)<<16)
+#define fToFp16(v) ((int32_t)((v)*((double)0xFFFF)))
+#define fp16To8(v) ((v)>>8)
+
+#define fp8ToI(v) ((v)>>8)
+#define fp16ToI(v) ((v)>>16)
+
+
 /** 
  * interpolate: general interpolation function pointer for one channel image data
  *
@@ -72,9 +84,10 @@ void interpolateN(unsigned char *rv, float x, float y,
 
 int initTransformData(TransformData* td, const DSFrameInfo* fi_src, 
                       const DSFrameInfo* fi_dest , const char* modName){
-
+    td->modName = modName;
+    
     td->fiSrc = *fi_src;
-    td->fiDest = *fi_dest;
+    td->fiDest = *fi_dest;   
     
     td->src = ds_zalloc(td->fiSrc.framesize); /* FIXME */
     if (td->src == NULL) {
@@ -460,9 +473,9 @@ int transformYUV(TransformData* td, Transform t)
                 float y_s  = -zsin_a * x_d1 
                     + zcos_a * y_d1 + c_s_y -t.y;
                 unsigned char* dest = &Y_2[x + y * td->fiDest.width];
-                interpolate(dest, x_s, y_s, Y_1, 
-                            td->fiSrc.width, td->fiSrc.height, 
-                            td->crop ? 16 : *dest);
+                interpolate(dest, x_s, y_s, Y_1,  
+                            td->fiSrc.width, td->fiSrc.height,  
+                            td->crop ? 16 : *dest); 
             }
         }
      }else { 
@@ -527,6 +540,133 @@ int transformYUV(TransformData* td, Transform t)
                 }
             }
         }
+    }
+    return DS_OK;
+}
+
+
+/** interpolateBiLin with FP: bi-linear interpolation function, see interpolate */
+void interpolateFP(unsigned char *rv, fp8 x, fp8 y, 
+                   unsigned char* img, int32_t width, int32_t height, 
+                   unsigned char def)
+{
+    int32_t ix_f = fp8ToI(x);
+    int32_t iy_f = fp8ToI(y);
+    if (ix_f < 0 || ix_f > width-1 || iy_f < 0 || iy_f > height - 1) { 
+        *rv=def; // Todo interpolateBiLinBorder(rv, x, y, img, width, height, def);    
+    } else {
+        int32_t ix_c = ix_f + 1;
+        int32_t iy_c = iy_f + 1;        
+        short v1 = PIX(img, ix_c, iy_c, width, height);
+        short v2 = PIX(img, ix_c, iy_f, width, height);
+        short v3 = PIX(img, ix_f, iy_c, width, height);
+        short v4 = PIX(img, ix_f, iy_f, width, height);        
+        fp8 x_f = iToFp8(ix_f);
+        fp8 x_c = iToFp8(ix_c);
+        fp8 y_f = iToFp8(iy_f);
+        fp8 y_c = iToFp8(iy_c);
+        fp16 s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +  
+            (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
+        *rv = fp16ToI(s);
+    }
+}
+
+
+/** TEST with fixed-point arithmetic
+ * transformYUV: applies current transformation to frame
+ *
+ * Parameters:
+ *         td: private data structure of this filter
+ * Return value: 
+ *         0 for failture, 1 for success
+ * Preconditions:
+ *  The frame must be in YUV format
+ *
+ * Fixed-point format 32 bit integer:
+ *  for image coords we use val<<8
+ *  for angle and zoom we use val<<16
+ *
+ */
+int transformYUVFP(TransformData* td, Transform t)
+{
+    int32_t x = 0, y = 0;
+    unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2;
+  
+    Y_1  = td->src;  
+    Y_2  = td->dest;  
+    Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height;
+    Cb_2 = td->dest + td->fiDest.width * td->fiDest.height;
+    Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4;
+    Cr_2 = td->dest + 5*td->fiDest.width * td->fiDest.height/4;
+    fp8 c_s_x = iToFp8(td->fiSrc.width / 2);
+    fp8 c_s_y = iToFp8(td->fiSrc.height / 2);
+    int32_t c_d_x = td->fiDest.width / 2;
+    int32_t c_d_y = td->fiDest.height / 2;    
+    
+    float z     = 1.0-t.zoom/100.0;
+    fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
+    fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
+    fp8  c_tx    = c_s_x - fToFp8(t.x);
+    fp8  c_ty    = c_s_y - fToFp8(t.y);
+
+    /* for each pixel in the destination image we calc the source
+     * coordinate and make an interpolation: 
+     *      p_d = c_d + M(p_s - c_s) + t 
+     * where p are the points, c the center coordinate, 
+     *  _s source and _d destination, 
+     *  t the translation, and M the rotation and scaling matrix
+     *      p_s = M^{-1}(p_d - c_d - t) + c_s
+     */
+    /* Luminance channel */
+    if (fabs(t.alpha) > td->rotationThreshhold || t.zoom != 0) {
+        for (x = 0; x < td->fiDest.width; x++) {
+            for (y = 0; y < td->fiDest.height; y++) {
+                int32_t x_d1 = (x - c_d_x);
+                int32_t y_d1 = (y - c_d_y);
+                fp8 x_s  = fp16To8( zcos_a * x_d1 + zsin_a * y_d1) 
+                    + c_tx;
+                fp8 y_s  = fp16To8(-zsin_a * x_d1 + zcos_a * y_d1) 
+                    + c_ty;
+                unsigned char* dest = &Y_2[x + y * td->fiDest.width];
+                interpolateFP(dest, x_s, y_s, Y_1, 
+                              td->fiSrc.width, td->fiSrc.height, 
+                              td->crop ? 16 : *dest);
+            }
+        }
+     }else { 
+        /* no rotation, no zooming, just translation 
+         *(also no interpolation, since no size change) 
+         */
+        // TODO
+    }
+
+    /* Color channels */
+    int32_t ws2 = td->fiSrc.width/2;
+    int32_t wd2 = td->fiDest.width/2;
+    int32_t hs2 = td->fiSrc.height/2;
+    int32_t hd2 = td->fiDest.height/2;
+    fp8 c_tx2   = c_tx/2;
+    fp8 c_ty2   = c_ty/2;
+
+    if (fabs(t.alpha) > td->rotationThreshhold || t.zoom != 0) {
+        for (x = 0; x < wd2; x++) {
+            for (y = 0; y < hd2; y++) {
+                int32_t x_d1 = x - (c_d_x)/2;
+                int32_t y_d1 = y - (c_d_y)/2;
+                fp8 x_s  =  fp16To8(zcos_a * x_d1 + zsin_a * y_d1) 
+                    + c_tx2;
+                fp8 y_s  = fp16To8(-zsin_a * x_d1 + zcos_a * y_d1) 
+                    + c_ty2; 
+                unsigned char* dest = &Cr_2[x + y * wd2];
+                interpolateFP(dest, x_s, y_s, Cr_1, ws2, hs2, 
+                            td->crop ? 128 : *dest);
+                dest = &Cb_2[x + y * wd2];
+                interpolateFP(dest, x_s, y_s, Cb_1, ws2, hs2, 
+                            td->crop ? 128 : *dest);      	
+            }
+        }
+    } else { // no rotation, no zoom, no interpolation, just translation 
+        // TODO
     }
     return DS_OK;
 }

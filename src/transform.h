@@ -156,6 +156,8 @@ int transformRGB(TransformData* td, Transform t);
 /// does the actual transformation in YUV space
 int transformYUV(TransformData* td, Transform t);
 
+int transformYUVFP(TransformData* td, Transform t);
+
 
 #endif
 

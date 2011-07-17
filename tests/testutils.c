@@ -91,7 +91,7 @@ int loadPGMImage(const char* filename, char ** framebuffer, DSFrameInfo* fi)
 }
 
 
-int storePGMImage(const char* filename, char * image_data, DSFrameInfo fi ) {
+int storePGMImage(const char* filename, unsigned char * image_data, DSFrameInfo fi ) {
   FILE *f = fopen (filename,"wb");
   if (!f) { 
     ds_log_error("TEST", "Can't open image file '%s'",  filename);

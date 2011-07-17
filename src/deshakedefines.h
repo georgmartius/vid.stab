@@ -17,6 +17,18 @@
 
 #define DS_DEBUG 2
 
+/// pixel in single layer image
+#define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? (def)	\
+  : (((x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (w)]) 
+/// pixel in single layer image without rangecheck
+#define PIX(img, x, y, w, h) (img[(x) + (y) * (w)]) 
+/// pixel in N-channel image. channel in {0..N-1}
+#define PIXELN(img, x, y, w, h, N,channel , def) ((x) < 0 || (y) < 0) ? (def) \
+  : (((x) >=(w) || (y) >= (h)) ? (def) : img[((x) + (y) * (w))*(N) + (channel)]) 
+/// pixel in N-channel image without rangecheck. channel in {0..N-1}
+#define PIXN(img, x, y, w, h, N,channel) (img[((x) + (y) * (w))*(N) + (channel)]) 
+
+
 // define here the functions to be used in the framework we are in
 // for transcode
 #ifdef TRANSCODE

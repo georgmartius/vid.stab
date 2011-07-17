@@ -29,13 +29,6 @@
 #include "frameinfo.h"
 #include "deshakedefines.h"
 
-#define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? def       \
-    : (((x) >=w || (y) >= h) ? def : img[(x) + (y) * w]) 
-#define PIX(img, x, y, w, h) (img[(x) + (y) * w]) 
-// gives Pixel in N-channel image. channel in {0..N-1}
-#define PIXELN(img, x, y, w, h, N,channel , def) ((x) < 0 || (y) < 0) ? def  \
-    : (((x) >=w || (y) >= h) ? def : img[((x) + (y) * w)*N + channel]) 
-
 typedef struct transformations {
     Transform* ts; // array of transformations
     int current;   // index to current transformation
@@ -43,11 +36,10 @@ typedef struct transformations {
     short warned_end; // whether we warned that there is no transform left
 } Transformations;
 
-typedef enum { Zero, Linear, BiLinear, BiQuad, BiCubic} InterpolType;
+/// interpolation types
+typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
+/// name of the interpolation type
 extern const char* interpolTypes[5];
-
-//static const char* interpoltypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)", 
-//                                       "Bi-Quadratic (3)", "Bi-Cubic (4)"};
 
 typedef struct {
     DSFrameInfo fiSrc;
@@ -107,7 +99,7 @@ static const char transform_help[] = ""
     "                here calculated one\n"
     "    'interpol'  type of interpolation: 0: no interpolation, \n"
     "                1: linear (horizontal), 2: bi-linear (def), \n"
-    "                3: quadratic 4: bi-cubic\n"
+    "                3: bi-cubic\n"
     "    'sharpen'   amount of sharpening: 0: no sharpening (def: 0.8)\n"
     "                uses filter unsharp with 5x5 matrix\n"
     "    'help'      print this help message\n";
@@ -150,13 +142,6 @@ int preprocessTransforms(TransformData* td, Transformations* trans);
     and supply the frame buffer for the frame to write
  */
 int transformPrepare(TransformData* td, unsigned char* frame_buf);
-
-/// does the actual transformation in RGB space
-int transformRGB(TransformData* td, Transform t);
-/// does the actual transformation in YUV space
-int transformYUV(TransformData* td, Transform t);
-
-int transformYUVFP(TransformData* td, Transform t);
 
 
 #endif

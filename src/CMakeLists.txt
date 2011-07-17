@@ -10,14 +10,15 @@ set(TRANSCODE_ROOT ../../../transcode)
 #  0.4.10 did not work (not all opcode implemented)
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3 -Wno-pointer-sign ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
 include_directories (${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ ${ORC_INCLUDE_DIRS}) 
  
-# Create the stabilize and transform libraries
-add_library (filter_transform SHARED filter_transform.c transformtype.c libdeshake.c transform.c transformfixedpoint.c dslist.c) #  orc/transformorc.c) 
-add_library (filter_stabilize SHARED filter_stabilize.c transformtype.c libdeshake.c motiondetect.c dslist.c orc/motiondetectorc.c) 
+# Create the deshake library 
+add_library (deshake STATIC
+    transformtype.c libdeshake.c transform.c transformfixedpoint.c dslist.c transformtype.c
+    libdeshake.c motiondetect.c dslist.c orc/motiondetectorc.c) 
+#  orc/transformorc.c
 
-target_link_libraries(filter_stabilize m ${ORC_LIBRARIES}) #link the math library and orc
-target_link_libraries(filter_transform m ) #link the math library
+target_link_libraries(deshake m ${ORC_LIBRARIES}) #link the math library and orc

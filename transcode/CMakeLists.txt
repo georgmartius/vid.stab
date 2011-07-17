@@ -7,7 +7,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 
 # set your transcode path here!
 set(TRANSCODE_ROOT ../../../transcode)
- 
+
 # we tried it with 0.4.14 
 #  0.4.10 did not work (not all opcode implemented)
 find_package(Orc REQUIRED) 

@@ -19,7 +19,7 @@
 
 int num=2000;
 int test_checkCompareImg=0;
-int test_motionDetect=0;
+int test_motionDetect=1;
 int test_transform=1;
 int test_compareImg=1;
 int test_contrastImg=1;
@@ -330,7 +330,16 @@ int main(int argc, char** argv){
       }
       int end = timeOfDayinMS();   
       timeC=end-start;
-      fprintf(stderr,"***C   time for %i runs: %i ms ****\n", numruns, timeC);
+      fprintf(stderr,"***C    time for %i runs: %i ms ****\n", numruns, timeC);
+    }
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	contrastSubImg_Michelson(frames[0], &f, fi.width, fi.height,1);
+      }
+      int end = timeOfDayinMS();   
+      fprintf(stderr,"***C Mi  time for %i runs: %i ms ****\n", 
+	      numruns, end-start); 
     }
     {
       int start = timeOfDayinMS();
@@ -339,7 +348,7 @@ int main(int argc, char** argv){
       }
       int end = timeOfDayinMS();   
       timeOrc=end-start;
-      fprintf(stderr,"***Orc time for %i runs: %i ms ****\n", numruns, timeOrc);      
+      fprintf(stderr,"***Orc  time for %i runs: %i ms ****\n", numruns, timeOrc);      
     }
     double timeCD = timeC;
     fprintf(stderr,"***Speedup %3.2f\n", timeCD/timeOrc);      

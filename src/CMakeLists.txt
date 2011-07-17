@@ -4,7 +4,6 @@ project (vid.stab)
 SET(CMAKE_BUILTTYPE None)
  
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
-set(TRANSCODE_ROOT ../../../transcode)
 
 # we tried it with 0.4.14 
 #  0.4.10 did not work (not all opcode implemented)
@@ -13,7 +12,7 @@ find_package(Orc REQUIRED)
 add_definitions( -Wall -O3 -Wno-pointer-sign ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
-include_directories (${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ ${ORC_INCLUDE_DIRS}) 
+include_directories (${ORC_INCLUDE_DIRS}) 
  
 # Create the deshake library 
 add_library (deshake STATIC

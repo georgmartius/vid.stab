@@ -1,4 +1,4 @@
-# to use intel compiler: CC=icc CXX=icpc cmake ../
+# to use intel compiler: cd cmake; CC=icc CXX=icpc cmake ../
 #  very fast: faster than orc code at imgcompare without any options.
 #  library needs libimf.so (link statically?)
 
@@ -19,5 +19,5 @@ add_definitions( -Wall -O3 -msse2 -ffast-math -DTESTING ${ORC_DEFINITIONS})
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ${ORC_INCLUDE_DIRS}) 
 
 add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/orc/transformorc.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c)
-target_link_libraries(tests imf m ${ORC_LIBRARIES}) #link the math library
+target_link_libraries(tests m ${ORC_LIBRARIES}) #link the math library
  

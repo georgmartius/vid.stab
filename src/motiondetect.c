@@ -469,12 +469,6 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   // we only use the luminance part of the image
   int i, j;
 
-  /*     // check contrast in sub image */
-  /*     double contr = contrastSubImg(Y_c, field, md->fi.width, md->fi.height, 1); */
-  /*     if(contr < md->contrast_threshold) { */
-  /*         t.extra=-1; */
-  /*         return t; */
-  /*     } */
 #ifdef STABVERBOSE
   // printf("%i %i %f\n", md->t, fieldnum, contr);
   FILE *f = NULL;
@@ -484,19 +478,26 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
 
-  int minerror = INT_MAX;
+  /* Here we improve speed by checking first the most probable position
+     then the search paths are most effectively cut. (0,0) is a simple start    
+  */
+  unsigned int minerror = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
+					1, 0, 0, UINT_MAX);
+  // check all positions...
   for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
-      int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-				1, i, j, minerror);
-#ifdef STABVERBOSE
-      fprintf(f, "%i %i %f\n", i, j, error);
-#endif
+      if( i==0 && j==0 ) 
+	continue; //no need to check this since already done      
+      unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
+					 1, i, j, minerror);
       if (error < minerror) {
 	minerror = error;
 	tx = i;
 	ty = j;
       }
+#ifdef STABVERBOSE
+      fprintf(f, "%i %i %f\n", i, j, error);
+#endif
     }
   }
 
@@ -508,8 +509,8 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
       for (j = tyc - r; j <= tyc + r; j += 1) {
 	if (i == txc && j == tyc)
 	  continue; //no need to check this since already done
-	int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
-				  md->fi.height, 1, i, j, minerror);
+	unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
+					   md->fi.height, 1, i, j, minerror);
 #ifdef STABVERBOSE
 	fprintf(f, "%i %i %f\n", i, j, error);
 #endif
@@ -548,39 +549,64 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
  *   slower than the YUV version because it uses all three color channels
  */
 Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) {
-  Transform t = null_transform();
+  int tx = 0;
+  int ty = 0;
   uint8_t *I_c = md->curr, *I_p = md->prev;
   int i, j;
 
-  int minerror = INT_MAX;
-  for (i = -md->maxShift; i <= md->maxShift; i += 2) {
-    for (j = -md->maxShift; j <= md->maxShift; j += 2) {
-      int error = compareSubImg(I_c, I_p, field, md->fi.width,
-                                md->fi.height, 3, i, j, minerror);
+  /* Here we improve speed by checking first the most probable position
+     then the search paths are most effectively cut. (0,0) is a simple start    
+  */
+  unsigned int minerror = compareSubImg(I_c, I_p, field, md->fi.width, md->fi.height,
+					3, 0, 0, UINT_MAX);
+  // check all positions...
+  for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
+    for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
+      if( i==0 && j==0 ) 
+	continue; //no need to check this since already done
+      unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
+					 md->fi.height, 3, i, j, minerror);
       if (error < minerror) {
 	minerror = error;
-	t.x = i;
-	t.y = j;
+	tx = i;
+	ty = j;
       }
     }
   }
-  for (i = t.x - 1; i <= t.x + 1; i += 2) {
-    for (j = -t.y - 1; j <= t.y + 1; j += 2) {
-      int error = compareSubImg(I_c, I_p, field, md->fi.width,
-                                md->fi.height, 3, i, j, minerror);
-      if (error < minerror) {
-	minerror = error;
-	t.x = i;
-	t.y = j;
+  if (md->stepSize > 1) { // make fine grain check around the best match
+    int txc = tx; // save the shifts
+    int tyc = ty;
+    int r = md->stepSize - 1;
+    for (i = txc - r; i <= txc + r; i += 1) {
+      for (j = tyc - r; j <= tyc + r; j += 1) {
+	if (i == txc && j == tyc)
+	  continue; //no need to check this since already done
+	unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
+					   md->fi.height, 3, i, j, minerror);
+	if (error < minerror) {
+	  minerror = error;
+	  tx = i;
+	  ty = j;
+	}
       }
     }
   }
-  if (!md->allowMax && fabs(t.x) == md->maxShift) {
-    t.x = 0;
+
+  if (!md->allowMax && fabs(tx) >= md->maxShift + md->stepSize) {
+#ifdef STABVERBOSE
+    ds_log_msg(md->modName, "maximal x shift ");
+#endif
+    tx = 0;
   }
-  if (!md->allowMax && fabs(t.y) == md->maxShift) {
-    t.y = 0;
+  if (!md->allowMax && fabs(ty) == md->maxShift + md->stepSize) {
+#ifdef STABVERBOSE
+    ds_log_msg(md->modName, "maximal y shift ");
+#endif
+    ty = 0;
   }
+  Transform t = null_transform();
+  t.x = tx;
+  t.y = ty;
   return t;
 }
 
@@ -665,10 +691,10 @@ DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
 
 /* tries to register current frame onto previous frame.
  *   Algorithm:
- *   check all fields for vertical and horizontal transformation
- *   use minimal difference of all possible positions
  *   discards fields with low contrast
- *   select maxfields field according to their contrast
+ *   select maxfields fields according to their contrast
+ *   check theses fields for vertical and horizontal transformation
+ *   use minimal difference of all possible positions
  *   calculate shift as cleaned mean of all remaining fields
  *   calculate rotation angle of each field in respect to center of fields
  *   after shift removal

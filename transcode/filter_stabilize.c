@@ -29,7 +29,7 @@
  */
 
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION "v0.8 (2011-06-13)"
+#define MOD_VERSION "v0.81 (2011-07-18)"
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"

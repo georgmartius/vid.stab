@@ -1,8 +1,8 @@
 /*
  *  motiondetect.h
  *
- *  Created on: Feb 21, 2011
- *  Copyright (C) Georg Martius - June 2007
+ *  Copyright (C) Georg Martius - February 2011
+ *   georg dot martius at web dot de  
  *
  *  This file is part of transcode, a video stream processing tool
  *
@@ -115,17 +115,20 @@ int motionDetection(MotionDetect* md, unsigned char *frame);
 void cleanupMotionDetection(MotionDetect* md);
 
 int initFields(MotionDetect* md);
-int compareImg(unsigned char* I1, unsigned char* I2,
-               int width, int height,  int bytesPerPixel, int d_x, int d_y);
-int compareSubImg(unsigned char* const I1, unsigned char* const I2,
-                  const Field* field,
-                  int width, int height, int bytesPerPixel,int d_x,int d_y);
+unsigned int compareImg(unsigned char* I1, unsigned char* I2,
+                        int width, int height,  int bytesPerPixel, int d_x, int d_y);
+unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
+                           const Field* field,
+                           int width, int height, int bytesPerPixel, 
+                           int d_x, int d_y, unsigned int threshold);
+
 double contrastSubImgYUV(MotionDetect* md, const Field* field);
 double contrastSubImgRGB(MotionDetect* md, const Field* field);
 double contrastSubImg_Michelson(unsigned char* const I, const Field* field,
                                 int width, int height, int bytesPerPixel);
 double contrastSubImg(unsigned char* const I, const Field* field,
                       int width, int height);
+
 int cmp_contrast_idx(const void *ci1, const void* ci2);
 DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
 
@@ -151,9 +154,10 @@ void addTrans(MotionDetect* md, Transform sl);
 
 #ifdef TESTING
 /// Functions for testing against optimized versions
-int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
-                    const Field* field, int width, int height, int bytesPerPixel, 
-                    int d_x, int d_y);
+unsigned int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
+                             const Field* field, int width, int height, 
+                             int bytesPerPixel, 
+                             int d_x, int d_y, unsigned int threshold);
 
 double contrastSubImg_C(unsigned char* const I, const Field* field,
                       int width, int height);

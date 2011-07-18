@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <sys/time.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include "transform.h"
 #include "dslist.h"
@@ -83,7 +84,7 @@ int checkCompareImg(MotionDetect* md, unsigned char* frame){
   for(i=-10;i<10; i+=2){
     printf("\nCheck: shiftX = %i\n",i);
     error = compareSubImg(Y_c, Y_c, &field, md->fi.width, md->fi.height, 
-			  1, i, 0);
+			  1, i, 0, INT_MAX);
     fprintf(stderr,"mismatch %i: %i\n", i, error);
   }
   return 1;
@@ -274,7 +275,7 @@ int main(int argc, char** argv){
   
   if(test_compareImg){
     Field f;
-    f.size=144;
+    f.size=128;
     f.x = 400;
     f.y = 300;
     fprintf(stderr,"********** orc Compare:\n");
@@ -287,7 +288,7 @@ int main(int argc, char** argv){
       int start = timeOfDayinMS();
       for(i=0; i<numruns; i++){
 	diffsC[i]=compareSubImg_C(frames[0], frames[1], 
-				&f, fi.width, fi.height, 2, i%200, i/200);
+				  &f, fi.width, fi.height, 2, i%200, i/200, INT_MAX);
       }
       int end = timeOfDayinMS();   
       timeC=end-start;
@@ -297,7 +298,7 @@ int main(int argc, char** argv){
       int start = timeOfDayinMS();
       for(i=0; i<numruns; i++){
 	diffsOrc[i]=compareSubImg(frames[0], frames[1], &f, 
-				  fi.width, fi.height, 2, i%200, i/200);
+				  fi.width, fi.height, 2, i%200, i/200, INT_MAX);
       }
       int end = timeOfDayinMS();   
       timeOrc=end-start;
@@ -315,7 +316,7 @@ int main(int argc, char** argv){
     Field f;
     // difference between michelson and absolute differences from mean 
     //  is large for 100x100 at 500,300
-    f.size=144;
+    f.size=128;
     f.x = 400;
     f.y = 300;
     fprintf(stderr,"********** orc Contrast:\n");

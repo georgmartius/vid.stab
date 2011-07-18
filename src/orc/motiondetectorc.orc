@@ -18,7 +18,14 @@
 .flags 2d
 .source 1 s1 uint8_t
 .source 1 s2 uint8_t
-.accumulator 4 sum int
+.accumulator 4 sum uint32_t
+accsadubl sum, s1, s2
+
+
+.function image_line_difference_optimized
+.source 1 s1 uint8_t
+.source 1 s2 uint8_t
+.accumulator 4 sum uint32_t
 accsadubl sum, s1, s2
 
 

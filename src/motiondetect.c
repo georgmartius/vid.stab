@@ -1,8 +1,11 @@
 /*
  * motiondetect.c
  *
- *  Created on: Feb 21, 2011
  *  Copyright (C) Georg Martius - February 2011
+ *   georg dot martius at web dot de  
+ *  Copyright (C) Alexey Osipov - Jule 2011
+ *   simba at lerlan dot ru
+ *   speed optimizations (threshold)
  *
  *  This file is part of transcode, a video stream processing tool
  *
@@ -196,16 +199,17 @@ int initFields(MotionDetect* md) {
 }
 
 /**
+   This routine is used in the simpleAlgorithms and may be removed at some point
    compares the two given images and returns the average absolute difference
    \param d_x shift in x direction
    \param d_y shift in y direction
 */
-int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
-		  int bytesPerPixel, int d_x, int d_y) {
+unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
+	       int bytesPerPixel, int d_x, int d_y) {
   int i, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
-  int sum = 0;
+  unsigned int sum = 0;
   int effectWidth = width - abs(d_x);
   int effectHeight = height - abs(d_y);
 
@@ -260,33 +264,42 @@ int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
    \param d_x shift in x direction
    \param d_y shift in y direction
 */
-int compareSubImg(unsigned char* const I1, unsigned char* const I2,
-                     const Field* field, int width, int height, int bytesPerPixel, 
-                     int d_x, int d_y) {
+unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
+			   const Field* field, int width, int height, 
+			   int bytesPerPixel, int d_x, int d_y, 
+			   unsigned int threshold) {
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
-  int sum=0;
+  int j;
+  unsigned int sum = 0;
   p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
   p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
     * bytesPerPixel;
   
-  image_difference_optimized(&sum, p1, width * bytesPerPixel, 
-                             p2, width*bytesPerPixel, 
-                             field->size* bytesPerPixel , field->size);
+  for (j = 0; j < field->size; j++) {
+    unsigned int s = 0;
+    image_line_difference_optimized(&s, p1, p2, field->size* bytesPerPixel);
+    sum += s;
+    if( sum > threshold) // no need to calculate any longer: worse than the best match
+      break;
+    p1 += width * bytesPerPixel;
+    p2 += width * bytesPerPixel;
+  }
 
-  return sum; //  / ((double) field->size * field->size * bytesPerPixel);
+
+  return sum;
 }
 
 
 
-/** \see contrastSubImg called with bytesPerPixel=1*/
+/** \see contrastSubImg*/
 double contrastSubImgYUV(MotionDetect* md, const Field* field) {
   return contrastSubImg(md->curr, field, md->fi.width, md->fi.height);
 }
 
 /**
-   \see contrastSubImg three times called with bytesPerPixel=3
+   \see contrastSubImg_Michelson three times called with bytesPerPixel=3
    for all channels
 */
 double contrastSubImgRGB(MotionDetect* md, const Field* field) {
@@ -475,7 +488,7 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
       int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-				1, i, j);
+				1, i, j, minerror);
 #ifdef STABVERBOSE
       fprintf(f, "%i %i %f\n", i, j, error);
 #endif
@@ -496,7 +509,7 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
 	if (i == txc && j == tyc)
 	  continue; //no need to check this since already done
 	int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
-				  md->fi.height, 1, i, j);
+				  md->fi.height, 1, i, j, minerror);
 #ifdef STABVERBOSE
 	fprintf(f, "%i %i %f\n", i, j, error);
 #endif
@@ -543,7 +556,7 @@ Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) 
   for (i = -md->maxShift; i <= md->maxShift; i += 2) {
     for (j = -md->maxShift; j <= md->maxShift; j += 2) {
       int error = compareSubImg(I_c, I_p, field, md->fi.width,
-                                md->fi.height, 3, i, j);
+                                md->fi.height, 3, i, j, minerror);
       if (error < minerror) {
 	minerror = error;
 	t.x = i;
@@ -554,7 +567,7 @@ Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) 
   for (i = t.x - 1; i <= t.x + 1; i += 2) {
     for (j = -t.y - 1; j <= t.y + 1; j += 2) {
       int error = compareSubImg(I_c, I_p, field, md->fi.width,
-                                md->fi.height, 3, i, j);
+                                md->fi.height, 3, i, j, minerror);
       if (error < minerror) {
 	minerror = error;
 	t.x = i;
@@ -817,9 +830,10 @@ void addTrans(MotionDetect* md, Transform sl) {
 
 #ifdef TESTING
 /// plain C implementation of compareSubImg (without ORC)
-int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
-                       const Field* field, int width, int height, int bytesPerPixel, int d_x,
-		     int d_y) {
+unsigned int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
+			     const Field* field, int width, int height, 
+			     int bytesPerPixel, int d_x, int d_y,
+			     unsigned int threshold) {
   int k, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
@@ -835,11 +849,34 @@ int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
       p1++;
       p2++;
     }
+    if( sum > threshold) // no need to calculate any longer: worse than the best match
+      break;
     p1 += (width - field->size) * bytesPerPixel;
     p2 += (width - field->size) * bytesPerPixel;
   }
   return sum;
 }
+
+// implementation with 1 orc function, but no threshold
+unsigned int compareSubImg_no_thresh(unsigned char* const I1, unsigned char* const I2,
+			   const Field* field, int width, int height, 
+			   int bytesPerPixel, int d_x, int d_y, 
+			   unsigned int threshold) {
+  unsigned char* p1 = NULL;
+  unsigned char* p2 = NULL;
+  int s2 = field->size / 2;
+  unsigned int sum=0;
+  p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
+  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
+    * bytesPerPixel;
+  
+  image_difference_optimized(&sum, p1, width * bytesPerPixel, 
+                             p2, width*bytesPerPixel, 
+                             field->size* bytesPerPixel , field->size);
+
+  return sum;
+}
+
 
 /// plain C implementation of contrastSubImg (without ORC)
 double contrastSubImg_C(unsigned char* const I, const Field* field, int width, int height) {

@@ -247,8 +247,8 @@ static int stabilize_configure(TCModuleInstance *self,
 
     /* load unsharp filter to smooth the frames. This allows larger stepsize.*/
     char unsharp_param[128];
-    int masksize = TC_MIN(13,md->stepSize*1.8); // only works up to 13.
-    sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1", 
+    int masksize = TC_MIN(13,md->stepSize*1.2); // only works up to 13.
+    sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1",
             masksize, masksize);
     if (!tc_filter_add("unsharp", unsharp_param)) {
         tc_log_warn(MOD_NAME, "cannot load unsharp filter!");

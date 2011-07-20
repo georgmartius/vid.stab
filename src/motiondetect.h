@@ -3,6 +3,9 @@
  *
  *  Copyright (C) Georg Martius - February 2011
  *   georg dot martius at web dot de  
+ *  Copyright (C) Alexey Osipov - Jule 2011
+ *   simba at lerlan dot ru
+ *   speed optimizations (threshold, spiral, SSE, asm)
  *
  *  This file is part of transcode, a video stream processing tool
  *
@@ -32,6 +35,17 @@
 #include "deshakedefines.h"
 #include "dslist.h"
 #include "frameinfo.h"
+
+//enable SSE2 code
+#define USE_SSE2
+
+//enable SSE2 inline asm code
+// #define USE_SSE2_ASM
+
+//select compareSubImg func
+#define compareSubImg compareSubImg_thr_sse2
+
+#define USE_SPIRAL_FIELD_CALC
 
 /** stores x y and size of a measurement field */
 typedef struct _field {
@@ -117,10 +131,6 @@ void cleanupMotionDetection(MotionDetect* md);
 int initFields(MotionDetect* md);
 unsigned int compareImg(unsigned char* I1, unsigned char* I2,
                         int width, int height,  int bytesPerPixel, int d_x, int d_y);
-unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
-                           const Field* field,
-                           int width, int height, int bytesPerPixel, 
-                           int d_x, int d_y, unsigned int threshold);
 
 double contrastSubImgYUV(MotionDetect* md, const Field* field);
 double contrastSubImgRGB(MotionDetect* md, const Field* field);
@@ -152,17 +162,41 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
 void addTrans(MotionDetect* md, Transform sl);
 
 
-#ifdef TESTING
+//#ifdef TESTING
 /// Functions for testing against optimized versions
-unsigned int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
-                             const Field* field, int width, int height, 
-                             int bytesPerPixel, 
-                             int d_x, int d_y, unsigned int threshold);
-
 double contrastSubImg_C(unsigned char* const I, const Field* field,
                       int width, int height);
 
-#endif // TESTING
+unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
+                                   const Field* field,
+                                   int width, int height, int bytesPerPixel,
+                                   int d_x, int d_y, unsigned int threshold);
+
+unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
+                               const Field* field, int width, int height,
+                               int bytesPerPixel,
+                               int d_x, int d_y, unsigned int threshold);
+
+unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
+			                   const Field* field, int width, int height,
+			                   int bytesPerPixel, int d_x, int d_y,
+			                   unsigned int threshold);
+
+#ifdef USE_SSE2
+unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
+                                const Field* field, int width, int height,
+                                int bytesPerPixel,
+                                int d_x, int d_y, unsigned int threshold);
+#endif // USE_SSE2
+
+#ifdef USE_SSE2_ASM
+unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,
+                                        const Field* field, int width, int height,
+                                        int bytesPerPixel,
+                                        int d_x, int d_y, unsigned int threshold);
+#endif
+
+//#endif // TESTING
 
 #endif  /* MOTIONDETECT_H */
 

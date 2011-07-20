@@ -140,6 +140,35 @@ int test_transform_implementation(){
   return sum;
 }
 
+typedef unsigned int (*cmpSubImgFunc)(unsigned char* const I1, unsigned char* const I2,
+				const Field* field,
+				int width, int height, int bytesPerPixel,
+				int d_x, int d_y, unsigned int threshold);
+
+// runs the compareSubImg routine and returns the time and stores the difference.
+//  if diffsRef is given than the results are validated
+int runcompare( cmpSubImgFunc cmpsubfunc, 
+		unsigned char* frame1, unsigned char* frame2, Field f, 
+		DSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
+  int start = timeOfDayinMS();
+  int i;
+  for(i=0; i<numruns; i++){
+    diffs[i]=cmpsubfunc(frame1, frame2, 
+			&f, fi.width, fi.height, 2, i%200, i/200, INT_MAX);
+  }
+  int end = timeOfDayinMS();   
+  if(diffsRef)
+    for(i=0; i<numruns; i++){     
+      if(diffs[i]!=diffsRef[i]){
+	fprintf(stderr, "ERROR! Ref difference %i, Opt difference %i\n",
+		diffsRef[i], diffs[i]); 
+      }
+    }
+  return end-start;
+}
+
+
+
 int main(int argc, char** argv){
 
   MotionDetect md;
@@ -278,39 +307,31 @@ int main(int argc, char** argv){
     f.size=128;
     f.x = 400;
     f.y = 300;
-    fprintf(stderr,"********** orc Compare:\n");
+    fprintf(stderr,"********** Compare speedtest:\n");
 
-    int numruns =num;
+    int numruns = num;
     int diffsC[numruns];
-    int diffsOrc[numruns];
-    int timeC, timeOrc;
-    {
-      int start = timeOfDayinMS();
-      for(i=0; i<numruns; i++){
-	diffsC[i]=compareSubImg_C(frames[0], frames[1], 
-				  &f, fi.width, fi.height, 2, i%200, i/200, INT_MAX);
-      }
-      int end = timeOfDayinMS();   
-      timeC=end-start;
-      fprintf(stderr,"***C   time for %i runs: %i ms ****\n", numruns, timeC);
-    }
-    {
-      int start = timeOfDayinMS();
-      for(i=0; i<numruns; i++){
-	diffsOrc[i]=compareSubImg(frames[0], frames[1], &f, 
-				  fi.width, fi.height, 2, i%200, i/200, INT_MAX);
-      }
-      int end = timeOfDayinMS();   
-      timeOrc=end-start;
-      fprintf(stderr,"***Orc time for %i runs: %i ms ****\n", numruns, timeOrc);      
-    }
-    fprintf(stderr,"***Speedup %3.2f\n", (double)timeC/timeOrc);      
-    for(i=0; i<numruns; i++){
-      if(i==0){
-	fprintf(stderr, "Orc difference %i, C difference %i\n",diffsOrc[i], diffsC[i]); 
-      }
-      assert(diffsC[i]==diffsOrc[i]);
-    }
+    int diffsO[numruns];
+    int timeC, timeO;
+    timeC=runcompare(compareSubImg_thr, frames[0], frames[1], f, fi, diffsC, 0, numruns);
+    fprintf(stderr,"***C        time for %i runs: %i ms ****\n", numruns, timeC);
+
+    timeO=runcompare(compareSubImg_orc, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
+    fprintf(stderr,"***orc      time for %i runs: %i ms \tSpeedup %3.2f\n", 
+	    numruns, timeO, (double)timeC/timeO);      
+    timeO=runcompare(compareSubImg_thr_orc, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
+    fprintf(stderr,"***thr_orc  time for %i runs: %i ms \tSpeedup %3.2f\n", 
+	    numruns, timeO, (double)timeC/timeO);      
+#ifdef USE_SSE2
+    timeO=runcompare(compareSubImg_thr_sse2, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
+    fprintf(stderr,"***thr_sse2 time for %i runs: %i ms \tSpeedup %3.2f\n", 
+	    numruns, timeO, (double)timeC/timeO);      
+#endif
+#ifdef USE_SSE2_ASM
+    timeO=runcompare(compareSubImg_thr_sse2_asm, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
+    fprintf(stderr,"***thr_asm  time for %i runs: %i ms \tSpeedup %3.2f\n", 
+	    numruns, timeO, (double)timeC/timeO);          
+#endif
   }
   if(test_contrastImg){
     Field f;

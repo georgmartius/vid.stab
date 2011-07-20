@@ -35,6 +35,13 @@
 
 #include "deshakedefines.h"
 
+#ifdef USE_SSE2
+#include <emmintrin.h>
+
+#define USE_SSE2_CMP_HOR
+#define SSE2_CMP_SUM_ROWS 8
+#endif
+
 /* internal data structures */
 
 // structure that contains the contrast and the index of a field
@@ -89,6 +96,9 @@ int configureMotionDetect(MotionDetect* md) {
     = DS_MAX(4,(DS_MIN(md->fi.width, md->fi.height)*md->shakiness)/40);
   md->fieldSize
     = DS_MAX(4,(DS_MIN(md->fi.width, md->fi.height)*md->shakiness)/40);
+#if defined(USE_SSE2) || defined(USE_SSE2_ASM)
+  md->fieldSize = (md->fieldSize / 16 + 1) * 16;
+#endif
 
   ds_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel",
 	      md->fieldSize, md->maxShift);
@@ -264,7 +274,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
    \param d_x shift in x direction
    \param d_y shift in y direction
 */
-unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
+unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
 			   const Field* field, int width, int height, 
 			   int bytesPerPixel, int d_x, int d_y, 
 			   unsigned int threshold) {
@@ -478,6 +488,63 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
 
+#ifdef USE_SPIRAL_FIELD_CALC
+  unsigned int minerror = UINT_MAX;
+
+  // check all positions by outgoing spiral
+  i = 0; j = 0;
+  int limit = 1;
+  int step = 0;
+  int dir = 0;
+  while (j >= -md->maxShift && j <= md->maxShift && i >= -md->maxShift && i <= md->maxShift) {
+      unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
+                 1, i, j, minerror);
+
+      if (error < minerror) {
+          minerror = error;
+          tx = i;
+          ty = j;
+      }
+
+      //spiral indexing...
+      if (dir == 0) {
+         i += md->stepSize;
+         step++;
+         if (step == limit) {
+             dir = 1;
+             step = 0;
+         }
+      }
+      else if (dir == 1) {
+         j += md->stepSize;
+         step++;
+         if (step == limit) {
+             dir = 2;
+             step = 0;
+             limit++;
+         }
+      }
+      else if (dir == 2) {
+         i -= md->stepSize;
+         step++;
+         if (step == limit) {
+             dir = 3;
+             step = 0;
+         }
+      }
+      else if (dir == 3) {
+         j -= md->stepSize;
+         step++;
+         if (step == limit) {
+             dir = 0;
+             step = 0;
+             limit++;
+         }
+      }
+  }
+
+#else
+
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start    
   */
@@ -500,6 +567,8 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
 #endif
     }
   }
+
+#endif
 
   if (md->stepSize > 1) { // make fine grain check around the best match
     int txc = tx; // save the shifts
@@ -854,9 +923,9 @@ void addTrans(MotionDetect* md, Transform sl) {
 }
 
 
-#ifdef TESTING
+//#ifdef TESTING
 /// plain C implementation of compareSubImg (without ORC)
-unsigned int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
+unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
 			     const Field* field, int width, int height, 
 			     int bytesPerPixel, int d_x, int d_y,
 			     unsigned int threshold) {
@@ -884,7 +953,7 @@ unsigned int compareSubImg_C(unsigned char* const I1, unsigned char* const I2,
 }
 
 // implementation with 1 orc function, but no threshold
-unsigned int compareSubImg_no_thresh(unsigned char* const I1, unsigned char* const I2,
+unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
 			   const Field* field, int width, int height, 
 			   int bytesPerPixel, int d_x, int d_y, 
 			   unsigned int threshold) {
@@ -933,7 +1002,201 @@ double contrastSubImg_C(unsigned char* const I, const Field* field, int width, i
   }
   return (double)var/numpixel/255.0;
 }
+
+#ifdef USE_SSE2
+unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
+                     const Field* field,
+                     int width, int height, int bytesPerPixel, int d_x, int d_y, unsigned int treshold)
+{
+    int k, j;
+    unsigned char* p1 = NULL;
+    unsigned char* p2 = NULL;
+    int s2 = field->size / 2;
+    unsigned int sum = 0;
+
+    static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
+    unsigned char row = 0;
+#ifndef USE_SSE2_CMP_HOR
+    unsigned char summes[16];
+    int i;
 #endif
+    __m128i xmmsum, xmmmask;
+    xmmsum = _mm_setzero_si128();
+    xmmmask = _mm_loadu_si128(mask);
+
+    p1=I1 + ((field->x - s2) + (field->y - s2)*width)*bytesPerPixel;
+    p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width)*bytesPerPixel;
+    for (j = 0; j < field->size; j++){
+        for (k = 0; k < field->size * bytesPerPixel; k+=16){
+            {
+                __m128i xmm0, xmm1, xmm2;
+                xmm0 = _mm_loadu_si128(p1);
+                xmm1 = _mm_loadu_si128(p2);
+
+                xmm2 = _mm_subs_epu8(xmm0, xmm1);
+                xmm0 = _mm_subs_epu8(xmm1, xmm0);
+                xmm0 = _mm_adds_epu8(xmm0, xmm2);
+
+                xmm1 = _mm_and_si128(xmm0, xmmmask);
+                xmm0 = _mm_srli_si128(xmm0, 1);
+                xmm0 = _mm_and_si128(xmm0, xmmmask);
+
+                xmmsum = _mm_adds_epu16(xmmsum, xmm0);
+                xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+            }
+
+            p1+=16;
+            p2+=16;
+
+            row++;
+            if (row == SSE2_CMP_SUM_ROWS) {
+                row = 0;
+#ifdef USE_SSE2_CMP_HOR
+                {
+                    __m128i xmm1;
+
+                    xmm1 = _mm_srli_si128(xmmsum, 8);
+                    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+                    xmm1 = _mm_srli_si128(xmmsum, 4);
+                    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+                    xmm1 = _mm_srli_si128(xmmsum, 2);
+                    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+                    sum += _mm_extract_epi16(xmmsum, 0);
+                }
+#else
+                _mm_storeu_si128((__m128i*)summes, xmmsum);
+                for(i = 0; i < 16; i+=2)
+                    sum += summes[i] + summes[i+1]*256;
+#endif
+                xmmsum = _mm_setzero_si128();
+            }
+        }
+        if (sum > treshold)
+            break;
+        p1 += (width - field->size) * bytesPerPixel;
+        p2 += (width - field->size) * bytesPerPixel;
+    }
+
+#if (SSE2_CMP_SUM_ROWS != 1) && (SSE2_CMP_SUM_ROWS != 2) && (SSE2_CMP_SUM_ROWS != 4) \
+  && (SSE2_CMP_SUM_ROWS != 8) && (SSE2_CMP_SUM_ROWS != 16)
+    //process all data left unprocessed
+    //this part can be safely ignored if
+    //SSE_SUM_ROWS = {1, 2, 4, 8, 16}
+#ifdef USE_SSE2_CMP_HOR
+    {
+        __m128i xmm1;
+
+        xmm1 = _mm_srli_si128(xmmsum, 8);
+        xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+        xmm1 = _mm_srli_si128(xmmsum, 4);
+        xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+        xmm1 = _mm_srli_si128(xmmsum, 2);
+        xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+
+        sum += _mm_extract_epi16(xmmsum, 0);
+    }
+#else
+    _mm_storeu_si128((__m128i*)summes, xmmsum);
+    for(i = 0; i < 16; i+=2)
+       sum += summes[i] + summes[i+1]*256;
+#endif
+#endif
+
+    return sum;
+}
+#endif // USE_SSE2
+
+#ifdef USE_SSE2_ASM
+unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,
+                     const Field* field,
+                     int width, int height, int bytesPerPixel, int d_x, int d_y, unsigned int treshold)
+{
+    unsigned char* p1 = NULL;
+    unsigned char* p2 = NULL;
+    int s2 = field->size / 2;
+    unsigned int sum = 0;
+
+    static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};    
+    p1=I1 + ((field->x - s2) + (field->y - s2)*width)*bytesPerPixel;
+    p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width)*bytesPerPixel;
+
+    asm (
+        "xor %0,%0\n"
+        "pxor %%xmm4,%%xmm4\n"         //8 x 16bit partial sums
+        "movdqu (%3),%%xmm3\n"         //mask
+
+        //main loop
+        "mov %4,%%ebx\n"               //ebx = field->size * bytesPerPixel / 16
+        "mov $8,%%ecx\n"               //cx = 8
+        "1:\n"
+
+          //calc intermediate sum of abs differences for 16 bytes
+          "movdqu (%1),%%xmm0\n"       //p1
+          "movdqu (%2),%%xmm1\n"       //p2
+          "movdqu %%xmm0,%%xmm2\n"     //xmm2 = xmm0
+          "psubusb %%xmm1,%%xmm0\n"    //xmm0 = xmm0 - xmm1 (by bytes)
+          "psubusb %%xmm2,%%xmm1\n"    //xmm1 = xmm1 - xmm2 (by bytes)
+          "paddusb %%xmm1,%%xmm0\n"    //xmm0 = xmm0 + xmm1 (absolute difference)
+          "movdqu %%xmm0,%%xmm2\n"     //xmm2 = xmm0
+          "pand %%xmm3,%%xmm2\n"       //xmm2 = xmm2 & xmm3 (apply mask)
+          "psrldq $1,%%xmm0\n"         //xmm0 = xmm0 >> 8 (shift by 1 byte)
+          "pand %%xmm3,%%xmm0\n"       //xmm0 = xmm0 & xmm3 (apply mask)
+          "paddusw %%xmm0,%%xmm4\n"    //xmm4 = xmm4 + xmm0 (by words)
+          "paddusw %%xmm2,%%xmm4\n"    //xmm4 = xmm4 + xmm2 (by words)
+
+          "add $16,%1\n"               //move to next 16 bytes (p1)
+          "add $16,%2\n"               //move to next 16 bytes (p2)
+
+          //check if we need flush sum (i.e. xmm4 is about to saturate)
+          "dec %%ecx\n"
+          "jnz 2f\n"                   //skip flushing if not
+          //flushing...
+          "movdqu %%xmm4,%%xmm0\n"
+          "psrldq $8,%%xmm0\n"
+          "paddusw %%xmm0,%%xmm4\n"
+          "movdqu %%xmm4,%%xmm0\n"
+          "psrldq $4,%%xmm0\n"
+          "paddusw %%xmm0,%%xmm4\n"
+          "movdqu %%xmm4,%%xmm0\n"
+          "psrldq $2,%%xmm0\n"
+          "paddusw %%xmm0,%%xmm4\n"
+          "movd %%xmm4,%%ecx\n"
+          "and $0xFFFF,%%ecx\n"
+          "addl %%ecx,%0\n"
+          "pxor %%xmm4,%%xmm4\n"       //clearing xmm4
+          "mov $8,%%ecx\n"             //cx = 8
+
+          //check if we need to go to another line
+          "2:\n"
+          "dec %%ebx\n"
+          "jnz 1b\n"                   //skip if not
+
+          //move p1 and p2 to the next line
+          "add %5,%1\n"
+          "add %5,%2\n"
+          "cmp %7,%0\n"                //if (sum > treshold)
+          "ja 3f\n"                    //    break;
+          "mov %4,%%ebx\n"
+
+          //check if all lines done
+          "dec %6\n"
+          "jnz 1b\n"                   //if not, continue looping
+        "3:\n"
+        :"=r"(sum)
+        :"r"(p1),"r"(p2),"r"(mask),"g"(field->size * bytesPerPixel / 16),"g"((unsigned char*)((width - field->size) * bytesPerPixel)),"g"(field->size), "g"(treshold), "0"(sum)
+        :"%xmm0","%xmm1","%xmm2","%xmm3","%xmm4","%rcx","%rbx"
+    );
+
+    return sum;
+}
+#endif // USE_SSE2_ASM
+
+//#endif // TESTING
 
 
 /*

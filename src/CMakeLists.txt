@@ -9,7 +9,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 #  0.4.10 did not work (not all opcode implemented)
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -Wno-pointer-sign ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3 -msse2 -Wno-pointer-sign ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
 include_directories (${ORC_INCLUDE_DIRS}) 

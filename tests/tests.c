@@ -15,6 +15,8 @@
 #endif
 #include "transformfloat.h"
 
+#include "boxblur.h"
+
 
 #include "testutils.c"
 
@@ -24,6 +26,7 @@ int test_motionDetect=1;
 int test_transform=1;
 int test_compareImg=1;
 int test_contrastImg=1;
+int test_boxblur=1;
 
 struct iterdata {
     FILE *f;
@@ -167,6 +170,19 @@ int runcompare( cmpSubImgFunc cmpsubfunc,
   return end-start;
 }
 
+// runs the boxblur routine and returns the time
+int runboxblur( unsigned char* frame1, unsigned char* dest,
+		DSFrameInfo fi, int numruns){
+  int start = timeOfDayinMS();
+  int i; 
+  boxblurYUV(frame1, dest, 0, &fi, 15);
+  for(i=1; i<numruns; i++){
+    boxblurYUV(dest, dest, 0, &fi, 15);
+  }
+  int end = timeOfDayinMS();   
+  return end-start;
+}
+
 
 
 int main(int argc, char** argv){
@@ -302,6 +318,16 @@ int main(int argc, char** argv){
 
   }
   
+  if(test_boxblur){
+    int time;
+    int numruns=2;
+    unsigned char* dest = (unsigned char*)ds_malloc(fi.framesize);
+    fprintf(stderr,"********** boxblur speedtest:\n");
+    time = runboxblur(frames[4], dest, fi, numruns);
+    fprintf(stderr,"***C    time for %i runs: %i ms\n", numruns, time);
+    storePGMImage("boxblured.pgm", dest, fi);
+    storePGMImage("orig4.pgm", frames[4], fi);
+  }
   if(test_compareImg){
     Field f;
     f.size=128;

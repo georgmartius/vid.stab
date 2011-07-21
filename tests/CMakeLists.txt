@@ -18,6 +18,6 @@ add_definitions( -Wall -O3 -msse2 -ffast-math -DTESTING ${ORC_DEFINITIONS})
 # Make sure the compiler can find include files from transcode 
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ${ORC_INCLUDE_DIRS}) 
 
-add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c)
+add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c ../src/boxblur.c)
 target_link_libraries(tests m ${ORC_LIBRARIES}) #link the math library
  

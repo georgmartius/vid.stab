@@ -30,7 +30,7 @@
 
 typedef enum {PF_RGB=1, PF_YUV = 2 /*,PF_YUY2=8, PF_YUV422=256*/} PixelFormat;
 
-/** initialization data structure for motion detection part of deshaking*/
+/** frame information for deshaking lib*/
 typedef struct dsframeinfo {
   size_t framesize;  // size of frame buffer in bytes (prev)
   int width, height, strive;

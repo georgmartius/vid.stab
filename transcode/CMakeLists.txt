@@ -12,7 +12,7 @@ set(TRANSCODE_ROOT ../../../transcode)
 #  0.4.10 did not work (not all opcode implemented)
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3 -Wno-pointer-sign -msse2 -ffast-math -DTRANSCODE ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
 include_directories (${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ ${ORC_INCLUDE_DIRS}) 

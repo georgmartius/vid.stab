@@ -27,8 +27,7 @@
 
 #include "frameinfo.h"
 #include "motiondetect.h"
-
-
+#include "transform.h"
 
 #endif  /* LIBDESHAKE_H_ */
 

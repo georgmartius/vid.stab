@@ -5,8 +5,8 @@
  *   georg dot martius at web dot de  
  *  Copyright (C) Alexey Osipov - Jule 2011
  *   simba at lerlan dot ru
- *   speed optimizations (threshold)
- *
+ *   speed optimizations (threshold, spiral, SSE, asm)
+
  *  This file is part of transcode, a video stream processing tool
  *
  *  transcode is free software; you can redistribute it and/or modify
@@ -1014,7 +1014,7 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
     int s2 = field->size / 2;
     unsigned int sum = 0;
 
-    static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
+    static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};    
     unsigned char row = 0;
 #ifndef USE_SSE2_CMP_HOR
     unsigned char summes[16];
@@ -1022,7 +1022,7 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
 #endif
     __m128i xmmsum, xmmmask;
     xmmsum = _mm_setzero_si128();
-    xmmmask = _mm_loadu_si128(mask);
+    xmmmask = _mm_loadu_si128((__m128i const*)mask);
 
     p1=I1 + ((field->x - s2) + (field->y - s2)*width)*bytesPerPixel;
     p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width)*bytesPerPixel;
@@ -1030,8 +1030,8 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
         for (k = 0; k < field->size * bytesPerPixel; k+=16){
             {
                 __m128i xmm0, xmm1, xmm2;
-                xmm0 = _mm_loadu_si128(p1);
-                xmm1 = _mm_loadu_si128(p2);
+                xmm0 = _mm_loadu_si128((__m128i const *)p1);
+                xmm1 = _mm_loadu_si128((__m128i const *)p2);
 
                 xmm2 = _mm_subs_epu8(xmm0, xmm1);
                 xmm0 = _mm_subs_epu8(xmm1, xmm0);

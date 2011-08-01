@@ -28,6 +28,7 @@
 #include "frameinfo.h"
 #include "motiondetect.h"
 #include "transform.h"
+#include "boxblur.h"
 
 #endif  /* LIBDESHAKE_H_ */
 

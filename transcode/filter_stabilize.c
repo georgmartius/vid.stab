@@ -187,7 +187,7 @@ static int stabilize_configure(TCModuleInstance *self,
     DSFrameInfo fi;
     fi.width=sd->vob->ex_v_width;
     fi.height=sd->vob->ex_v_height;
-    fi.strive=sd->vob->ex_v_height;
+    fi.strive=sd->vob->ex_v_width;
     fi.framesize=sd->vob->im_v_size;
     fi.pFormat = vob->im_v_codec;
     if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
@@ -245,14 +245,14 @@ static int stabilize_configure(TCModuleInstance *self,
         return TC_ERROR;
     }    
 
-    /* load unsharp filter to smooth the frames. This allows larger stepsize.*/
-    char unsharp_param[128];
-    int masksize = TC_MIN(13,md->stepSize*1.2); // only works up to 13.
-    sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1",
-            masksize, masksize);
-    if (!tc_filter_add("unsharp", unsharp_param)) {
-        tc_log_warn(MOD_NAME, "cannot load unsharp filter!");
-    }
+    /* /\* load unsharp filter to smooth the frames. This allows larger stepsize.*\/ */
+    /* char unsharp_param[128]; */
+    /* int masksize = TC_MIN(13,md->stepSize*1.5); // only works up to 13. */
+    /* sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1", */
+    /*         masksize, masksize); */
+    /* if (!tc_filter_add("unsharp", unsharp_param)) { */
+    /*     tc_log_warn(MOD_NAME, "cannot load unsharp filter!"); */
+    /* } */
 
     return TC_OK;
 }

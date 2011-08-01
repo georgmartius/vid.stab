@@ -26,9 +26,9 @@
 #include "deshakedefines.h"
 
 
-void boxblur_hori_C(const unsigned char* src, unsigned char* dest, 
+void boxblur_hori_C(unsigned char* dest, const unsigned char* src, 
 		    int width, int height, int strive, int size);
-void boxblur_vert_C(const unsigned char* src, unsigned char* dest, 
+void boxblur_vert_C(unsigned char* dest, const unsigned char* src, 
 		    int width, int height, int strive, int size);
 
 /*
@@ -43,44 +43,85 @@ void boxblur_vert_C(const unsigned char* src, unsigned char* dest,
   accumulator: acc = acc + new - old, pixel = acc/size
 */
 
-void boxblurYUV(const unsigned char* src, unsigned char* dest, 
+void boxblurYUV(unsigned char* dest, const unsigned char* src, 
 		unsigned char* buffer, const DSFrameInfo* fi, 
-		unsigned int size){
+		unsigned int size, BoxBlurColorMode colormode){
   int localbuffer=0;
   int size2;
   int offset = fi->width * fi->height;
+  if(size<2){ 
+    if(dest!=buffer) 
+      memcpy(dest,src,fi->framesize);
+    return;
+  }
   if(buffer==0){
     buffer=(unsigned char*) ds_malloc(fi->framesize);
     localbuffer=1;
   }
-  // odd and larger than 2 and maximal half of smaller image dimension
+  // odd and larger than 2 and maximally half of smaller image dimension
   size  = DS_CLAMP((size/2)*2+1,3,DS_MIN(fi->height/2,fi->width/2)); 
-  size2 = size/2+1;                        // odd and larger than 0
+  //printf("%i\n",size);
   
   // luminance  
-  boxblur_hori_C(src, buffer, fi->width, fi->height, fi->strive, size);  
-  // color
-  if(size2>1){
-    boxblur_hori_C(src+offset, buffer+offset, 
-		   fi->width/2, fi->height/2, fi->strive/2, size2); 
-    boxblur_hori_C(src+5*offset/4, buffer+5*offset/4, 
-		   fi->width/2, fi->height/2, fi->strive/2, size2); 
-  }
+  boxblur_hori_C(buffer,  src, fi->width, fi->height, fi->strive, size);  
+  boxblur_vert_C(dest, buffer, fi->width, fi->height, fi->strive, size);
 
-  boxblur_vert_C(buffer, dest, fi->width, fi->height, fi->strive, size);
-  // color
-  if(size2>1){
-    boxblur_vert_C(buffer+offset, dest+offset, 
-		   fi->width/2, fi->height/2, fi->strive/2, size2); 
-    boxblur_vert_C(buffer+5*offset/4, dest+5*offset/4, 
-		   fi->width/2, fi->height/2, fi->strive/2, size2); 
+  size2 = size/2+1;                        // odd and larger than 0
+  switch (colormode){
+  case BoxBlurColor:
+    // color
+    if(size2>1){
+      boxblur_hori_C(buffer+offset, src+offset, 
+		     fi->width/2, fi->height/2, fi->strive/2, size2); 
+      boxblur_hori_C(buffer+5*offset/4, src+5*offset/4, 
+		     fi->width/2, fi->height/2, fi->strive/2, size2); 
+      
+      boxblur_vert_C(dest+offset, buffer+offset, 
+		     fi->width/2, fi->height/2, fi->strive/2, size2); 
+      boxblur_vert_C(dest+5*offset/4, buffer+5*offset/4, 
+		     fi->width/2, fi->height/2, fi->strive/2, size2); 
+    }
+    break;
+  case BoxBlurKeepColor:
+    // copy both color channels
+    memcpy(dest+offset, src+offset, 2*(fi->strive / 2) * (fi->height / 2));
+  case BoxBlurNoColor: // do nothing
+  default:
+    break;
   }
 
   if(localbuffer)
     ds_free(buffer);
 }
 
-void boxblur_hori_C(const unsigned char* src, unsigned char* dest, 
+/* /\* */
+/*   The algorithm: */
+/*   see boxblurYUV but here we for RGB */
+  
+/*   we add the 3 bytes of one pixel as if they where one number */
+/* *\/ */
+/* void boxblurRGB(const unsigned char* src, unsigned char* dest,  */
+/* 		unsigned char* buffer, const DSFrameInfo* fi,  */
+/* 		unsigned int size){ */
+/*   int localbuffer=0; */
+/*   if(buffer==0){ */
+/*     buffer=(unsigned char*) ds_malloc(fi->framesize); */
+/*     localbuffer=1; */
+/*   } */
+/*   // odd and larger than 2 and maximal half of smaller image dimension  */
+/*   //  (and not larger than 256, because otherwise we can get an overflow) */
+/*   size  = DS_CLAMP((size/2)*2+1,3,DS_MIN(256,DS_MIN(fi->height/2,fi->width/2)));  */
+  
+/*   // we need a different version of these functions for RGB */
+/*   boxblur_hori_C(src, buffer, fi->width, fi->height, fi->strive, size);   */
+/*   boxblur_vert_C(buffer, dest, fi->width, fi->height, fi->strive, size); */
+  
+/*   if(localbuffer) */
+/*     ds_free(buffer); */
+/* } */
+
+
+void boxblur_hori_C(unsigned char* dest, const unsigned char* src, 
 		    int width, int height, int strive, int size){
   
   int i,j,k;
@@ -112,7 +153,7 @@ void boxblur_hori_C(const unsigned char* src, unsigned char* dest,
 // 0 1 2 3 4
 // 1 1 
 
-void boxblur_vert_C(const unsigned char* src, unsigned char* dest, 
+void boxblur_vert_C(unsigned char* dest, const unsigned char* src, 
 		    int width, int height, int strive, int size){
   
   int i,j,k;

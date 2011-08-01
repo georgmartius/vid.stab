@@ -175,9 +175,9 @@ int runboxblur( unsigned char* frame1, unsigned char* dest,
 		DSFrameInfo fi, int numruns){
   int start = timeOfDayinMS();
   int i; 
-  boxblurYUV(frame1, dest, 0, &fi, 15);
+  boxblurYUV(dest, frame1, 0, &fi, 15, BoxBlurColor);
   for(i=1; i<numruns; i++){
-    boxblurYUV(dest, dest, 0, &fi, 15);
+    boxblurYUV(dest, dest, 0, &fi, 15, BoxBlurColor);
   }
   int end = timeOfDayinMS();   
   return end-start;

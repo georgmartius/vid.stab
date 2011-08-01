@@ -24,7 +24,7 @@ add_library (filter_transform SHARED filter_transform.c
   ../src/transformfixedpoint.c ../src/dslist.c) #  orc/transformorc.c) 
 add_library (filter_stabilize SHARED filter_stabilize.c 
   ../src/transformtype.c ../src/libdeshake.c ../src/motiondetect.c 
-  ../src/dslist.c ../src/orc/motiondetectorc.c) 
+   ../src/boxblur.c ../src/dslist.c ../src/orc/motiondetectorc.c) 
 
 target_link_libraries(filter_stabilize m ${ORC_LIBRARIES}) #link the math library and orc
 target_link_libraries(filter_transform m ) #link the math library

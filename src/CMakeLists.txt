@@ -17,7 +17,7 @@ include_directories (${ORC_INCLUDE_DIRS})
 # Create the deshake library 
 add_library (deshake STATIC
     transformtype.c libdeshake.c transform.c transformfixedpoint.c dslist.c transformtype.c
-    libdeshake.c motiondetect.c dslist.c orc/motiondetectorc.c) 
+    libdeshake.c motiondetect.c boxblur.c dslist.c orc/motiondetectorc.c) 
 #  orc/transformorc.c
 
 target_link_libraries(deshake m ${ORC_LIBRARIES}) #link the math library and orc

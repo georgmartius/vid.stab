@@ -33,6 +33,7 @@
 
 #include "orc/motiondetectorc.h"
 
+#include "boxblur.h"
 #include "deshakedefines.h"
 
 #ifdef USE_SSE2
@@ -61,20 +62,21 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
     ds_log_error(md->modName, "malloc failed");
     return DS_ERROR;
   }
-  md->currcopy = 0;
+  md->curr     = 0;
+  md->currorig = 0;
+  md->currtmp  = 0;
   md->hasSeenOneFrame = 0;
   md->transs = 0;
 
   // Options
-  md->stepSize = 6;
-  md->allowMax = 0;
-  md->algo = 1;
-  //    md->field_num   = 64;
-  md->accuracy = 4;
-  md->shakiness = 4;
+  md->stepSize  = 6;
+  md->allowMax  = 0;
+  md->algo      = 1;
+  md->accuracy  = 5;
+  md->shakiness = 5;
   md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
   md->show = 0;
-  md->contrastThreshold = 0.03;
+  md->contrastThreshold = 0.025;
   md->maxAngleVariation = 1;
   md->initialized = 1;
   return DS_OK;
@@ -87,15 +89,22 @@ int configureMotionDetect(MotionDetect* md) {
   md->shakiness = DS_MIN(10,DS_MAX(1,md->shakiness));
   md->accuracy = DS_MIN(15,DS_MAX(1,md->accuracy));
   if (md->accuracy < md->shakiness / 2) {
-    ds_log_info(md->modName, "accuracy should not be lower than shakiness/2");
+    ds_log_info(md->modName, "Accuracy should not be lower than shakiness/2 -- fixed");
     md->accuracy = md->shakiness / 2;
   }
+  if (md->accuracy > 9 && md->stepSize > 6) {
+    ds_log_info(md->modName, "For high accuracy use lower stepsize  -- set to 6 now");
+    md->stepSize = 6; // maybe 4
+  }
 
-  // shift and size: shakiness 1: height/40; 10: height/4
+  // shift: shakiness 1: height/40; 10: height/4 
+  int minDimension = DS_MIN(md->fi.width, md->fi.height);
   md->maxShift
-    = DS_MAX(4,(DS_MIN(md->fi.width, md->fi.height)*md->shakiness)/40);
+    = DS_MAX(4,(minDimension*md->shakiness)/40);
+  // size: shakiness 1: height/40; 10: height/6 (clipped) 
   md->fieldSize
-    = DS_MAX(4,(DS_MIN(md->fi.width, md->fi.height)*md->shakiness)/40);
+    = DS_MAX(4,DS_MIN(minDimension/6, (minDimension*md->shakiness)/40));
+
 #if defined(USE_SSE2) || defined(USE_SSE2_ASM)
   md->fieldSize = (md->fieldSize / 16 + 1) * 16;
 #endif
@@ -111,11 +120,12 @@ int configureMotionDetect(MotionDetect* md) {
     ds_log_info(md->modName, "Number of used measurement fields: %i out of %i",
 		md->maxFields, md->fieldNum);
   }
-  if (md->show)
-    md->currcopy = ds_zalloc(md->fi.framesize);
-  else
-    md->currcopy=NULL;
-
+  //  if (md->show)
+  md->curr = ds_zalloc(md->fi.framesize);
+  //  else
+  //    md->currcopy=NULL;
+  md->currtmp = ds_zalloc(md->fi.framesize);
+  
   md->initialized = 2;
   return DS_OK;
 }
@@ -126,20 +136,39 @@ void cleanupMotionDetection(MotionDetect* md) {
     ds_free(md->prev);
     md->prev = NULL;
   }
-  if (md->currcopy) {
-    ds_free(md->currcopy);
-    md->currcopy = NULL;
+  if (md->curr) {
+    ds_free(md->curr);
+    md->curr = NULL;
+  }
+  if (md->currtmp) {
+    ds_free(md->currtmp);
+    md->currtmp = NULL;
   }
   md->initialized = 0;
 }
 
 int motionDetection(MotionDetect* md, unsigned char *frame) {
   assert(md->initialized==2);
-  if (md->show) // save the buffer to restore at the end for prev
-    memcpy(md->currcopy, frame, md->fi.framesize);
+
+  md->currorig = frame;
+  // smoothen image to do better motion detection 
+  //  (larger stepsize or eventually gradient descent (need higher resolution)
+  if (md->fi.pFormat == PF_RGB) { 
+    // we could calculate a grayscale version and use the YUV stuff afterwards
+    // so far only YUV implemented
+    memcpy(md->curr, frame, md->fi.framesize);
+  } else {
+    // box-kernel smoothing (plain average of pixels), which is fine for us
+    boxblurYUV(md->curr, frame, md->currtmp, &md->fi, md->stepSize*1/*1.4*/, 
+    	       BoxBlurNoColor);
+    // two times yields tent-kernel smoothing, which may be better, but I don't
+    //  think we need it
+    //boxblurYUV(md->curr, md->curr, md->currtmp, &md->fi, md->stepSize*1, 
+    // BoxBlurNoColor);
+  }
 
   if (md->hasSeenOneFrame) {
-    md->curr = frame;
+    //    md->curr = frame;
     if (md->fi.pFormat == PF_RGB) {
       if (md->algo == 0)
 	addTrans(md, calcShiftRGBSimple(md));
@@ -162,11 +191,8 @@ int motionDetection(MotionDetect* md, unsigned char *frame) {
     addTrans(md, null_transform());
   }
 
-  if (!md->show) { // copy current frame to prev for next frame comparison
-    memcpy(md->prev, frame, md->fi.framesize);
-  } else { // use the copy because we changed the original frame
-    memcpy(md->prev, md->currcopy, md->fi.framesize);
-  }
+  // copy current frame (smoothed) to prev for next frame comparison
+  memcpy(md->prev, md->curr, md->fi.framesize);
   md->t++;
   return DS_OK;
 }
@@ -223,7 +249,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
   int effectWidth = width - abs(d_x);
   int effectHeight = height - abs(d_y);
 
-  /*   DEBUGGING code to export single frames */
+  /*//   DEBUGGING code to export single frames */
   /*   char buffer[100]; */
   /*   sprintf(buffer, "pic_%02ix%02i_1.ppm", d_x, d_y); */
   /*   FILE *pic1 = fopen(buffer, "w"); */
@@ -248,7 +274,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
       p2 -= d_x * bytesPerPixel;
     }
     for (j = 0; j < effectWidth * bytesPerPixel; j++) {
-      /* debugging code continued */
+      /*// debugging code continued */
       /* fwrite(p1,1,1,pic1);fwrite(p1,1,1,pic1);fwrite(p1,1,1,pic1);
 	 fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);
       */
@@ -260,7 +286,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
   /*  fclose(pic1);
       fclose(pic2);
   */
-  return sum; // / ((double) effectWidth * effectHeight * bytesPerPixel);
+  return sum; 
 }
 
 /**
@@ -478,6 +504,7 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   uint8_t *Y_c = md->curr, *Y_p = md->prev;
   // we only use the luminance part of the image
   int i, j;
+  int stepSize = md->stepSize;
 
 #ifdef STABVERBOSE
   // printf("%i %i %f\n", md->t, fieldnum, contr);
@@ -507,52 +534,49 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
       }
 
       //spiral indexing...
-      if (dir == 0) {
-         i += md->stepSize;
-         step++;
+      step++;
+      switch (dir) {
+      case 0:
+         i += stepSize;
          if (step == limit) {
              dir = 1;
              step = 0;
          }
-      }
-      else if (dir == 1) {
-         j += md->stepSize;
-         step++;
+	 break;	 
+      case 1:
+         j += stepSize;
          if (step == limit) {
              dir = 2;
              step = 0;
              limit++;
          }
-      }
-      else if (dir == 2) {
-         i -= md->stepSize;
-         step++;
+	 break;
+      case 2:
+         i -= stepSize;
          if (step == limit) {
-             dir = 3;
-             step = 0;
+	   dir = 3;
+	   step = 0;
          }
-      }
-      else if (dir == 3) {
-         j -= md->stepSize;
-         step++;
+	 	 break;
+      case 3:
+         j -= stepSize;
          if (step == limit) {
              dir = 0;
              step = 0;
              limit++;
          }
+	 break;
       }
   }
-
 #else
-
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start    
   */
   unsigned int minerror = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
 					1, 0, 0, UINT_MAX);
   // check all positions...
-  for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
-    for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
+  for (i = -md->maxShift; i <= md->maxShift; i += stepSize) {
+    for (j = -md->maxShift; j <= md->maxShift; j += stepSize) {
       if( i==0 && j==0 ) 
 	continue; //no need to check this since already done      
       unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
@@ -569,13 +593,14 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   }
 
 #endif
-
-  if (md->stepSize > 1) { // make fine grain check around the best match
+  
+  while(stepSize > 1) {// make fine grain check around the best match
     int txc = tx; // save the shifts
     int tyc = ty;
-    int r = md->stepSize - 1;
-    for (i = txc - r; i <= txc + r; i += 1) {
-      for (j = tyc - r; j <= tyc + r; j += 1) {
+    int newStepSize = stepSize/2; 
+    int r = stepSize - newStepSize;
+    for (i = txc - r; i <= txc + r; i += newStepSize) {
+      for (j = tyc - r; j <= tyc + r; j += newStepSize) {
 	if (i == txc && j == tyc)
 	  continue; //no need to check this since already done
 	unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
@@ -590,6 +615,7 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
 	}
       }
     }
+    stepSize /= 2;
   }
 #ifdef STABVERBOSE
   fclose(f);
@@ -874,7 +900,7 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
 void drawFieldScanArea(MotionDetect* md, const Field* field, const Transform* t) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->curr, md->fi.width, md->fi.height, 1, field->x, field->y,
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y,
 	  field->size + 2 * md->maxShift, field->size + 2 * md->maxShift, 80);
 }
 
@@ -882,7 +908,7 @@ void drawFieldScanArea(MotionDetect* md, const Field* field, const Transform* t)
 void drawField(MotionDetect* md, const Field* field, const Transform* t) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->curr, md->fi.width, md->fi.height, 1, field->x, field->y,
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y,
 	  field->size, field->size, t->extra == -1 ? 100 : 40);
 }
 
@@ -890,9 +916,9 @@ void drawField(MotionDetect* md, const Field* field, const Transform* t) {
 void drawFieldTrans(MotionDetect* md, const Field* field, const Transform* t) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->curr, md->fi.width, md->fi.height, 1, field->x, field->y, 5, 5,
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y, 5, 5,
 	  128); // draw center
-  drawBox(md->curr, md->fi.width, md->fi.height, 1, field->x + t->x, field->y
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x + t->x, field->y
 	  + t->y, 8, 8, 250); // draw translation
 }
 

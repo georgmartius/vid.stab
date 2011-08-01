@@ -25,14 +25,21 @@
 
 #include "frameinfo.h"
 
+/** BoxBlurColor     - blur also color channels, 
+    BoxBlurKeepColor - copy original color channels 
+    BoxBlurNoColor   - do not touch color channels in dest 
+*/
+typedef enum _BoxBlurColorMode { BoxBlurColor, BoxBlurKeepColor, BoxBlurNoColor} BoxBlurColorMode ;
+
 /** performs a boxblur operation on src and stores results in dest. 
  * It uses an accumulator method and separate horizontal and vertical runs
  * @param buffer may be given for intermediate results. 
  *            If 0 then it is locally malloced
  * @param size of bluring kernel, (min 3 and it is made odd)
+ * @param onlyLumincance if true color planes stay untouched
  */
-void boxblurYUV(const unsigned char* src, unsigned char* dest, 
+void boxblurYUV(unsigned char* dest, const unsigned char* src, 
 		unsigned char* buffer, const DSFrameInfo* fi, 
-		unsigned int size);
+		unsigned int size, BoxBlurColorMode colormode);
 
 #endif 

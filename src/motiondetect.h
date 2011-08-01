@@ -59,10 +59,11 @@ typedef struct _field {
 typedef struct motiondetect {
   DSFrameInfo fi;
 
-  unsigned char* curr; // current frame buffer (only pointer)
-  unsigned char* currcopy; // copy of the current frame needed for drawing
-  unsigned char* prev; // frame buffer for last frame (copied)
-  short hasSeenOneFrame; // true if we have a valid previous frame
+  unsigned char* curr;     // blurres version of current frame buffer
+  unsigned char* currorig; // current frame buffer (original) (only pointer)
+  unsigned char* currtmp;  //  temporary buffer for bluring
+  unsigned char* prev;     // frame buffer for last frame (copied)
+  short hasSeenOneFrame;   // true if we have a valid previous frame
 
   const char* modName;
 

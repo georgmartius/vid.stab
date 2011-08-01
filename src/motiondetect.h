@@ -40,10 +40,10 @@
 #define USE_SSE2
 
 //enable SSE2 inline asm code
-// #define USE_SSE2_ASM
+#define USE_SSE2_ASM
 
 //select compareSubImg func
-#define compareSubImg compareSubImg_thr_sse2
+#define compareSubImg compareSubImg_thr_sse2_asm
 
 #define USE_SPIRAL_FIELD_CALC
 

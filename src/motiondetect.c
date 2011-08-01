@@ -1150,14 +1150,13 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
     static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};    
     p1=I1 + ((field->x - s2) + (field->y - s2)*width)*bytesPerPixel;
     p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width)*bytesPerPixel;
-
     asm (
         "xor %0,%0\n"
         "pxor %%xmm4,%%xmm4\n"         //8 x 16bit partial sums
         "movdqu (%3),%%xmm3\n"         //mask
 
         //main loop
-        "mov %4,%%ebx\n"               //ebx = field->size * bytesPerPixel / 16
+        "movl %4,%%edx\n"              //edx = field->size * bytesPerPixel / 16
         "mov $8,%%ecx\n"               //cx = 8
         "1:\n"
 
@@ -1199,7 +1198,7 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
 
           //check if we need to go to another line
           "2:\n"
-          "dec %%ebx\n"
+          "dec %%edx\n"
           "jnz 1b\n"                   //skip if not
 
           //move p1 and p2 to the next line
@@ -1207,15 +1206,15 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
           "add %5,%2\n"
           "cmp %7,%0\n"                //if (sum > treshold)
           "ja 3f\n"                    //    break;
-          "mov %4,%%ebx\n"
+          "movl %4,%%edx\n"
 
           //check if all lines done
-          "dec %6\n"
+          "decl %6\n"
           "jnz 1b\n"                   //if not, continue looping
         "3:\n"
         :"=r"(sum)
         :"r"(p1),"r"(p2),"r"(mask),"g"(field->size * bytesPerPixel / 16),"g"((unsigned char*)((width - field->size) * bytesPerPixel)),"g"(field->size), "g"(treshold), "0"(sum)
-        :"%xmm0","%xmm1","%xmm2","%xmm3","%xmm4","%rcx","%rbx"
+        :"%xmm0","%xmm1","%xmm2","%xmm3","%xmm4","%ecx","%edx"
     );
 
     return sum;

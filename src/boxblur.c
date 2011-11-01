@@ -128,7 +128,8 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
   unsigned int acc;
   const unsigned char *start, *end; // start and end of kernel
   unsigned char *current;     // current destination pixel
-  int size2 = size/2; // size one side of the kernel without center
+  int size2 = size/2; // size of one side of the kernel without center
+  // #pragma omp parallel for private(acc),schedule(guided,2) (no speedup)
   for(j=0; j< height; j++){    
     //  for(j=100; j< 101; j++){    
     start = end = src + j*strive;
@@ -150,9 +151,6 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
   }
 }
 
-// 0 1 2 3 4
-// 1 1 
-
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src, 
 		    int width, int height, int strive, int size){
   
@@ -160,7 +158,7 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
   int acc;
   const unsigned char *start, *end; // start and end of kernel
   unsigned char *current;     // current destination pixel
-  int size2 = size/2; // size one side of the kernel without center
+  int size2 = size/2; // size of one side of the kernel without center
   for(i=0; i< width; i++){    
     start = end = src + i;
     current = dest + i;

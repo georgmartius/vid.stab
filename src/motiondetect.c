@@ -1,7 +1,7 @@
 /*
  * motiondetect.c
  *
- *  Copyright (C) Georg Martius - February 2011
+ *  Copyright (C) Georg Martius - February 1007-2011
  *   georg dot martius at web dot de  
  *  Copyright (C) Alexey Osipov - Jule 2011
  *   simba at lerlan dot ru
@@ -42,6 +42,8 @@
 #define USE_SSE2_CMP_HOR
 #define SSE2_CMP_SUM_ROWS 8
 #endif
+
+//#include <omp.h>
 
 /* internal data structures */
 
@@ -131,7 +133,14 @@ int configureMotionDetect(MotionDetect* md) {
 }
 
 void cleanupMotionDetection(MotionDetect* md) {
-  ds_list_del(md->transs, 1);
+  if(md->fields) {
+    ds_free(md->fields);
+    md->fields=0;
+  }
+  if(md->transs) {
+    ds_list_del(md->transs, 1);
+    md->transs=0;
+  }
   if (md->prev) {
     ds_free(md->prev);
     md->prev = NULL;
@@ -365,7 +374,7 @@ double contrastSubImg(unsigned char* const I, const Field* field,
 
   p = I + ((field->x - s2) + (field->y - s2) * width);
   
-  int sum=0;
+  unsigned int sum=0;
   image_sum_optimized(&sum, p, width, field->size, field->size);
   unsigned char mean = sum / numpixel;
   int var=0;
@@ -392,7 +401,6 @@ double contrastSubImg_Michelson(unsigned char* const I, const Field* field, int 
   unsigned char maxi = 0;
 
   p = I + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
-  // TODO: use some mmx or sse stuff here
   for (j = 0; j < field->size; j++) {
     for (k = 0; k < field->size; k++) {
       mini = (mini < *p) ? mini : *p;
@@ -718,12 +726,13 @@ int cmp_contrast_idx(const void *ci1, const void* ci2) {
    first calc contrasts then select from each part of the
    frame a some fields
 */
-DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
+DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
   int i, j;
-  DSList* goodflds = ds_list_new(0);
+  DSVector goodflds;
   contrast_idx *ci =
     (contrast_idx*) ds_malloc(sizeof(contrast_idx) * md->fieldNum);
-
+  ds_vector_init(&goodflds, md->fieldNum);
+  
   // we split all fields into row+1 segments and take from each segment
   // the best fields
   int numsegms = (md->fieldRows + 1);
@@ -733,13 +742,14 @@ DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
     (contrast_idx*) ds_malloc(sizeof(contrast_idx) * md->fieldNum);
   int remaining = 0;
   // calculate contrast for each field
+  // #pragma omp parallel for shared(ci,md) no speedup because to short
   for (i = 0; i < md->fieldNum; i++) {
     ci[i].contrast = contrastfunc(md, &md->fields[i]);
     ci[i].index = i;
     if (ci[i].contrast < md->contrastThreshold)
       ci[i].contrast = 0;
     // else printf("%i %lf\n", ci[i].index, ci[i].contrast);
-  }
+  }  
 
   memcpy(ci_segms, ci, sizeof(contrast_idx) * md->fieldNum);
   // get best fields from each segment
@@ -759,7 +769,7 @@ DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
       // printf("%i %lf\n", ci_segms[startindex+j].index,
       //                    ci_segms[startindex+j].contrast);
       if (ci_segms[startindex + j].contrast > 0) {
-	ds_list_append_dup(goodflds, &ci[ci_segms[startindex+j].index],
+	ds_vector_append_dup(&goodflds, &ci[ci_segms[startindex+j].index],
 			   sizeof(contrast_idx));
 	// don't consider them in the later selection process
 	ci_segms[startindex + j].contrast = 0;
@@ -768,13 +778,13 @@ DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
   }
   // check whether enough fields are selected
   // printf("Phase2: %i\n", ds_list_size(goodflds));
-  remaining = md->maxFields - ds_list_size(goodflds);
+  remaining = md->maxFields - ds_vector_size(&goodflds);
   if (remaining > 0) {
     // take the remaining from the leftovers
     qsort(ci_segms, md->fieldNum, sizeof(contrast_idx), cmp_contrast_idx);
     for (j = 0; j < remaining; j++) {
       if (ci_segms[j].contrast > 0) {
-	ds_list_append_dup(goodflds, &ci_segms[j], sizeof(contrast_idx));
+	ds_vector_append_dup(&goodflds, &ci_segms[j], sizeof(contrast_idx));
       }
     }
   }
@@ -811,12 +821,12 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
   fprintf(file, "# plot \"%s\" w l, \"\" every 2:1:0\n", buffer);
 #endif
 
-  DSList* goodflds = selectfields(md, contrastfunc);
-
+  DSVector goodflds = selectfields(md, contrastfunc);  
   // use all "good" fields and calculate optimal match to previous frame
-  contrast_idx* f;
-  while ((f = (contrast_idx*) ds_list_pop(goodflds, 0)) != 0) {
-    int i = f->index;
+  // #pragma omp parallel for shared(goodflds, md, ts, fs) // does not bring speedup
+  for(index=0; index < ds_vector_size(&goodflds); index++){
+    int i = ((contrast_idx*)ds_vector_get(&goodflds,index))->index;
+       
     t = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransYUV
 #ifdef STABVERBOSE
     fprintf(file, "%i %i\n%f %f %i\n \n\n", md->fields[i].x, md->fields[i].y,
@@ -825,13 +835,12 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
     if (t.extra != -1) { // ignore if extra == -1 (unused at the moment)
       ts[index] = t;
       fs[index] = md->fields + i;
-      index++;
     }
   }
-  ds_list_fini(goodflds);
 
   t = null_transform();
-  num_trans = index; // amount of transforms we actually have
+  num_trans = ds_vector_size(&goodflds); // amount of transforms we actually have
+  ds_vector_del(&goodflds);
   if (num_trans < 1) {
     ds_log_warn(md->modName, "too low contrast! No field remains.\n \
                     (no translations are detected in frame %i)", md->t);
@@ -959,7 +968,7 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
-  int sum = 0;
+  unsigned int sum = 0;
 
   p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
   p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
@@ -1005,7 +1014,7 @@ double contrastSubImg_C(unsigned char* const I, const Field* field, int width, i
   unsigned char* p = NULL;
   unsigned char* pstart = NULL;
   int s2 = field->size / 2;
-  int sum=0;				       
+  unsigned int sum=0;				       
   int mean;
   int var=0;
   int numpixel = field->size*field->size;  
@@ -1220,7 +1229,6 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
     return sum;
 }
 #endif // USE_SSE2_ASM
-
 //#endif // TESTING
 
 

@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <limits.h>
 
+#include <omp.h>
+
+
 #include "transform.h"
 #include "dslist.h"
 #include "libdeshake.h"
@@ -183,6 +186,43 @@ int runboxblur( unsigned char* frame1, unsigned char* dest,
   return end-start;
 }
 
+int openmptest(){
+  int start = timeOfDayinMS();
+  long int sum;
+  int i,j;
+
+#pragma omp parallel for shared(sum)
+  for (i=0; i<60;i++){
+    //    printf("num theads: %i\n",omp_get_num_threads());
+    long int k=0;
+    for (j=0; j<4000000;j++){
+      k+=sqrt(j);
+    }    
+#pragma omp atomic
+    sum+=k;
+  }
+  int end = timeOfDayinMS();   
+  fprintf(stderr, "Sum: %li\n",sum);
+  return end-start;
+}
+int openmp(){
+    fprintf(stderr, "Processors: %i, Max # theads: %i\n", omp_get_num_procs(), omp_get_max_threads());
+
+    int time, timeref;
+    omp_set_dynamic( 0 );
+    omp_set_num_threads( 1 );
+    fprintf(stderr,"********** omp speedtest:\n");
+    time = openmptest();
+    fprintf(stderr,"***C    time: %i ms\n",  time);
+    timeref=time;
+    omp_set_dynamic( 1 );
+    //    omp_set_dynamic( 0 );
+    omp_set_num_threads( 2);
+    time = openmptest();
+    fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
+	    (double)timeref/time);
+    omp_set_dynamic( 1 );
+}
 
 
 int main(int argc, char** argv){
@@ -198,6 +238,8 @@ int main(int argc, char** argv){
   fi_color.width=640;
   fi_color.height=360;
   fi_color.strive=640 ;
+
+  // openmp();
 
   assert(initMotionDetect(&md, &fi, "test") == DS_OK);
 
@@ -220,6 +262,7 @@ int main(int argc, char** argv){
   }
   
   md.shakiness=6;
+  md.accuracy=12;
   assert(configureMotionDetect(&md)== DS_OK);
 
   fflush(stdout);
@@ -229,20 +272,30 @@ int main(int argc, char** argv){
   }
   
   if(test_motionDetect){
+    cleanupMotionDetection(&md);
+    assert(initMotionDetect(&md, &fi, "test") == DS_OK);
+    assert(configureMotionDetect(&md)== DS_OK);    
     fprintf(stderr,"MotionDetect:");
+    int numruns =5;
+    //int t;
+    //        for(t = 1; t <= 4; t++){
     int start = timeOfDayinMS();
-    int numruns =3;
+    //      omp_set_dynamic( 0 );
+    //      omp_set_num_threads( t );
     for(i=0; i<numruns; i++){
       assert(motionDetection(&md, frames[i])== DS_OK);
     }
     int end = timeOfDayinMS();
-    
-
+      
+    //if(t==1){
     struct iterdata ID;
     ID.counter = 0;
     ID.f       = stdout;
     ds_list_foreach(md.transs, dump_trans, &ID);
-    fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n\n", numruns, end-start );
+    //  }
+    //    fprintf(stderr,"\n*** elapsed time for %i runs: (%i theads) %i ms ****\n", numruns, t, end-start );
+    fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n", numruns, end-start );
+    // }
   }
 
   assert(test_transform_implementation()<1);  
@@ -319,14 +372,23 @@ int main(int argc, char** argv){
   }
   
   if(test_boxblur){
-    int time;
+    int time, timeref;
     int numruns=2;
     unsigned char* dest = (unsigned char*)ds_malloc(fi.framesize);
+    //    omp_set_dynamic( 0 );
+    //    omp_set_num_threads( 1 );
     fprintf(stderr,"********** boxblur speedtest:\n");
     time = runboxblur(frames[4], dest, fi, numruns);
     fprintf(stderr,"***C    time for %i runs: %i ms\n", numruns, time);
     storePGMImage("boxblured.pgm", dest, fi);
     storePGMImage("orig4.pgm", frames[4], fi);
+    timeref=time;
+    /* omp_set_dynamic( 0 ); */
+    /* omp_set_num_threads( 2); */
+    /* time = runboxblur(frames[4], dest, fi, numruns); */
+    /* fprintf(stderr,"***C (2)time for %i runs: %i ms, Speedup %f\n", numruns, time, */
+    /* 	    (double)timeref/time); */
+    /* omp_set_dynamic( 1 ); */
   }
   if(test_compareImg){
     Field f;
@@ -406,8 +468,6 @@ int main(int argc, char** argv){
       }
       assert(contrastC[i]==contrastOrc[i]);
     }
-
-
 
   }
 

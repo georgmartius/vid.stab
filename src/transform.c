@@ -32,6 +32,8 @@
 #include <math.h>
 #include <libgen.h>
 
+// TODO: apply crop-fix patch
+
 const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)", 
                                 "Bi-Cubic (3)"};
 

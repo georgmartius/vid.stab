@@ -29,7 +29,7 @@
  */
 
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION "v0.81 (2011-07-18)"
+#define MOD_VERSION "v0.82 (2011-08-01)"
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -245,6 +245,7 @@ static int stabilize_configure(TCModuleInstance *self,
         return TC_ERROR;
     }    
 
+    /***** This is now done by boxblur ****/
     /* /\* load unsharp filter to smooth the frames. This allows larger stepsize.*\/ */
     /* char unsharp_param[128]; */
     /* int masksize = TC_MIN(13,md->stepSize*1.5); // only works up to 13. */

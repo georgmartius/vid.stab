@@ -1,3 +1,8 @@
+0.82    boxblur added and unsharp filter removed for motiondetection
+
+0.81    speed optimizations using SSE by Alexey Osipov
+	search tree cut, spiral search and sse: together speedup factor 10
+	
 0.80    complete restructuring into own library
 	Fixed point arithmetic used for transform code
 	motiondetection optimized with ORC: speedup by factor 4

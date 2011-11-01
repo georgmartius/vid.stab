@@ -12,12 +12,13 @@ set(TRANSCODE_ROOT ../../../transcode)
 
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -msse2 -ffast-math -DTESTING ${ORC_DEFINITIONS})
-#add_definitions(  -Wall -O0 -g  -DTESTING ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING ${ORC_DEFINITIONS})
+#add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING ${ORC_DEFINITIONS} )
+#add_definitions(  -Wall -O0 -msse2 -ffast-math -Wno-pointer-sign -g  -DTESTING ${ORC_DEFINITIONS} -fopenmp)
 
 # Make sure the compiler can find include files from transcode 
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ${ORC_INCLUDE_DIRS}) 
 
-add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c ../src/boxblur.c)
-target_link_libraries(tests m ${ORC_LIBRARIES}) #link the math library
+add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/dsvector.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c ../src/boxblur.c)
+target_link_libraries(tests m ${ORC_LIBRARIES} gomp)
  

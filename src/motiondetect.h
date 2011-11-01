@@ -34,6 +34,7 @@
 #include "transformtype.h"
 #include "deshakedefines.h"
 #include "dslist.h"
+#include "dsvector.h"
 #include "frameinfo.h"
 
 //enable SSE2 code
@@ -141,7 +142,7 @@ double contrastSubImg(unsigned char* const I, const Field* field,
                       int width, int height);
 
 int cmp_contrast_idx(const void *ci1, const void* ci2);
-DSList* selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
+DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
 
 Transform calcShiftRGBSimple(MotionDetect* md);
 Transform calcShiftYUVSimple(MotionDetect* md);

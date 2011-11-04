@@ -46,7 +46,9 @@ typedef struct {
     DSFrameInfo fiDest;
 
     unsigned char* src;  // copy of the current frame buffer
-    unsigned char* dest; // pointer to the current frame buffer (to overwrite)
+    unsigned char* dest; // pointer to destination buffer or
+                         // the current frame buffer (depending on crop)
+    unsigned char* framebuf; // pointer to the current frame buffer
 
     const char* modName;
  
@@ -142,6 +144,10 @@ int preprocessTransforms(TransformData* td, Transformations* trans);
     and supply the frame buffer for the frame to write
  */
 int transformPrepare(TransformData* td, unsigned char* frame_buf);
+
+/** call this function to finish the transformation of a frame (transformRGB/transformYUV)
+ */
+int transformFinish(TransformData* td);
 
 
 #endif

@@ -191,14 +191,14 @@ int openmptest(){
   long int sum;
   int i,j;
 
-#pragma omp parallel for shared(sum)
+  //#pragma omp parallel for shared(sum)
   for (i=0; i<60;i++){
     //    printf("num theads: %i\n",omp_get_num_threads());
     long int k=0;
     for (j=0; j<4000000;j++){
       k+=sqrt(j);
     }    
-#pragma omp atomic
+    //#pragma omp atomic
     sum+=k;
   }
   int end = timeOfDayinMS();   

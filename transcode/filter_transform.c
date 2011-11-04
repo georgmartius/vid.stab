@@ -241,6 +241,7 @@ static int transform_filter_video(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "unsupported Codec: %i\n", fd->vob->im_v_codec);
         return TC_ERROR;
     }
+    transformFinish(&fd->td);
     return TC_OK;
 }
 

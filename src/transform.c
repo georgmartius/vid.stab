@@ -32,8 +32,6 @@
 #include <math.h>
 #include <libgen.h>
 
-// TODO: apply crop-fix patch
-
 const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)", 
                                 "Bi-Cubic (3)"};
 
@@ -45,13 +43,14 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     td->fiSrc = *fi_src;
     td->fiDest = *fi_dest;   
     
-    td->src = ds_zalloc(td->fiSrc.framesize); /* FIXME */
+    td->src = ds_malloc(td->fiSrc.framesize);
     if (td->src == NULL) {
-        ds_log_error(td->modName, "tc_malloc failed\n");
+        ds_log_error(td->modName, "ds_malloc failed\n");
         return DS_ERROR;
     }
 
     td->dest = 0;
+    td->framebuf = 0;
     
     /* Options */
     td->maxShift = -1;
@@ -106,16 +105,37 @@ void cleanupTransformData(TransformData* td){
         ds_free(td->src);
         td->src = NULL;
     }
+    if (td->crop==0 && td->dest) {
+        ds_free(td->dest);
+        td->dest = NULL;
+    }
 }
 
 int transformPrepare(TransformData* td, unsigned char* frame_buf){
-    td->dest = frame_buf;
     // we first copy the frame to the src and then overwrite the destination
     // with the transformed version.
+    td->framebuf = frame_buf;
     memcpy(td->src,  frame_buf, td->fiSrc.framesize);
+    if (td->crop == 0) { 
+        if(td->dest == 0) {
+            // if we keep borders, save first frame into the background buffer (dest)
+            memcpy(td->dest, frame_buf, td->fiSrc.framesize);
+        }
+    }else{ // otherwise we directly operate on the framebuffer
+        td->dest = frame_buf;
+    }
     return DS_OK;   
 }
   
+int transformFinish(TransformData* td){
+    if(td->crop == 0){ 
+        // we have to store our result to video buffer
+        // note: dest stores stabilized frame to be the default for next frame
+        memcpy(td->framebuf, td->dest, td->fiSrc.framesize);
+    }
+    return DS_OK;
+}
+
 
 Transform getNextTransform(const TransformData* td, Transformations* trans){
     if (trans->current >= trans->len) {        
@@ -212,9 +232,9 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
  *  This enables still camera movement, but in a smooth fasion.
  *
  * Parameters:
- *            td: tranform private data structure
+ *            td: transform private data structure
  * Return value:
- *     1 for success and 0 for failture
+ *     1 for success and 0 for failure
  * Preconditions:
  *     None
  * Side effects:

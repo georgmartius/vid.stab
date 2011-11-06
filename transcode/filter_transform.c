@@ -46,6 +46,7 @@
 #include "frameinfo.h"
 #include "deshakedefines.h"
 #include "transform.h"
+#include "transformfixedpoint.h"
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
@@ -117,7 +118,7 @@ static int transform_configure(TCModuleInstance *self,
     fi_dest.framesize = fd->vob->im_v_size;
 
     if(initTransformData(td, &fi_src, &fi_dest, MOD_NAME) != DS_OK){
-        tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
+        tc_log_error(MOD_NAME, "initialization of TransformData failed");
         return TC_ERROR;
     }
     td->verbose=verbose;

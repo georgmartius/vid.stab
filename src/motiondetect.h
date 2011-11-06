@@ -38,13 +38,15 @@
 #include "frameinfo.h"
 
 //enable SSE2 code
-#define USE_SSE2
+#ifdef USE_SSE2
+#define compareSubImg compareSubImg_thr_sse2
+#endif
 
 //enable SSE2 inline asm code
-#define USE_SSE2_ASM
-
-//select compareSubImg func
+#ifdef USE_SSE2_ASM
 #define compareSubImg compareSubImg_thr_sse2_asm
+#endif
+
 
 #define USE_SPIRAL_FIELD_CALC
 
@@ -67,9 +69,6 @@ typedef struct motiondetect {
   short hasSeenOneFrame;   // true if we have a valid previous frame
 
   const char* modName;
-
-  /* list of transforms*/
-  DSList* transs;
 
   Field* fields;
 
@@ -95,7 +94,7 @@ typedef struct motiondetect {
 
   int initialized; // 1 if initialized and 2 if configured
 
-  int t;
+  int frameNum;
 } MotionDetect;
 
 /* type for a function that calculates the transformation of a certain field
@@ -119,11 +118,11 @@ int configureMotionDetect(MotionDetect* md);
 
 /**
  *  Performs a motion detection step
- *  and adds a transform to the list of transforms
  *  Only the new current frame is given. The last frame
  *  is stored internally
+ *  @param trans: calculated transform is stored here
  * */
-int motionDetection(MotionDetect* md, unsigned char *frame);
+int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame);
 
 /** Deletes internal data structures.
  * In order to use the MotionDetect again, you have to call initMotionDetect
@@ -162,6 +161,7 @@ void drawFieldTrans(MotionDetect* md, const Field* field, const Transform* t);
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
 void addTrans(MotionDetect* md, Transform sl);
+Transform getLastTransform(MotionDetect* md);
 
 
 //#ifdef TESTING

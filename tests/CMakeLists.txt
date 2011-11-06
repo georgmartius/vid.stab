@@ -12,7 +12,7 @@ set(TRANSCODE_ROOT ../../../transcode)
 
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING ${ORC_DEFINITIONS})
+add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING -DUSE_SSE2 -DUSE_SSE2_ASM ${ORC_DEFINITIONS})
 #add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING ${ORC_DEFINITIONS} )
 #add_definitions(  -Wall -O0 -msse2 -ffast-math -Wno-pointer-sign -g  -DTESTING ${ORC_DEFINITIONS} -fopenmp)
 

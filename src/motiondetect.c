@@ -68,7 +68,6 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->currorig = 0;
   md->currtmp  = 0;
   md->hasSeenOneFrame = 0;
-  md->transs = 0;
 
   // Options
   md->stepSize  = 6;
@@ -137,10 +136,6 @@ void cleanupMotionDetection(MotionDetect* md) {
     ds_free(md->fields);
     md->fields=0;
   }
-  if(md->transs) {
-    ds_list_del(md->transs, 1);
-    md->transs=0;
-  }
   if (md->prev) {
     ds_free(md->prev);
     md->prev = NULL;
@@ -156,7 +151,7 @@ void cleanupMotionDetection(MotionDetect* md) {
   md->initialized = 0;
 }
 
-int motionDetection(MotionDetect* md, unsigned char *frame) {
+int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame) {
   assert(md->initialized==2);
 
   md->currorig = frame;
@@ -180,16 +175,14 @@ int motionDetection(MotionDetect* md, unsigned char *frame) {
     //    md->curr = frame;
     if (md->fi.pFormat == PF_RGB) {
       if (md->algo == 0)
-	addTrans(md, calcShiftRGBSimple(md));
+	*trans = calcShiftRGBSimple(md);
       else if (md->algo == 1)
-	addTrans(md, calcTransFields(md, calcFieldTransRGB,
-				     contrastSubImgRGB));
+	*trans = calcTransFields(md, calcFieldTransRGB, contrastSubImgRGB);
     } else if (md->fi.pFormat == PF_YUV) {
       if (md->algo == 0)
-	addTrans(md, calcShiftYUVSimple(md));
+	*trans = calcShiftYUVSimple(md);
       else if (md->algo == 1)
-	addTrans(md, calcTransFields(md, calcFieldTransYUV,
-				     contrastSubImgYUV));
+	*trans = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
     } else {
       ds_log_warn(md->modName, "unsupported Pixel Format (Codec: %i)\n",
 		  md->fi.pFormat);
@@ -197,14 +190,15 @@ int motionDetection(MotionDetect* md, unsigned char *frame) {
     }
   } else {
     md->hasSeenOneFrame = 1;
-    addTrans(md, null_transform());
+    *trans = null_transform();
   }
 
   // copy current frame (smoothed) to prev for next frame comparison
   memcpy(md->prev, md->curr, md->fi.framesize);
-  md->t++;
+  md->frameNum++;
   return DS_OK;
 }
+
 
 /** initialise measurement fields on the frame.
     The size of the fields and the maxshift is used to
@@ -449,7 +443,7 @@ Transform calcShiftYUVSimple(MotionDetect* md) {
 #ifdef STABVERBOSE
   FILE *f = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "f%04i.dat", md->t);
+  ds_snprintf(buffer, sizeof(buffer), "f%04i.dat", md->frameNum);
   f = fopen(buffer, "w");
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
@@ -515,10 +509,10 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   int stepSize = md->stepSize;
 
 #ifdef STABVERBOSE
-  // printf("%i %i %f\n", md->t, fieldnum, contr);
+  // printf("%i %i %f\n", md->frameNum, fieldnum, contr);
   FILE *f = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "f%04i_%02i.dat", md->t, fieldnum);
+  ds_snprintf(buffer, sizeof(buffer), "f%04i_%02i.dat", md->frameNum, fieldnum);
   f = fopen(buffer, "w");
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
@@ -816,7 +810,7 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
 #ifdef STABVERBOSE
   FILE *file = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "k%04i.dat", md->t);
+  ds_snprintf(buffer, sizeof(buffer), "k%04i.dat", md->frameNum);
   file = fopen(buffer, "w");
   fprintf(file, "# plot \"%s\" w l, \"\" every 2:1:0\n", buffer);
 #endif
@@ -843,7 +837,7 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
   ds_vector_del(&goodflds);
   if (num_trans < 1) {
     ds_log_warn(md->modName, "too low contrast! No field remains.\n \
-                    (no translations are detected in frame %i)", md->t);
+                    (no translations are detected in frame %i)", md->frameNum);
     return t;
   }
 
@@ -950,12 +944,19 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
   }
 }
 
-void addTrans(MotionDetect* md, Transform sl) {
-  if (!md->transs) {
-    md->transs = ds_list_new(0);
-  }
-  ds_list_append_dup(md->transs, &sl, sizeof(sl));
-}
+// void addTrans(MotionDetect* md, Transform sl) {
+//   if (!md->transs) {
+//     md->transs = ds_list_new(0);
+//   }
+//   ds_list_append_dup(md->transs, &sl, sizeof(sl));
+// }
+
+// Transform getLastTransform(MotionDetect* md){
+//   if (!md->transs || !md->transs->head) {
+//     return null_transform();
+//   }
+//   return *((Transform*)md->transs->tail);  
+// }
 
 
 //#ifdef TESTING

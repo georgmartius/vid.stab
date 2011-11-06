@@ -188,7 +188,7 @@ int runboxblur( unsigned char* frame1, unsigned char* dest,
 
 int openmptest(){
   int start = timeOfDayinMS();
-  long int sum;
+  long int sum=0;
   int i,j;
 
   //#pragma omp parallel for shared(sum)
@@ -222,6 +222,7 @@ int openmp(){
     fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
 	    (double)timeref/time);
     omp_set_dynamic( 1 );
+    return 1;
 }
 
 

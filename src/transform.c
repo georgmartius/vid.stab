@@ -97,6 +97,15 @@ int configureTransformData(TransformData* td){
     }
 
 #endif
+    // if we keep the borders, we need a second buffer so store 
+    //  the previous stabilized frame
+    if(td->crop == 0){ 
+      td->dest = tc_malloc(td->fiDest.framesize);
+      if (td->dest == NULL) {
+	ds_log_error(td->modName, "tc_malloc failed\n");
+	return TC_ERROR;
+      }
+    }
     return DS_OK;
 }
 
@@ -164,7 +173,7 @@ void cleanupTransformations(Transformations* trans){
 }
 
 /** 
- * read_transforms: read transforms file
+ * readTransforms: read transforms file
  *  The format is as follows:
  *   Lines with # at the beginning are comments and will be ignored
  *   Data lines have 5 columns seperated by space or tab containing
@@ -225,7 +234,7 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
 }
 
 /**
- * preprocess_transforms: does smoothing, relative to absolute conversion,
+ * preprocessTransforms: does smoothing, relative to absolute conversion,
  *  and cropping of too large transforms.
  *  This is actually the core algorithm for canceling the jiggle in the 
  *  movie. We perform a low-pass filter in terms of transformation size.
@@ -233,6 +242,7 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
  *
  * Parameters:
  *            td: transform private data structure
+ *         trans: list of transformations (changed)
  * Return value:
  *     1 for success and 0 for failure
  * Preconditions:
@@ -344,7 +354,7 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
             ts[i].alpha = DS_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
 
     /* Calc optimal zoom 
-     *  cheap algo is to only consider transformations
+     *  cheap algo is to only consider translations
      *  uses cleaned max and min 
      * Todo: use sliding average to zoom only as much as needed. 
      *       use also rotation angles (transform all four corners)
@@ -370,6 +380,86 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
     return DS_OK;
 }
 
+
+/**
+ * lowPassTransforms: single step smoothing of transforms, using only the past.
+ *  see also preprocessTransforms. Here only relative transformations are
+ *  considered (produced by motiondetection). Also cropping of too large transforms.
+ *
+ * Parameters:
+ *            td: transform private data structure
+ *           mem: memory for sliding average transformation
+ *         trans: current transform (from previous to current frame)
+ * Return value:
+ *         new transformation for current frame
+ * Preconditions:
+ *     None
+ */
+Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem, 
+                            const Transform* trans)
+{
+
+  if (!mem->initialized){
+    // use the first transformation as the average camera movement
+    mem->avg=*trans;
+    mem->initialized=1;
+    mem->zoomavg=0.0;
+    mem->accum = null_transform();
+    return mem->accum;
+  }else{
+    double s = 1.0/(td->smoothing + 1);
+    double tau = 1.0/(3.0 * (td->smoothing + 1));
+    if(td->smoothing>0){
+      // otherwise do the sliding window
+      mem->avg = add_transforms_(mult_transform(&mem->avg, 1 - s),
+				 mult_transform(trans, s));
+    }else{
+      mem->avg = *trans;
+    }
+    
+    /* lowpass filter: 
+     * meaning high frequency must be transformed away
+     */
+    Transform newtrans = sub_transforms(trans, &mem->avg);
+
+    /* relative to absolute */
+    if (td->relative) {
+      newtrans = add_transforms(&newtrans, &mem->accum); 
+      mem->accum = newtrans;
+      if(td->smoothing>0){
+	// kill accumulating effects
+	mem->accum = mult_transform(&mem->accum, 1.0 - tau);
+      }
+    }
+
+    /* crop at maximal shift */
+    if (td->maxShift != -1){
+      newtrans.x     = DS_CLAMP(newtrans.x, -td->maxShift, td->maxShift);
+      newtrans.y     = DS_CLAMP(newtrans.y, -td->maxShift, td->maxShift);
+    }
+    if (td->maxAngle != - 1.0)     
+      newtrans.alpha = DS_CLAMP(newtrans.alpha, -td->maxAngle, td->maxAngle);
+
+    /* Calc sliding optimal zoom 
+     *  cheap algo is to only consider translations and to sliding avg
+     */
+    if (td->optZoom != 0 && td->smoothing > 0){    
+      // the zoom value only for x
+      double zx = 2*newtrans.x/td->fiSrc.width;
+      // the zoom value only for y
+      double zy = 2*newtrans.y/td->fiSrc.height;
+      double reqzoom = 100* DS_MAX(fabs(zx),fabs(zy)); // maximum is requried zoom
+      mem->zoomavg = (mem->zoomavg*(1-s) + reqzoom*s);
+      // since we only use past it is good to aniticipate 
+      //  and zoom a little in any case (so set td->zoom to 2 or so)
+      newtrans.zoom = mem->zoomavg;
+    }    
+    if (td->zoom != 0){
+      newtrans.zoom += td->zoom;       
+    }
+    return newtrans;
+  }
+}
 
 /*
  * Local variables:

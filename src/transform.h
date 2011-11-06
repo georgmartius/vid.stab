@@ -36,6 +36,14 @@ typedef struct transformations {
     short warned_end; // whether we warned that there is no transform left
 } Transformations;
 
+typedef struct slidingavgtrans {
+    Transform avg; // average transformation
+    Transform accum; // accumulator for relative to absolute conversion
+    double zoomavg;     // average zoom value
+    short initialized; // whether it was initialized or not
+} SlidingAvgTrans;
+
+
 /// interpolation types
 typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
 /// name of the interpolation type
@@ -139,6 +147,12 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans);
  */
 int preprocessTransforms(TransformData* td, Transformations* trans);
 
+
+/**
+ * lowPassTransforms: single step smoothing of transforms, using only the past.
+ *  see also preprocessTransforms. */
+Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem, 
+                            const Transform* trans);
 
 /** call this function to prepare for a next transformation (transformRGB/transformYUV)
     and supply the frame buffer for the frame to write

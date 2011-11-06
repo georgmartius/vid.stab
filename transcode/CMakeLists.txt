@@ -12,7 +12,8 @@ set(TRANSCODE_ROOT ../../../transcode)
 #  0.4.10 did not work (not all opcode implemented)
 find_package(Orc REQUIRED) 
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -msse2 -ffast-math -DTRANSCODE ${ORC_DEFINITIONS})
+#add_definitions( -Wall -O3 -Wno-pointer-sign -msse2 -ffast-math -DTRANSCODE -DUSE_SSE2 ${ORC_DEFINITIONS})
+add_definitions( -Wall -O0 -g -Wno-pointer-sign -msse2 -ffast-math -DTRANSCODE -DUSE_SSE2 ${ORC_DEFINITIONS})
 
 # Make sure the compiler can find include files from transcode 
 include_directories (${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ ${ORC_INCLUDE_DIRS}) 
@@ -24,7 +25,14 @@ add_library (filter_transform SHARED filter_transform.c
   ../src/transformfixedpoint.c ../src/dslist.c) #  orc/transformorc.c) 
 add_library (filter_stabilize SHARED filter_stabilize.c 
   ../src/transformtype.c ../src/libdeshake.c ../src/motiondetect.c 
-   ../src/boxblur.c ../src/dslist.c ../src/orc/motiondetectorc.c) 
+   ../src/boxblur.c ../src/dslist.c ../src/dsvector.c ../src/orc/motiondetectorc.c) 
+add_library (filter_deshake SHARED filter_deshake.c 
+  ../src/transformtype.c ../src/libdeshake.c ../src/motiondetect.c 
+  ../src/orc/motiondetectorc.c ../src/boxblur.c ../src/transform.c 
+  ../src/transformfixedpoint.c ../src/dslist.c ../src/dsvector.c) 
+
 
 target_link_libraries(filter_stabilize m ${ORC_LIBRARIES}) #link the math library and orc
 target_link_libraries(filter_transform m ) #link the math library
+
+target_link_libraries(filter_deshake m ${ORC_LIBRARIES}) #link the math library and orc

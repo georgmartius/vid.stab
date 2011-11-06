@@ -66,6 +66,7 @@
 typedef struct _stab_data {
     MotionDetect md;
     vob_t* vob;  // pointer to information structure
+
     char* result;
     FILE* f;
 
@@ -92,26 +93,6 @@ static const char stabilize_help[] = ""
     "    'show'        0: draw nothing (def); 1,2: show fields and transforms\n"
     "                  in the resulting frames. Consider the 'preview' filter\n"
     "    'help'        print this help message\n";
-
-
-
-struct iterdata {
-    FILE *f;
-    int  counter;
-};
-
-static int stabilize_dump_trans(DSListItem *item, void *userdata)
-{
-    struct iterdata *ID = userdata;
-
-    if (item->data) {
-        Transform* t = item->data;
-        fprintf(ID->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-                ID->counter, t->x, t->y, t->alpha, t->zoom, t->extra);
-        ID->counter++;
-    }
-    return 0; /* never give up */
-}
 
 /*************************************************************************/
 
@@ -243,7 +224,17 @@ static int stabilize_configure(TCModuleInstance *self,
     if (sd->f == NULL) {
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
-    }    
+    }else{
+        // write parameters as comments to file 
+        fprintf(sd->f, "#      accuracy = %d\n", md->accuracy);
+        fprintf(sd->f, "#     shakiness = %d\n", md->shakiness);
+        fprintf(sd->f, "#      stepsize = %d\n", md->stepSize);
+        fprintf(sd->f, "#          algo = %d\n", md->algo);
+        fprintf(sd->f, "#   mincontrast = %f\n", md->contrastThreshold);
+        fprintf(sd->f, "#        result = %s\n", sd->result);
+        // write header line
+        fprintf(sd->f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");        
+    }
 
     /***** This is now done by boxblur ****/
     /* /\* load unsharp filter to smooth the frames. This allows larger stepsize.*\/ */
@@ -274,11 +265,13 @@ static int stabilize_filter_video(TCModuleInstance *self,
   
     sd = self->userdata;    
     MotionDetect* md = &(sd->md);
-    
-    if(motionDetection(md, frame->video_buf)!= DS_OK){
+    Transform t;
+    if(motionDetection(md, &t, frame->video_buf)!= DS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     } else {
+        fprintf(sd->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
+                md->frameNum, t.x, t.y, t.alpha, t.zoom, t.extra);
     	return TC_OK;
     }
 }
@@ -296,21 +289,6 @@ static int stabilize_stop(TCModuleInstance *self)
     MotionDetect* md = &(sd->md);
     // print transs
     if (sd->f) {
-        struct iterdata ID;
-        ID.counter = 0;
-        ID.f       = sd->f;
-        // write parameters as comments to file 
-        fprintf(sd->f, "#      accuracy = %d\n", md->accuracy);
-        fprintf(sd->f, "#     shakiness = %d\n", md->shakiness);
-        fprintf(sd->f, "#      stepsize = %d\n", md->stepSize);
-        fprintf(sd->f, "#          algo = %d\n", md->algo);
-        fprintf(sd->f, "#   mincontrast = %f\n", md->contrastThreshold);
-        fprintf(sd->f, "#        result = %s\n", sd->result);
-        // write header line
-        fprintf(sd->f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");
-        // and all transforms
-        ds_list_foreach(md->transs, stabilize_dump_trans, &ID);
-    
         fclose(sd->f);
         sd->f = NULL;
     }

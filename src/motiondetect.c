@@ -31,7 +31,9 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef USE_ORC
 #include "orc/motiondetectorc.h"
+#endif
 
 #include "boxblur.h"
 #include "deshakedefines.h"
@@ -77,7 +79,12 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->shakiness = 5;
   md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
   md->show = 0;
+#ifdef USE_ORC
+// we use variance based ...
   md->contrastThreshold = 0.025;
+#else
+  md->contrastThreshold = 0.25;
+#endif
   md->maxAngleVariation = 1;
   md->initialized = 1;
   return DS_OK;
@@ -292,6 +299,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
   return sum; 
 }
 
+#ifdef USE_ORC
 /**
    compares a small part of two given images
    and returns the average absolute difference.
@@ -329,12 +337,12 @@ unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const
 
   return sum;
 }
-
+#endif
 
 
 /** \see contrastSubImg*/
 double contrastSubImgYUV(MotionDetect* md, const Field* field) {
-  return contrastSubImg(md->curr, field, md->fi.width, md->fi.height);
+    return contrastSubImg(md->curr, field, md->fi.width, md->fi.height,1);
 }
 
 /**
@@ -348,7 +356,7 @@ double contrastSubImgRGB(MotionDetect* md, const Field* field) {
 	  + contrastSubImg_Michelson(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
 }
 
-
+#ifdef USE_ORC
 /**
    calculates the contrast in the given small part of the given image
    using the absolute difference from mean luminance (like Root-Mean-Square,
@@ -360,8 +368,8 @@ double contrastSubImgRGB(MotionDetect* md, const Field* field) {
    \param width width of frame
    \param height height of frame
 */
-double contrastSubImg(unsigned char* const I, const Field* field, 
-		      int width, int height) {
+double contrastSubImg_orc(unsigned char* const I, const Field* field, 
+                          int width, int height, int bytesPerPixel) {
   unsigned char* p = NULL;
   int s2 = field->size / 2;
   int numpixel = field->size*field->size;
@@ -375,6 +383,7 @@ double contrastSubImg(unsigned char* const I, const Field* field,
   image_variance_optimized(&var, p, width, mean, field->size, field->size);
   return (double)var/numpixel/255.0;
 }
+#endif
 
 /**
    calculates Michelson-contrast in the given small part of the given image
@@ -988,6 +997,7 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
   return sum;
 }
 
+#ifdef USE_ORC
 // implementation with 1 orc function, but no threshold
 unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
 			   const Field* field, int width, int height, 
@@ -1007,10 +1017,11 @@ unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
 
   return sum;
 }
-
+#endif
 
 /// plain C implementation of contrastSubImg (without ORC)
-double contrastSubImg_C(unsigned char* const I, const Field* field, int width, int height) {
+double contrastSubImg_C(unsigned char* const I, const Field* field, int width, int height, 
+                        int bytesPerPixel) {
   int k, j;
   unsigned char* p = NULL;
   unsigned char* pstart = NULL;

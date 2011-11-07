@@ -37,6 +37,14 @@
 #include "dsvector.h"
 #include "frameinfo.h"
 
+
+#ifdef USE_ORC
+#define contrastSubImg contrastSubImg_orc
+#else
+#define contrastSubImg contrastSubImg_Michelson
+#endif 
+
+
 //enable SSE2 code
 #ifdef USE_SSE2
 #define compareSubImg compareSubImg_thr_sse2
@@ -137,8 +145,13 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field);
 double contrastSubImgRGB(MotionDetect* md, const Field* field);
 double contrastSubImg_Michelson(unsigned char* const I, const Field* field,
                                 int width, int height, int bytesPerPixel);
-double contrastSubImg(unsigned char* const I, const Field* field,
-                      int width, int height);
+double contrastSubImg_C(unsigned char* const I, const Field* field,
+                        int width, int height, int bytesPerPixel);
+
+#ifdef USE_ORC
+double contrastSubImg_orc(unsigned char* const I, const Field* field,
+                          int width, int height, int bytesPerPixel);
+#endif
 
 int cmp_contrast_idx(const void *ci1, const void* ci2);
 DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
@@ -166,30 +179,31 @@ Transform getLastTransform(MotionDetect* md);
 
 //#ifdef TESTING
 /// Functions for testing against optimized versions
-double contrastSubImg_C(unsigned char* const I, const Field* field,
-                      int width, int height);
+
+#ifdef USE_ORC
+unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
+			                   const Field* field, int width, int height,
+			                   int bytesPerPixel, int d_x, int d_y,
+			                   unsigned int threshold);
+
 
 unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
                                    const Field* field,
                                    int width, int height, int bytesPerPixel,
                                    int d_x, int d_y, unsigned int threshold);
+#endif
 
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width, int height,
                                int bytesPerPixel,
                                int d_x, int d_y, unsigned int threshold);
 
-unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
-			                   const Field* field, int width, int height,
-			                   int bytesPerPixel, int d_x, int d_y,
-			                   unsigned int threshold);
-
 #ifdef USE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
                                 const Field* field, int width, int height,
                                 int bytesPerPixel,
                                 int d_x, int d_y, unsigned int threshold);
-#endif // USE_SSE2
+#endif
 
 #ifdef USE_SSE2_ASM
 unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,

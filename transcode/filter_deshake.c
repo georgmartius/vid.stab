@@ -314,15 +314,13 @@ static int deshake_filter_video(TCModuleInstance *self,
 	    md->frameNum, motion.x, motion.y, motion.alpha, motion.zoom, 
 	    motion.extra);
   }
-
-    
     
   transformPrepare(&sd->td, frame->video_buf);  
     
   Transform t = lowPassTransforms(&sd->td, &sd->avg, &motion);
-  tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f", 
-	       motion.x, motion.y, motion.alpha,
-	       t.x, t.y, t.alpha, t.zoom);
+  /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */
+  /* 	       motion.x, motion.y, motion.alpha, */
+  /* 	       t.x, t.y, t.alpha, t.zoom); */
                      
   if (sd->vob->im_v_codec == CODEC_RGB) {
     transformRGB(&sd->td, t);

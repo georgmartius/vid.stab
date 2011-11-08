@@ -79,12 +79,7 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->shakiness = 5;
   md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
   md->show = 0;
-#ifdef USE_ORC
-// we use variance based ...
-  md->contrastThreshold = 0.025;
-#else
   md->contrastThreshold = 0.25;
-#endif
   md->maxAngleVariation = 1;
   md->initialized = 1;
   return DS_OK;
@@ -299,50 +294,15 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
   return sum; 
 }
 
-#ifdef USE_ORC
-/**
-   compares a small part of two given images
-   and returns the average absolute difference.
-   Field center, size and shift have to be choosen,
-   so that no clipping is required.
-   Uses optimized inner loops by ORC.
-
-   \param field Field specifies position(center) and size of subimage
-   \param d_x shift in x direction
-   \param d_y shift in y direction
-*/
-unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
-			   const Field* field, int width, int height, 
-			   int bytesPerPixel, int d_x, int d_y, 
-			   unsigned int threshold) {
-  unsigned char* p1 = NULL;
-  unsigned char* p2 = NULL;
-  int s2 = field->size / 2;
-  int j;
-  unsigned int sum = 0;
-  p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
-  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
-    * bytesPerPixel;
-  
-  for (j = 0; j < field->size; j++) {
-    unsigned int s = 0;
-    image_line_difference_optimized(&s, p1, p2, field->size* bytesPerPixel);
-    sum += s;
-    if( sum > threshold) // no need to calculate any longer: worse than the best match
-      break;
-    p1 += width * bytesPerPixel;
-    p2 += width * bytesPerPixel;
-  }
-
-
-  return sum;
-}
-#endif
-
 
 /** \see contrastSubImg*/
 double contrastSubImgYUV(MotionDetect* md, const Field* field) {
-    return contrastSubImg(md->curr, field, md->fi.width, md->fi.height,1);
+#ifdef USE_SSE2
+  return contrastSubImg1_SSE(md->curr,field,md->fi.width,md->fi.height);
+#else
+  return contrastSubImg(md->curr,field,md->fi.width,md->fi.height,1);
+#endif
+  
 }
 
 /**
@@ -351,39 +311,10 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field) {
 */
 double contrastSubImgRGB(MotionDetect* md, const Field* field) {
   unsigned char* const I = md->curr;
-  return (contrastSubImg_Michelson(I, field, md->fi.width, md->fi.height, 3)
-	  + contrastSubImg_Michelson(I + 1, field, md->fi.width, md->fi.height, 3)
-	  + contrastSubImg_Michelson(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
+  return (contrastSubImg(I, field, md->fi.width, md->fi.height, 3)
+	  + contrastSubImg(I + 1, field, md->fi.width, md->fi.height, 3)
+	  + contrastSubImg(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
 }
-
-#ifdef USE_ORC
-/**
-   calculates the contrast in the given small part of the given image
-   using the absolute difference from mean luminance (like Root-Mean-Square,
-   but with abs() (Manhattan-Norm))
-   For multichannel images use contrastSubImg_Michelson()
-
-   \param I pointer to framebuffer
-   \param field Field specifies position(center) and size of subimage
-   \param width width of frame
-   \param height height of frame
-*/
-double contrastSubImg_orc(unsigned char* const I, const Field* field, 
-                          int width, int height, int bytesPerPixel) {
-  unsigned char* p = NULL;
-  int s2 = field->size / 2;
-  int numpixel = field->size*field->size;
-
-  p = I + ((field->x - s2) + (field->y - s2) * width);
-  
-  unsigned int sum=0;
-  image_sum_optimized(&sum, p, width, field->size, field->size);
-  unsigned char mean = sum / numpixel;
-  int var=0;
-  image_variance_optimized(&var, p, width, mean, field->size, field->size);
-  return (double)var/numpixel/255.0;
-}
-#endif
 
 /**
    calculates Michelson-contrast in the given small part of the given image
@@ -395,7 +326,7 @@ double contrastSubImg_orc(unsigned char* const I, const Field* field,
    \param height height of frame
    \param bytesPerPixel calc contrast for only for first channel
 */
-double contrastSubImg_Michelson(unsigned char* const I, const Field* field, int width,
+double contrastSubImg(unsigned char* const I, const Field* field, int width,
 				int height, int bytesPerPixel) {
   int k, j;
   unsigned char* p = NULL;
@@ -412,8 +343,125 @@ double contrastSubImg_Michelson(unsigned char* const I, const Field* field, int 
     }
     p += (width - field->size) * bytesPerPixel;
   }
-  return 0.1*(maxi - mini) / (maxi + mini + 0.1); // +0.1 to avoid division by 0
+  return (maxi - mini) / (maxi + mini + 0.1); // +0.1 to avoid division by 0
 }
+
+
+#ifdef USE_SSE2
+/**
+    \see contrastSubImg using SSE2 optimization, YUV (1 byte per channel) only
+ */
+double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
+			   int width, int height)
+{
+    int k, j;
+    unsigned char* p = NULL;
+    int s2 = field->size / 2;
+
+    static unsigned char full[16] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+    p = I + ((field->x - s2) + (field->y - s2)*width);
+
+    __m128i mmin, mmax;
+
+    mmin = _mm_loadu_si128((__m128i const*)full);
+    mmax = _mm_setzero_si128();
+
+    for (j = 0; j < field->size; j++){
+        for (k = 0; k < field->size; k += 16) {
+            __m128i xmm0;
+            xmm0 = _mm_loadu_si128((__m128i const*)p);
+            mmin = _mm_min_epu8(mmin, xmm0);
+            mmax = _mm_max_epu8(mmax, xmm0);
+            p += 16;
+        }
+        p += (width - field->size);
+    }
+
+    __m128i xmm1;
+    xmm1 = _mm_srli_si128(mmin, 8);
+    mmin = _mm_min_epu8(mmin, xmm1);
+    xmm1 = _mm_srli_si128(mmin, 4);
+    mmin = _mm_min_epu8(mmin, xmm1);
+    xmm1 = _mm_srli_si128(mmin, 2);
+    mmin = _mm_min_epu8(mmin, xmm1);
+    xmm1 = _mm_srli_si128(mmin, 1);
+    mmin = _mm_min_epu8(mmin, xmm1);
+    unsigned char mini = (unsigned char)_mm_extract_epi16(mmin, 0);
+
+    xmm1 = _mm_srli_si128(mmax, 8);
+    mmax = _mm_max_epu8(mmax, xmm1);
+    xmm1 = _mm_srli_si128(mmax, 4);
+    mmax = _mm_max_epu8(mmax, xmm1);
+    xmm1 = _mm_srli_si128(mmax, 2);
+    mmax = _mm_max_epu8(mmax, xmm1);
+    xmm1 = _mm_srli_si128(mmax, 1);
+    mmax = _mm_max_epu8(mmax, xmm1);
+    unsigned char maxi = (unsigned char)_mm_extract_epi16(mmax, 0);
+
+    return (maxi-mini)/(maxi+mini+0.1); // +0.1 to avoid division by 0
+}
+#endif
+
+#ifdef USE_ORC
+/**
+   calculates the contrast in the given small part of the given image
+   using the absolute difference from mean luminance (like Root-Mean-Square,
+   but with abs() (Manhattan-Norm))
+   For multichannel images use contrastSubImg_Michelson()
+
+   \param I pointer to framebuffer
+   \param field Field specifies position(center) and size of subimage
+   \param width width of frame
+   \param height height of frame
+*/
+double contrastSubImg_variance_orc(unsigned char* const I, const Field* field, 
+				   int width, int height) {
+  unsigned char* p = NULL;
+  int s2 = field->size / 2;
+  int numpixel = field->size*field->size;
+
+  p = I + ((field->x - s2) + (field->y - s2) * width);
+  
+  unsigned int sum=0;
+  image_sum_optimized(&sum, p, width, field->size, field->size);
+  unsigned char mean = sum / numpixel;
+  int var=0;
+  image_variance_optimized(&var, p, width, mean, field->size, field->size);
+  return (double)var/numpixel/255.0;
+}
+
+/// plain C implementation of variance based contrastSubImg (without ORC)
+double contrastSubImg_variance_C(unsigned char* const I, 
+				 const Field* field, int width, int height) {
+  int k, j;
+  unsigned char* p = NULL;
+  unsigned char* pstart = NULL;
+  int s2 = field->size / 2;
+  unsigned int sum=0;				       
+  int mean;
+  int var=0;
+  int numpixel = field->size*field->size;  
+  
+  pstart = I + ((field->x - s2) + (field->y - s2) * width); 
+  p = pstart;
+  for (j = 0; j < field->size; j++) {      
+    for (k = 0; k < field->size; k++, p++) {
+      sum+=*p;
+    }
+    p += (width - field->size);
+  }
+  mean=sum/numpixel;
+  p = pstart;  
+  for (j = 0; j < field->size; j++) {      
+    for (k = 0; k < field->size; k++, p++) {
+      var+=abs(*p-mean);
+    }
+    p += (width - field->size);
+  }
+  return (double)var/numpixel/255.0;
+}
+#endif
 
 
 /** tries to register current frame onto previous frame.
@@ -998,6 +1046,44 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
 }
 
 #ifdef USE_ORC
+/**
+   compares a small part of two given images
+   and returns the average absolute difference.
+   Field center, size and shift have to be choosen,
+   so that no clipping is required.
+   Uses optimized inner loops by ORC.
+
+   \param field Field specifies position(center) and size of subimage
+   \param d_x shift in x direction
+   \param d_y shift in y direction
+*/
+unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
+			   const Field* field, int width, int height, 
+			   int bytesPerPixel, int d_x, int d_y, 
+			   unsigned int threshold) {
+  unsigned char* p1 = NULL;
+  unsigned char* p2 = NULL;
+  int s2 = field->size / 2;
+  int j;
+  unsigned int sum = 0;
+  p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
+  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
+    * bytesPerPixel;
+  
+  for (j = 0; j < field->size; j++) {
+    unsigned int s = 0;
+    image_line_difference_optimized(&s, p1, p2, field->size* bytesPerPixel);
+    sum += s;
+    if( sum > threshold) // no need to calculate any longer: worse than the best match
+      break;
+    p1 += width * bytesPerPixel;
+    p2 += width * bytesPerPixel;
+  }
+
+
+  return sum;
+}
+
 // implementation with 1 orc function, but no threshold
 unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
 			   const Field* field, int width, int height, 
@@ -1018,37 +1104,6 @@ unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
   return sum;
 }
 #endif
-
-/// plain C implementation of contrastSubImg (without ORC)
-double contrastSubImg_C(unsigned char* const I, const Field* field, int width, int height, 
-                        int bytesPerPixel) {
-  int k, j;
-  unsigned char* p = NULL;
-  unsigned char* pstart = NULL;
-  int s2 = field->size / 2;
-  unsigned int sum=0;				       
-  int mean;
-  int var=0;
-  int numpixel = field->size*field->size;  
-  
-  pstart = I + ((field->x - s2) + (field->y - s2) * width); 
-  p = pstart;
-  for (j = 0; j < field->size; j++) {      
-    for (k = 0; k < field->size; k++, p++) {
-      sum+=*p;
-    }
-    p += (width - field->size);
-  }
-  mean=sum/numpixel;
-  p = pstart;  
-  for (j = 0; j < field->size; j++) {      
-    for (k = 0; k < field->size; k++, p++) {
-      var+=abs(*p-mean);
-    }
-    p += (width - field->size);
-  }
-  return (double)var/numpixel/255.0;
-}
 
 #ifdef USE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,

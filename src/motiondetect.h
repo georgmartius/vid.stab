@@ -37,14 +37,6 @@
 #include "dsvector.h"
 #include "frameinfo.h"
 
-
-#ifdef USE_ORC
-#define contrastSubImg contrastSubImg_orc
-#else
-#define contrastSubImg contrastSubImg_Michelson
-#endif 
-
-
 //enable SSE2 code
 #ifdef USE_SSE2
 #define compareSubImg compareSubImg_thr_sse2
@@ -143,14 +135,20 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2,
 
 double contrastSubImgYUV(MotionDetect* md, const Field* field);
 double contrastSubImgRGB(MotionDetect* md, const Field* field);
-double contrastSubImg_Michelson(unsigned char* const I, const Field* field,
-                                int width, int height, int bytesPerPixel);
-double contrastSubImg_C(unsigned char* const I, const Field* field,
-                        int width, int height, int bytesPerPixel);
+double contrastSubImg(unsigned char* const I, const Field* field,
+                      int width, int height, int bytesPerPixel);
+
+#ifdef USE_SSE2
+double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
+                           int width, int height);
+#endif
 
 #ifdef USE_ORC
-double contrastSubImg_orc(unsigned char* const I, const Field* field,
-                          int width, int height, int bytesPerPixel);
+double contrastSubImg_variance_orc(unsigned char* const I, const Field* field,
+                          int width, int height);
+double contrastSubImg_variance_C(unsigned char* const I, const Field* field,
+                        int width, int height);
+
 #endif
 
 int cmp_contrast_idx(const void *ci1, const void* ci2);

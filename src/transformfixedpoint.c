@@ -37,15 +37,20 @@
 #define iToFp16(v) ((v)<<16)
 #define fToFp16(v) ((int32_t)((v)*((double)0xFFFF)))
 #define fp16To8(v) ((v)>>8)
+//#define fp16To8(v) ( (v) && 0x80 == 1 ? ((v)>>8 + 1) : ((v)>>8) )
 #define fp24To8(v) ((v)>>16)
 
-#define fp8ToI(v)  ((v)>>8)
+#define fp8ToI(v)  ((v)>>8))
 #define fp16ToI(v) ((v)>>16)
 #define fp8ToF(v)  ((v)/((double)(1<<8)))
 #define fp16ToF(v) ((v)/((double)(1<<16)))
 
-#define fp8ToIRound(v) ( (((v)>>7) & 0x1) == 0 ? ((v)>>8) : ((v)>>8)+1 )
-#define fp16ToIRound(v) ( (((v)>>15) & 0x1) == 0 ? ((v)>>16) : ((v)>>16)+1 )
+// #define fp8ToIRound(v) ( (((v)>>7) & 0x1) == 0 ? ((v)>>8) : ((v)>>8)+1 )
+#define fp8_0_5 (1<<7)
+#define fp8ToIRound(v) (((v) + fp8_0_5) >> 7)
+//#define fp16ToIRound(v) ( (((v)>>15) & 0x1) == 0 ? ((v)>>16) : ((v)>>16)+1 )
+#define fp16_0_5 (1<<15)
+#define fp16ToIRound(v) (((v) + fp16_0_5) >> 16) 
 
 interpolateFun interpolate = &interpolateBiLin;
 
@@ -58,18 +63,22 @@ inline void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y,
     int32_t ix_f = fp16ToI(x);
     int32_t iy_f = fp16ToI(y);
     int32_t ix_c = ix_f + 1;
-    int32_t iy_c = iy_f + 1;        
-    short v1 = PIXEL(img, ix_c, iy_c, width, height,def);
-    short v2 = PIXEL(img, ix_c, iy_f, width, height,def);
-    short v3 = PIXEL(img, ix_f, iy_c, width, height,def);
-    short v4 = PIXEL(img, ix_f, iy_f, width, height,def);        
-    fp16 x_f = iToFp16(ix_f);
-    fp16 x_c = iToFp16(ix_c);
-    fp16 y_f = iToFp16(iy_f);
-    fp16 y_c = iToFp16(iy_c);
-    fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +  
-      fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
-    *rv = fp16ToI(s);    
+    int32_t iy_c = iy_f + 1;
+    if (ix_f < -1 || ix_c > width || iy_f < -1 || iy_c > height) { 
+      *rv=def;
+    }else{    
+      short v1 = PIXEL(img, ix_c, iy_c, width, height,def);
+      short v2 = PIXEL(img, ix_c, iy_f, width, height,def);
+      short v3 = PIXEL(img, ix_f, iy_c, width, height,def);
+      short v4 = PIXEL(img, ix_f, iy_f, width, height,def);        
+      fp16 x_f = iToFp16(ix_f);
+      fp16 x_c = iToFp16(ix_c);
+      fp16 y_f = iToFp16(iy_f);
+      fp16 y_c = iToFp16(iy_c);
+      fp16 s   = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +  
+        fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y) + 1;
+      *rv = fp16ToIRound(s);    
+    }
 }
 
 /** taken from http://en.wikipedia.org/wiki/Bicubic_interpolation for alpha=-0.5
@@ -81,12 +90,21 @@ inline void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y,
    (1,t,t^2,t^3) | 2,-5, 4,-1 |  |a2|
                  |-1, 3,-3, 1 |  |a3|              
 */
-inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){ 
+/* inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){ */
+/*   // (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2; */
+/*   return ((iToFp16(2*a1) + t*(-a0+a2 */
+/* 			      + fp16ToI(t*((2*a0-5*a1+4*a2-a3) */
+/* 					   + fp16ToI(t*(-a0+3*a1-3*a2+a3)) )) ) */
+/* 	   ) ) >> 17; */
+/* } */
+
+inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){
   // (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2;
-  return ((iToFp16(2*a1) + t*(-a0+a2
-			      + fp16ToI(t*((2*a0-5*a1+4*a2-a3) 
-					   + fp16ToI(t*(-a0+3*a1-3*a2+a3)) )) )
-	   ) ) >> 17;
+  // we add 1/2 because of truncation errors
+  return fp16ToIRound((iToFp16(2*a1) + t*(-a0+a2
+		       + fp16ToIRound(t*((2*a0-5*a1+4*a2-a3)
+				    + fp16ToIRound(t*(-a0+3*a1-3*a2+a3)) )) )
+		       ) >> 1);
 }
 
 /** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
@@ -149,9 +167,10 @@ inline void interpolateBiLin(unsigned char *rv, fp16 x, fp16 y,
         fp16 x_c = iToFp16(ix_c);
         fp16 y_f = iToFp16(iy_f);
         fp16 y_c = iToFp16(iy_c);
-        fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +  
+        fp16 s  = fp16To8(v1*(x - x_f) + v3*(x_c - x))*fp16To8(y - y_f) +  
             fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
-        *rv = fp16ToI(s);
+        // it is underestimated due to truncation, so we add one
+        *rv = fp16ToI(s)+1; 
     }
 }
 
@@ -217,8 +236,8 @@ inline void interpolateN(unsigned char *rv, fp16 x, fp16 y,
     fp16 y_f = iToFp16(iy_f);
     fp16 y_c = iToFp16(iy_c);
     fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +  
-      fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
-    *rv = fp16ToI(s);
+        fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);  
+    *rv = fp16ToIRound(s);
   }
 }
 

@@ -28,7 +28,7 @@
  */
 
 #define MOD_NAME    "filter_deshake.so"
-#define MOD_VERSION "v0.82 (2011-08-01)"
+#define MOD_VERSION "v0.93 (2011-11-09)"
 #define MOD_CAP     "deshakes a video clip by extracting relative transformations\n\
     of subsequent frames and transforms the high-frequency away\n\
     This is a single pass verion of stabilize and transform plugin"
@@ -54,12 +54,6 @@
 #include "libtc/tcmodule-plugin.h"
 
 #include "libdeshake.h"
-#include "transformtype.h"
-#include "frameinfo.h"
-#include "deshakedefines.h"
-#include "transform.h"
-#include "transformfixedpoint.h"
-
 
 /* private date structure of this filter*/
 typedef struct _deshake_data {

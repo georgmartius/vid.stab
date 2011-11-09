@@ -97,15 +97,6 @@ int configureTransformData(TransformData* td){
     }
 
 #endif
-    // if we keep the borders, we need a second buffer so store 
-    //  the previous stabilized frame
-    if(td->crop == 0){ 
-      td->dest = ds_malloc(td->fiDest.framesize);
-      if (td->dest == NULL) {
-	ds_log_error(td->modName, "tc_malloc failed\n");
-	return DS_ERROR;
-      }
-    }
     return DS_OK;
 }
 
@@ -122,14 +113,21 @@ void cleanupTransformData(TransformData* td){
 
 int transformPrepare(TransformData* td, unsigned char* frame_buf){
     // we first copy the frame to the src and then overwrite the destination
-    // with the transformed version.
+    // with the transformed version
     td->framebuf = frame_buf;
     memcpy(td->src,  frame_buf, td->fiSrc.framesize);
     if (td->crop == 0) { 
-        if(td->dest == 0) {
-            // if we keep borders, save first frame into the background buffer (dest)
-            memcpy(td->dest, frame_buf, td->fiSrc.framesize);
-        }
+      if(td->dest == 0) {
+	// if we keep the borders, we need a second buffer so store 
+	//  the previous stabilized frame, so we use dest
+	td->dest = ds_malloc(td->fiDest.framesize);
+	if (td->dest == NULL) {
+	  ds_log_error(td->modName, "ds_malloc failed\n");
+	  return DS_ERROR;
+	}      
+	// if we keep borders, save first frame into the background buffer (dest)
+	memcpy(td->dest, frame_buf, td->fiSrc.framesize);
+      }
     }else{ // otherwise we directly operate on the framebuffer
         td->dest = frame_buf;
     }

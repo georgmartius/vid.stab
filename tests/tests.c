@@ -9,18 +9,11 @@
 #include <omp.h>
 #endif
 
-#include "transform.h"
-#include "dslist.h"
 #include "libdeshake.h"
 
-#include "transformfixedpoint.h"
 #ifndef TESTING
 #error TESTING must be defined 
 #endif
-#include "transformfloat.h"
-
-#include "boxblur.h"
-
 
 #include "testutils.c"
 
@@ -371,7 +364,7 @@ int main(int argc, char** argv){
       int sum=0;
       for(i=0; i<fi.framesize; i++){	
 	if(abs(cfinal[i] - td.dest[i])>2){
-	  sum+=abs(cfinal[i] - td.dest[i]);
+	  sum+=cfinal[i] - td.dest[i];
 	  //printf("%i,%i: %i\n", i/fi.width, i%fi.width ,cfinal[i] - td.dest[i]);
 	}
       }						

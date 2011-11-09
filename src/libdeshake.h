@@ -30,6 +30,11 @@
 #include "transform.h"
 #include "boxblur.h"
 
+#include "transformfixedpoint.h"
+#ifdef TESTING
+#include "transformfloat.h"
+#endif
+
 #endif  /* LIBDESHAKE_H_ */
 
 /*

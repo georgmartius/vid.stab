@@ -25,7 +25,7 @@
 */
 
 #define MOD_NAME    "filter_transform.so"
-#define MOD_VERSION "v0.8 (2011-06-13)"
+#define MOD_VERSION "v0.93 (2011-11-09)"
 #define MOD_CAP     "transforms each frame according to transformations\n\
  given in an input file (e.g. translation, rotate) see also filter stabilize"
 #define MOD_AUTHOR  "Georg Martius"

@@ -27,6 +27,7 @@
 
 #include "motiondetect.h"
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
@@ -45,7 +46,9 @@
 #define SSE2_CMP_SUM_ROWS 8
 #endif
 
-//#include <omp.h>
+#ifdef USE_OMP
+#include <omp.h>
+#endif
 
 /* internal data structures */
 
@@ -874,7 +877,9 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
 
   DSVector goodflds = selectfields(md, contrastfunc);  
   // use all "good" fields and calculate optimal match to previous frame
-  // #pragma omp parallel for shared(goodflds, md, ts, fs) // does not bring speedup
+#ifdef USE_OMP
+#pragma omp parallel for shared(goodflds, md, ts, fs) // does not bring speedup
+#endif
   for(index=0; index < ds_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)ds_vector_get(&goodflds,index))->index;
        

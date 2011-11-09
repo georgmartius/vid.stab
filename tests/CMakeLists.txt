@@ -10,15 +10,33 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 
 set(TRANSCODE_ROOT ../../../transcode)
 
-find_package(Orc REQUIRED) 
+add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
+#add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING )
+find_package(Orc) 
+if(ORC_FOUND)
+add_definitions( -DUSE_ORC ${ORC_DEFINITIONS})
+include_directories( ${ORC_INCLUDE_DIRS} )
+else()
+add_definitions( -DDISABLE_ORC)
+endif()
 
-add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING -DUSE_SSE2 -DUSE_SSE2_ASM ${ORC_DEFINITIONS})
-#add_definitions( -Wall -O3 -msse2 -ffast-math -Wno-pointer-sign -DTESTING ${ORC_DEFINITIONS} )
-#add_definitions(  -Wall -O0 -msse2 -ffast-math -Wno-pointer-sign -g  -DTESTING ${ORC_DEFINITIONS} -fopenmp)
+add_definitions( -DUSE_SSE2 -DUSE_SSE2_ASM -msse2 -ffast-math )
+
+if(USE_OMP)
+add_definitions(-fopenmp -DUSE_OMP)
+endif()
 
 # Make sure the compiler can find include files from transcode 
-include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ${ORC_INCLUDE_DIRS}) 
+include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ) 
 
 add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/dsvector.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c ../src/boxblur.c)
-target_link_libraries(tests m ${ORC_LIBRARIES} gomp)
+
+target_link_libraries(tests m)
+if(ORC_FOUND)
+target_link_libraries(tests ${ORC_LIBRARIES})
+endif()
+if(USE_OMP)
+target_link_libraries(tests gomp)
+endif()
+
  

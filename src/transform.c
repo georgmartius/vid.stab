@@ -100,10 +100,10 @@ int configureTransformData(TransformData* td){
     // if we keep the borders, we need a second buffer so store 
     //  the previous stabilized frame
     if(td->crop == 0){ 
-      td->dest = tc_malloc(td->fiDest.framesize);
+      td->dest = ds_malloc(td->fiDest.framesize);
       if (td->dest == NULL) {
 	ds_log_error(td->modName, "tc_malloc failed\n");
-	return TC_ERROR;
+	return DS_ERROR;
       }
     }
     return DS_OK;

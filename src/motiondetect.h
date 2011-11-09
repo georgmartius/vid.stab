@@ -37,16 +37,15 @@
 #include "dsvector.h"
 #include "frameinfo.h"
 
-//enable SSE2 code
-#ifdef USE_SSE2
-#define compareSubImg compareSubImg_thr_sse2
-#endif
-
-//enable SSE2 inline asm code
-#ifdef USE_SSE2_ASM
+#ifdef USE_SSE2_ASM //enable SSE2 inline asm code
 #define compareSubImg compareSubImg_thr_sse2_asm
+#elif USE_SSE2      //enable SSE2 code
+#define compareSubImg compareSubImg_thr_sse2
+#elif USE_ORC
+#define compareSubImg compareSubImg_thr_orc
+#else
+#define compareSubImg compareSubImg_thr
 #endif
-
 
 #define USE_SPIRAL_FIELD_CALC
 
@@ -171,8 +170,6 @@ void drawField(MotionDetect* md, const Field* field, const Transform* t);
 void drawFieldTrans(MotionDetect* md, const Field* field, const Transform* t);
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
-void addTrans(MotionDetect* md, Transform sl);
-Transform getLastTransform(MotionDetect* md);
 
 
 //#ifdef TESTING

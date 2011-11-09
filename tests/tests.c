@@ -5,8 +5,9 @@
 #include <stdint.h>
 #include <limits.h>
 
+#ifdef USE_OMP
 #include <omp.h>
-
+#endif
 
 #include "transform.h"
 #include "dslist.h"
@@ -186,19 +187,20 @@ int runboxblur( unsigned char* frame1, unsigned char* dest,
   return end-start;
 }
 
+#ifdef USE_OMP
 int openmptest(){
   int start = timeOfDayinMS();
   long int sum=0;
   int i,j;
 
-  //#pragma omp parallel for shared(sum)
-  for (i=0; i<60;i++){
-    //    printf("num theads: %i\n",omp_get_num_threads());
+#pragma omp parallel for shared(sum)
+  for (i=0; i<10;i++){
+    printf("num theads: %i\n",omp_get_thread_num());
     long int k=0;
-    for (j=0; j<4000000;j++){
+    for (j=0; j<40000;j++){
       k+=sqrt(j);
     }    
-    //#pragma omp atomic
+#pragma omp atomic
     sum+=k;
   }
   int end = timeOfDayinMS();   
@@ -215,15 +217,15 @@ int openmp(){
     time = openmptest();
     fprintf(stderr,"***C    time: %i ms\n",  time);
     timeref=time;
-    omp_set_dynamic( 1 );
-    //    omp_set_dynamic( 0 );
-    omp_set_num_threads( 2);
+    omp_set_dynamic( 0 );
+    omp_set_num_threads( 2 );
     time = openmptest();
     fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
 	    (double)timeref/time);
     omp_set_dynamic( 1 );
     return 1;
 }
+#endif
 
 
 int main(int argc, char** argv){
@@ -240,7 +242,9 @@ int main(int argc, char** argv){
   fi_color.height=360;
   fi_color.strive=640 ;
 
-  // openmp();
+#ifdef USE_OMP
+  openmp(); 
+#endif
 
   assert(initMotionDetect(&md, &fi, "test") == DS_OK);
 
@@ -258,7 +262,7 @@ int main(int argc, char** argv){
     fprintf(stderr, "load file %s\n", name);
     file = fopen(name,"rb");
     assert(file!=0);
-    fprintf(stderr,"read %i bytes\n", fread(frames[i], 1, fi.framesize,file));
+    fprintf(stderr,"read %li bytes\n", fread(frames[i], 1, fi.framesize,file));
     fclose(file);    
   }
   
@@ -283,17 +287,21 @@ int main(int argc, char** argv){
     int start = timeOfDayinMS();
     //      omp_set_dynamic( 0 );
     //      omp_set_num_threads( t );
+
+    DSList* transs = ds_list_new(0);
     for(i=0; i<numruns; i++){
-      assert(motionDetection(&md, frames[i])== DS_OK);
+      Transform t;
+      assert(motionDetection(&md, &t,frames[i])== DS_OK);
+      ds_list_append_dup(transs, &t, sizeof(t));            
     }
     int end = timeOfDayinMS();
-      
-    //if(t==1){
+    
     struct iterdata ID;
     ID.counter = 0;
     ID.f       = stdout;
-    ds_list_foreach(md.transs, dump_trans, &ID);
-    //  }
+    ds_list_foreach(transs, dump_trans, &ID);
+    ds_list_del(transs,1);
+    
     //    fprintf(stderr,"\n*** elapsed time for %i runs: (%i theads) %i ms ****\n", numruns, t, end-start );
     fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n", numruns, end-start );
     // }
@@ -404,13 +412,14 @@ int main(int argc, char** argv){
     int timeC, timeO;
     timeC=runcompare(compareSubImg_thr, frames[0], frames[1], f, fi, diffsC, 0, numruns);
     fprintf(stderr,"***C        time for %i runs: %i ms ****\n", numruns, timeC);
-
+#ifdef USE_ORC
     timeO=runcompare(compareSubImg_orc, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
     fprintf(stderr,"***orc      time for %i runs: %i ms \tSpeedup %3.2f\n", 
 	    numruns, timeO, (double)timeC/timeO);      
     timeO=runcompare(compareSubImg_thr_orc, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
     fprintf(stderr,"***thr_orc  time for %i runs: %i ms \tSpeedup %3.2f\n", 
 	    numruns, timeO, (double)timeC/timeO);      
+#endif
 #ifdef USE_SSE2
     timeO=runcompare(compareSubImg_thr_sse2, frames[0], frames[1], f, fi, diffsO, diffsC, numruns);
     fprintf(stderr,"***thr_sse2 time for %i runs: %i ms \tSpeedup %3.2f\n", 
@@ -429,15 +438,17 @@ int main(int argc, char** argv){
     f.size=128;
     f.x = 400;
     f.y = 300;
-    fprintf(stderr,"********** orc Contrast:\n");
+    fprintf(stderr,"********** Contrast:\n");
     int numruns = num;
     double contrastC[numruns];
-    double contrastOrc[numruns];
-    int timeC, timeOrc;
+    double contrastOpt[numruns];
+    int timeC, timeOpt;
+#ifdef USE_ORC
+    fprintf(stderr,"********** Variance - based Contrast (with ORC):\n");
     {
       int start = timeOfDayinMS();
       for(i=0; i<numruns; i++){
-	contrastC[i]=contrastSubImg_C(frames[0], &f, fi.width, fi.height);
+	contrastC[i]=contrastSubImg_variance_C(frames[0], &f, fi.width, fi.height);
       }
       int end = timeOfDayinMS();   
       timeC=end-start;
@@ -446,30 +457,48 @@ int main(int argc, char** argv){
     {
       int start = timeOfDayinMS();
       for(i=0; i<numruns; i++){
-	contrastSubImg_Michelson(frames[0], &f, fi.width, fi.height,1);
+	contrastOpt[i]=contrastSubImg_variance_orc(frames[0], &f, fi.width, fi.height);
       }
       int end = timeOfDayinMS();   
-      fprintf(stderr,"***C Mi  time for %i runs: %i ms ****\n", 
-	      numruns, end-start); 
+      timeOpt=end-start;
+      fprintf(stderr,"***Orc  time for %i runs: %i ms ****\n", numruns, timeOpt); 
     }
+    fprintf(stderr,"***Speedup %3.2f\n", timeC/timeOpt);      
+    for(i=0; i<numruns; i++){
+      if(i==0){
+	printf("Orc contrast %3.2f, C contrast %3.2f\n",contrastOpt[i], contrastC[i]); 
+      }
+      assert(contrastC[i]==contrastOpt[i]);
+    }
+#endif
+    fprintf(stderr,"********** Michelson Contrast (with SSE2):\n");    
     {
       int start = timeOfDayinMS();
       for(i=0; i<numruns; i++){
-	contrastOrc[i]=contrastSubImg(frames[0], &f, fi.width, fi.height);
+	contrastC[i]=contrastSubImg(frames[0], &f, fi.width, fi.height,1);
       }
       int end = timeOfDayinMS();   
-      timeOrc=end-start;
-      fprintf(stderr,"***Orc  time for %i runs: %i ms ****\n", numruns, timeOrc);      
+      timeC=end-start;
+      fprintf(stderr,"***C    time for %i runs: %i ms ****\n", numruns, timeC); 
     }
-    double timeCD = timeC;
-    fprintf(stderr,"***Speedup %3.2f\n", timeCD/timeOrc);      
+#ifdef USE_SSE2
+    {
+      int start = timeOfDayinMS();
+      for(i=0; i<numruns; i++){
+	contrastOpt[i]=contrastSubImg1_SSE(frames[0], &f, fi.width, fi.height);
+      }
+      int end = timeOfDayinMS();   
+      timeOpt=end-start;
+      fprintf(stderr,"***SSE2 time for %i runs: %i ms ****\n", numruns, timeOpt); 
+    }
+    fprintf(stderr,"***Speedup %3.2f\n", (float)timeC/(float)timeOpt);      
     for(i=0; i<numruns; i++){
       if(i==0){
-	printf("Orc contrast %3.2f, C contrast %3.2f\n",contrastOrc[i], contrastC[i]); 
+	printf("SSE2 contrast %3.2f, C contrast %3.2f\n",contrastOpt[i], contrastC[i]); 
       }
-      assert(contrastC[i]==contrastOrc[i]);
+      assert(contrastC[i]==contrastOpt[i]);
     }
-
+#endif
   }
 
 

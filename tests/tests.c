@@ -255,7 +255,8 @@ int main(int argc, char** argv){
     fprintf(stderr, "load file %s\n", name);
     file = fopen(name,"rb");
     assert(file!=0);
-    fprintf(stderr,"read %li bytes\n", fread(frames[i], 1, fi.framesize,file));
+    fprintf(stderr,"read %li bytes\n", 
+	    (unsigned long)fread(frames[i], 1, fi.framesize,file));
     fclose(file);    
   }
   
@@ -374,7 +375,7 @@ int main(int argc, char** argv){
   }
   
   if(test_boxblur){
-    int time, timeref;
+    int time; //, timeref;
     int numruns=2;
     unsigned char* dest = (unsigned char*)ds_malloc(fi.framesize);
     //    omp_set_dynamic( 0 );
@@ -384,7 +385,7 @@ int main(int argc, char** argv){
     fprintf(stderr,"***C    time for %i runs: %i ms\n", numruns, time);
     storePGMImage("boxblured.pgm", dest, fi);
     storePGMImage("orig4.pgm", frames[4], fi);
-    timeref=time;
+    // timeref=time;
     /* omp_set_dynamic( 0 ); */
     /* omp_set_num_threads( 2); */
     /* time = runboxblur(frames[4], dest, fi, numruns); */

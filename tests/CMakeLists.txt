@@ -8,8 +8,6 @@ project (vid.stab)
 SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-set(TRANSCODE_ROOT ../../../transcode)
-
 add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
 #add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING )
 find_package(Orc) 
@@ -27,7 +25,7 @@ add_definitions(-fopenmp -DUSE_OMP)
 endif()
 
 # Make sure the compiler can find include files from transcode 
-include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT} ) 
+include_directories (../src) 
 
 add_executable (tests tests.c ../src/orc/motiondetectorc.c ../src/dslist.c ../src/dsvector.c ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c ../src/libdeshake.c ../src/transformtype.c ../src/motiondetect.c ../src/boxblur.c)
 

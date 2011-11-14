@@ -1,0 +1,8 @@
+
+Some things that could be done
+
+- optimal zoom detection with sliding average
+- transform calculation in motiondetect with full matrix estimation (pseudoinverse)
+
+
+- frei0r plugin

@@ -17,31 +17,33 @@
 
 #include "testutils.c"
 
-int num=2000;
-int test_checkCompareImg=0;
-int test_motionDetect=1;
-int test_transform=1;
-int test_compareImg=1;
-int test_contrastImg=1;
-int test_boxblur=1;
+int	num		     = 2000;
+int	test_checkCompareImg = 0;
+int	test_motionDetect    = 1;
+int	test_transform	     = 1;
+int	test_compareImg	     = 1;
+int	test_contrastImg     = 1;
+int	test_boxblur	     = 1;
 
-struct iterdata {
-    FILE *f;
-    int  counter;
-};
+int	loadTestFrames       = 0;
 
-static int dump_trans(DSListItem *item, void *userdata)
-{
-  struct iterdata *ID = (struct iterdata *)userdata;
+/* struct iterdata { */
+/*     FILE *f; */
+/*     int  counter; */
+/* }; */
+
+/* static int dump_trans(DSListItem *item, void *userdata) */
+/* { */
+/*   struct iterdata *ID = (struct iterdata *)userdata; */
   
-  if (item->data) {
-    Transform* t = (Transform*)item->data;
-    fprintf(ID->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-	    ID->counter, t->x, t->y, t->alpha, t->zoom, t->extra);
-    ID->counter++;
-  }
-  return 0; /* never give up */
-}
+/*   if (item->data) { */
+/*     Transform* t = (Transform*)item->data; */
+/*     fprintf(ID->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n", */
+/* 	    ID->counter, t->x, t->y, t->alpha, t->zoom, t->extra); */
+/*     ID->counter++; */
+/*   } */
+/*   return 0; /\* never give up *\/ */
+/* } */
 
 void testImageStripeYUV(int size, DSFrameInfo* fi, unsigned char** img){
   int i,j;  
@@ -244,21 +246,32 @@ int main(int argc, char** argv){
   TransformData td;
   assert(initTransformData(&td, &fi, &fi, "test") == DS_OK);  
 
-  unsigned char* frames[5];
-  FILE* file;
-  char name[128];
   int i;
-  
-  for(i=0; i<5; i++){
-    frames[i] = (unsigned char*)malloc(fi.framesize);
-    sprintf(name,"../frames/frame%03i.raw",i+4);
-    fprintf(stderr, "load file %s\n", name);
-    file = fopen(name,"rb");
-    assert(file!=0);
-    fprintf(stderr,"read %li bytes\n", 
-	    (unsigned long)fread(frames[i], 1, fi.framesize,file));
-    fclose(file);    
+  unsigned char* frames[5];
+  if(loadTestFrames){
+    FILE* file;
+    char name[128];
+    
+    for(i=0; i<5; i++){
+      frames[i] = (unsigned char*)malloc(fi.framesize);
+      sprintf(name,"../frames/frame%03i.raw",i+4);
+      fprintf(stderr, "load file %s\n", name);
+      file = fopen(name,"rb");
+      assert(file!=0);
+      fprintf(stderr,"read %li bytes\n", 
+	      (unsigned long)fread(frames[i], 1, fi.framesize,file));
+      fclose(file);    
+    }
+  }else{
+    generateFrames(frames, 5, fi);
   }
+  storePGMImage("test1.pgm", frames[0], fi);
+  storePGMImage("test2.pgm", frames[1], fi);
+  storePGMImage("test3.pgm", frames[2], fi);
+  storePGMImage("test4.pgm", frames[3], fi);
+  storePGMImage("test5.pgm", frames[4], fi);
+
+
   
   md.shakiness=6;
   md.accuracy=12;
@@ -274,7 +287,7 @@ int main(int argc, char** argv){
     cleanupMotionDetection(&md);
     assert(initMotionDetect(&md, &fi, "test") == DS_OK);
     assert(configureMotionDetect(&md)== DS_OK);    
-    fprintf(stderr,"MotionDetect:");
+    fprintf(stderr,"MotionDetect:\n");
     int numruns =5;
     //int t;
     //        for(t = 1; t <= 4; t++){
@@ -282,20 +295,14 @@ int main(int argc, char** argv){
     //      omp_set_dynamic( 0 );
     //      omp_set_num_threads( t );
 
-    DSList* transs = ds_list_new(0);
     for(i=0; i<numruns; i++){
       Transform t;
       assert(motionDetection(&md, &t,frames[i])== DS_OK);
-      ds_list_append_dup(transs, &t, sizeof(t));            
+      fprintf(stderr, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n", 
+	      i, t.x, t.y, t.alpha, t.zoom, t.extra);
     }
     int end = timeOfDayinMS();
-    
-    struct iterdata ID;
-    ID.counter = 0;
-    ID.f       = stdout;
-    ds_list_foreach(transs, dump_trans, &ID);
-    ds_list_del(transs,1);
-    
+        
     //    fprintf(stderr,"\n*** elapsed time for %i runs: (%i theads) %i ms ****\n", numruns, t, end-start );
     fprintf(stderr,"\n*** elapsed time for %i runs: %i ms ****\n", numruns, end-start );
     // }

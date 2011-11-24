@@ -7,21 +7,29 @@
  *   simba at lerlan dot ru
  *   speed optimizations (threshold, spiral, SSE, asm)
  *
- *  This file is part of transcode, a video stream processing tool
- *
- *  transcode is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  transcode is distributed in the hope that it will be useful,
+ *  This file is part of vid.stab video stabilization library
+ *      
+ *  vid.stab is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License,
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
+ *  as published by the Free Software Foundation; either version 2, or 
+ *  (at your option) any later version. 
+ * 
+ *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *
+ *   
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *
+ *  This work is licensed under the Creative Commons         
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
+ *  San Francisco, California, 94105, USA.                                
+ *  This EXCLUDES COMMERCIAL USAGE
  *
  */
 
@@ -33,7 +41,6 @@
 
 #include "transformtype.h"
 #include "deshakedefines.h"
-#include "dslist.h"
 #include "dsvector.h"
 #include "frameinfo.h"
 

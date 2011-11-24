@@ -23,7 +23,7 @@ add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 
 # Create the deshake library 
 add_library (deshake STATIC
-    transformtype.c libdeshake.c transform.c transformfixedpoint.c dslist.c 
+    transformtype.c libdeshake.c transform.c transformfixedpoint.c 
     motiondetect.c boxblur.c dsvector.c orc/motiondetectorc.c) 
 #  orc/transformorc.c
 

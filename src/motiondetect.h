@@ -135,6 +135,15 @@ int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame);
  */
 void cleanupMotionDetection(MotionDetect* md);
 
+/// writes the header to the file that is to be holding the transformations
+int prepareTransformFile(const MotionDetect* td, FILE* f);
+
+/// appends the given transformation to the transform file
+int writeTransformToFile(const MotionDetect* td, FILE* f, Transform* trans);
+
+
+
+
 int initFields(MotionDetect* md);
 unsigned int compareImg(unsigned char* I1, unsigned char* I2,
                         int width, int height,  int bytesPerPixel, int d_x, int d_y);

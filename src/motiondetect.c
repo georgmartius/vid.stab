@@ -163,6 +163,28 @@ void cleanupMotionDetection(MotionDetect* md) {
   md->initialized = 0;
 }
 
+int prepareTransformFile(const MotionDetect* md, FILE* f){
+    if(!f) return DS_ERROR;
+    fprintf(f, "#      accuracy = %d\n", md->accuracy);
+    fprintf(f, "#     shakiness = %d\n", md->shakiness);
+    fprintf(f, "#      stepsize = %d\n", md->stepSize);
+    fprintf(f, "#          algo = %d\n", md->algo);
+    fprintf(f, "#   mincontrast = %f\n", md->contrastThreshold);
+    // write header line
+    fprintf(f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");
+    return DS_OK;
+}
+
+int writeTransformToFile(const MotionDetect* md, FILE* f, Transform* t){
+    if(!f || !t) return DS_ERROR;
+    if(fprintf(f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
+               md->frameNum, t->x, t->y, t->alpha, t->zoom, t->extra)>0)
+        return DS_OK;
+    else 
+        return DS_ERROR;
+}
+
+
 int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame) {
   assert(md->initialized==2);
 

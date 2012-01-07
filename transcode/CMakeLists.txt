@@ -6,7 +6,7 @@ SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
 # set your transcode path here!
-set(TRANSCODE_ROOT ../../../transcode)
+set(TRANSCODE_ROOT ../../transcode)
 
 
 add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE )

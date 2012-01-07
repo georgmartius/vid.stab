@@ -225,15 +225,10 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        // write parameters as comments to file 
-        fprintf(sd->f, "#      accuracy = %d\n", md->accuracy);
-        fprintf(sd->f, "#     shakiness = %d\n", md->shakiness);
-        fprintf(sd->f, "#      stepsize = %d\n", md->stepSize);
-        fprintf(sd->f, "#          algo = %d\n", md->algo);
-        fprintf(sd->f, "#   mincontrast = %f\n", md->contrastThreshold);
-        fprintf(sd->f, "#        result = %s\n", sd->result);
-        // write header line
-        fprintf(sd->f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");        
+        if(prepareTransformFile(md, sd->f) != DS_OK){
+            tc_log_error(MOD_NAME, "cannot write to transform file %s", sd->result);
+            return TC_ERROR;
+        }
     }
 
     /***** This is now done by boxblur ****/
@@ -270,9 +265,10 @@ static int stabilize_filter_video(TCModuleInstance *self,
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     } else {
-        fprintf(sd->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-                md->frameNum, t.x, t.y, t.alpha, t.zoom, t.extra);
-    	return TC_OK;
+        if(writeTransformToFile(md, sd->f, &t) != DS_OK)
+            return TC_ERROR;
+        else 
+            return TC_OK;
     }
 }
 
@@ -287,7 +283,6 @@ static int stabilize_stop(TCModuleInstance *self)
     TC_MODULE_SELF_CHECK(self, "stop");
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
-    // print transs
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;

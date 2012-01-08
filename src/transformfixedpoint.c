@@ -32,6 +32,7 @@
  *
  */
 #include "transformfixedpoint.h"
+#include "transform.h"
 
 // the orc code does not work at the moment (BUG in ORC?)
 // #include "orc/transformorc.h"
@@ -58,8 +59,6 @@
 //#define fp16ToIRound(v) ( (((v)>>15) & 0x1) == 0 ? ((v)>>16) : ((v)>>16)+1 )
 #define fp16_0_5 (1<<15)
 #define fp16ToIRound(v) (((v) + fp16_0_5) >> 16) 
-
-interpolateFun interpolate = &interpolateBiLin;
 
 /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
     This is used by many other interpolation methods at and outsize the border, see interpolate */
@@ -359,7 +358,7 @@ int transformYUV(TransformData* td, Transform t)
 	unsigned char* dest = &Y_2[x + y * td->fiDest.width];
 	// inlining the interpolation function would bring 10% 
 	//  (but then we cannot use the function pointer anymore...)
-	interpolate(dest, x_s, y_s, Y_1, 
+	td->interpolate(dest, x_s, y_s, Y_1, 
 		    td->fiSrc.width, td->fiSrc.height, 
 		    td->crop ? 16 : *dest);
       }
@@ -380,10 +379,10 @@ int transformYUV(TransformData* td, Transform t)
 	fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2;
 	fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2; 
 	unsigned char* dest = &Cr_2[x + y * wd2];
-	interpolate(dest, x_s, y_s, Cr_1, ws2, hs2, 
+	td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2, 
 		    td->crop ? 128 : *dest);
 	unsigned char* dest2 = &Cb_2[x + y * wd2];
-	interpolate(dest2, x_s, y_s, Cb_1, ws2, hs2, 
+	td->interpolate(dest2, x_s, y_s, Cb_1, ws2, hs2, 
 		    td->crop ? 128 : *dest2);
       }
     }
@@ -465,7 +464,7 @@ int transformYUV(TransformData* td, Transform t)
 
 /*       for (x = 0; x < td->fiDest.width; x++) { */
 /* 	unsigned char* dest = &Y_2[x + y * td->fiDest.width]; */
-/* 	interpolate(dest, x_ss[x], y_ss[x], Y_1,  */
+/* 	td->interpolate(dest, x_ss[x], y_ss[x], Y_1,  */
 /* 		    td->fiSrc.width, td->fiSrc.height,  */
 /* 		    td->crop ? 16 : *dest); */
 /*       } */
@@ -486,10 +485,10 @@ int transformYUV(TransformData* td, Transform t)
 /* 	fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2; */
 /* 	fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2;  */
 /* 	unsigned char* dest = &Cr_2[x + y * wd2]; */
-/* 	interpolate(dest, x_s, y_s, Cr_1, ws2, hs2,  */
+/* 	td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2,  */
 /* 		    td->crop ? 128 : *dest); */
 /* 	dest = &Cb_2[x + y * wd2]; */
-/* 	interpolate(dest, x_s, y_s, Cb_1, ws2, hs2,  */
+/* 	td->interpolate(dest, x_s, y_s, Cb_1, ws2, hs2,  */
 /* 		    td->crop ? 128 : *dest); */
 /*       } */
 /*     } */

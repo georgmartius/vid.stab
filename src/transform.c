@@ -89,19 +89,19 @@ int configureTransformData(TransformData* td){
     td->interpolType = DS_MIN(td->interpolType,BiCubic);
 
     switch(td->interpolType){
-      case Zero:     interpolate = &interpolateZero; break;
-      case Linear:   interpolate = &interpolateLin; break;
-      case BiLinear: interpolate = &interpolateBiLin; break;
-      case BiCubic:  interpolate = &interpolateBiCub; break;
-      default: interpolate = &interpolateBiLin;
+      case Zero:     td->interpolate = &interpolateZero; break;
+      case Linear:   td->interpolate = &interpolateLin; break;
+      case BiLinear: td->interpolate = &interpolateBiLin; break;
+      case BiCubic:  td->interpolate = &interpolateBiCub; break;
+      default: td->interpolate = &interpolateBiLin;
     }
 #ifdef TESTING
     switch(td->interpolType){
-      case Zero:     interpolate_float = &interpolateZero_float; break;
-      case Linear:   interpolate_float = &interpolateLin_float; break;
-      case BiLinear: interpolate_float = &interpolateBiLin_float; break;
-      case BiCubic:  interpolate_float = &interpolateBiCub_float; break;
-      default: interpolate_float = &interpolateBiLin_float;
+      case Zero:     td->_FLT(interpolate) = &_FLT(interpolateZero); break;
+      case Linear:   td->_FLT(interpolate) = &_FLT(interpolateLin); break;
+      case BiLinear: td->_FLT(interpolate) = &_FLT(interpolateBiLin); break;
+      case BiCubic:  td->_FLT(interpolate) = &_FLT(interpolateBiCub); break;
+      default: td->_FLT(interpolate)	   = &_FLT(interpolateBiLin);
     }
 
 #endif
@@ -153,13 +153,15 @@ int transformFinish(TransformData* td){
 
 
 Transform getNextTransform(const TransformData* td, Transformations* trans){
-    if (trans->current >= trans->len) {        
-        trans->current = trans->len-1;
+    if(trans->len <=0 ) return null_transform();
+    if (trans->current >= trans->len) {
+        trans->current = trans->len;
         if(!trans->warned_end)
             ds_log_warn(td->modName, "not enough transforms found, use last transformation!\n");
         trans->warned_end = 1;                 
-    }    
-    trans->current++;
+    }else{
+        trans->current++;
+    }
     return trans->ts[trans->current-1];
 }
 

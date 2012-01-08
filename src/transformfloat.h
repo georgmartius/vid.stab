@@ -32,7 +32,8 @@
 #ifndef __TRANSFORMFLOAT_H
 #define __TRANSFORMFLOAT_H
 
-#include "transform.h"
+#include "transformtype.h"
+#include <stdint.h>
 
 #ifdef TESTING
 #define _FLT(n) n ## _float 
@@ -40,10 +41,12 @@
 #define _FLT(n) n
 #endif
 
+struct _TransformData;
+
 /// does the actual transformation in RGB space
-int _FLT(transformRGB)(TransformData* td, Transform t);
+int _FLT(transformRGB)(struct _TransformData* td, Transform t);
 /// does the actual transformation in YUV space
-int _FLT(transformYUV)(TransformData* td, Transform t);
+int _FLT(transformYUV)(struct _TransformData* td, Transform t);
 
 /** 
  * interpolate: general interpolation function pointer for one channel image data
@@ -60,8 +63,6 @@ int _FLT(transformYUV)(TransformData* td, Transform t);
 typedef void (*_FLT(interpolateFun))(unsigned char *rv, float x, float y, 
                                unsigned char* img, int width, int height, 
                                unsigned char def);
-
-extern _FLT(interpolateFun) _FLT(interpolate);
 
 /* forward deklarations, please look in the .c file for documentation*/
 void _FLT(interpolateBiLinBorder)(unsigned char *rv, float x, float y, 

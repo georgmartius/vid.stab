@@ -5,8 +5,9 @@ SET(CMAKE_BUILTTYPE None)
  
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
-#add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+#add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
+#add_definitions( -Wall -O3 -Wno-pointer-sign)
+add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 # I tried it with 0.4.14 
 #  0.4.10 did not work (not all opcode implemented)
 # find_package(Orc)  // it actually not used by any active code

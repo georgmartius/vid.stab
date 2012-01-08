@@ -146,7 +146,7 @@ static int transform_configure(TCModuleInstance *self,
         /* return (-1); when called using tcmodinfo this will fail */ 
     } else {
         if (!readTransforms(td, f, &fd->trans)) { /* read input file */
-            tc_log_info(MOD_NAME, "error parsing input file %s!\n", fd->input);
+            tc_log_warn(MOD_NAME, "error parsing input file %s!\n", fd->input);
             // return (-1);      
         }
         fclose(f);

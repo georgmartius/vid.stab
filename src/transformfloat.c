@@ -32,30 +32,27 @@
  *
  */
 #include "transformfloat.h"
+#include "transform.h"
 
-#include <math.h>
-#include <libgen.h>
 
-_FLT(interpolateFun) _FLT(interpolate) = &_FLT(interpolateBiLin);
-
-				       /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
-					   This is used by many other interpolation methods at and outsize the border, see interpolate */
-				       void _FLT(interpolateBiLinBorder)(unsigned char *rv, float x, float y, 
-									 unsigned char* img, int width, int height, 
-									 unsigned char def)
-				       {
-					 int x_f = myfloor(x);
-					 int x_c = x_f+1;
-					 int y_f = myfloor(y);
-					 int y_c = y_f+1;
-					 short v1 = PIXEL(img, x_c, y_c, width, height, def);
-					 short v2 = PIXEL(img, x_c, y_f, width, height, def);
-					 short v3 = PIXEL(img, x_f, y_c, width, height, def);
-					 short v4 = PIXEL(img, x_f, y_f, width, height, def);        
-					 float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) + 
-					   (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-					 *rv = (unsigned char)s;
-				       }
+/** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
+    This is used by many other interpolation methods at and outsize the border, see interpolate */
+void _FLT(interpolateBiLinBorder)(unsigned char *rv, float x, float y, 
+                                  unsigned char* img, int width, int height, 
+                                  unsigned char def)
+{
+    int x_f = myfloor(x);
+    int x_c = x_f+1;
+    int y_f = myfloor(y);
+    int y_c = y_f+1;
+    short v1 = PIXEL(img, x_c, y_c, width, height, def);
+    short v2 = PIXEL(img, x_c, y_f, width, height, def);
+    short v3 = PIXEL(img, x_f, y_c, width, height, def);
+    short v4 = PIXEL(img, x_f, y_f, width, height, def);        
+    float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) + 
+        (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
+    *rv = (unsigned char)s;
+}
 
 /** taken from http://en.wikipedia.org/wiki/Bicubic_interpolation for alpha=-0.5
     in matrix notation: 
@@ -312,7 +309,7 @@ int _FLT(transformYUV)(TransformData* td, Transform t)
       float y_s  = -zsin_a * x_d1 
 	+ zcos_a * y_d1 + c_s_y -t.y;
       unsigned char* dest = &Y_2[x + y * td->fiDest.width];
-      _FLT(interpolate)(dest, x_s, y_s, Y_1,  
+      td->_FLT(interpolate)(dest, x_s, y_s, Y_1,  
 			td->fiSrc.width, td->fiSrc.height,  
 			td->crop ? 16 : *dest); 
     }
@@ -332,10 +329,10 @@ int _FLT(transformYUV)(TransformData* td, Transform t)
       float y_s  = -zsin_a * x_d1 
 	+ zcos_a * y_d1 + (c_s_y -t.y)/2;
       unsigned char* dest = &Cr_2[x + y * wd2];
-      _FLT(interpolate)(dest, x_s, y_s, Cr_1, ws2, hs2, 
+      td->_FLT(interpolate)(dest, x_s, y_s, Cr_1, ws2, hs2, 
 			td->crop ? 128 : *dest);
       dest = &Cb_2[x + y * wd2];
-      _FLT(interpolate)(dest, x_s, y_s, Cb_1, ws2, hs2, 
+      td->_FLT(interpolate)(dest, x_s, y_s, Cb_1, ws2, hs2, 
 			td->crop ? 128 : *dest);      	
     }
   }

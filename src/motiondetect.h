@@ -111,6 +111,29 @@ typedef Transform (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
  */
 typedef double (*contrastSubImgFunc)(MotionDetect*, const Field*);
 
+
+static const char motiondetect_help[] = ""
+    "Overview:\n"
+    "    Generates a file with relative transform information\n"
+    "     (translation, rotation) about subsequent frames."
+    " See also transform.\n" 
+    "Options\n"
+    "    'result'      path to the file used to write the transforms\n"
+    "                  (def:inputfile.stab)\n"
+    "    'shakiness'   how shaky is the video and how quick is the camera?\n"
+    "                  1: little (fast) 10: very strong/quick (slow) (def: 4)\n"
+    "    'accuracy'    accuracy of detection process (>=shakiness)\n"
+    "                  1: low (fast) 15: high (slow) (def: 4)\n"
+    "    'stepsize'    stepsize of search process, region around minimum \n"
+    "                  is scanned with 1 pixel resolution (def: 6)\n"
+    "    'algo'        0: brute force (translation only);\n"
+    "                  1: small measurement fields (def)\n"
+    "    'mincontrast' below this contrast a field is discarded (0-1) (def: 0.3)\n"
+    "    'show'        0: draw nothing (def); 1,2: show fields and transforms\n"
+    "                  in the resulting frames. Consider the 'preview' filter\n"
+    "    'help'        print this help message\n";
+
+
 /** initialized the MotionDetect structure and allocates memory
  *  for the frames and stuff
  *  @return DS_OK on success otherwise DS_ERROR

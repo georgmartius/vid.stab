@@ -32,19 +32,22 @@
 #ifndef __TRANSFORMFIXEDPOINT_H
 #define __TRANSFORMFIXEDPOINT_H
 
-#include "transform.h"
+#include "transformtype.h"
+#include <stdint.h>
 
 typedef int32_t fp8;
 typedef int32_t fp16;
 
+struct _TransformData;
+
 /// does the actual transformation in RGB space
-int transformRGB(TransformData* td, Transform t);
+int transformRGB(struct _TransformData* td, Transform t);
 /// does the actual transformation in YUV space
-int transformYUV(TransformData* td, Transform t);
+int transformYUV(struct _TransformData* td, Transform t);
 
 // testing
 /// does the actual transformation in YUV space
-int transformYUV_orc(TransformData* td, Transform t);
+int transformYUV_orc(struct _TransformData* td, Transform t);
 
 
 /** 
@@ -63,8 +66,6 @@ int transformYUV_orc(TransformData* td, Transform t);
 typedef void (*interpolateFun)(unsigned char *rv, fp16 x, fp16 y, 
                                unsigned char* img, int width, int height, 
                                unsigned char def);
-
-interpolateFun interpolate;
 
 /* forward deklarations, please see .c file for documentation*/
 void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y, 

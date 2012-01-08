@@ -1,5 +1,5 @@
 /*
- *  transformtype.h
+ *  transform.h
  *
  *  Copyright (C) Georg Martius - June 2007 - 2011
  *   georg dot martius at web dot de  
@@ -37,6 +37,10 @@
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "deshakedefines.h"
+#include "transformfixedpoint.h"
+#ifdef TESTING
+#include "transformfloat.h"
+#endif
 
 typedef struct transformations {
     Transform* ts; // array of transformations
@@ -58,7 +62,7 @@ typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
 /// name of the interpolation type
 extern const char* interpolTypes[5];
 
-typedef struct {
+typedef struct _TransformData {
     DSFrameInfo fiSrc;
     DSFrameInfo fiDest;
 
@@ -69,6 +73,11 @@ typedef struct {
 
     const char* modName;
  
+    interpolateFun interpolate; // pointer to interpolation function
+#ifdef TESTING
+    _FLT(interpolateFun) _FLT(interpolate);
+#endif
+
     /* Options */
     int maxShift;        // maximum number of pixels we will shift
     double maxAngle;     // maximum angle in rad

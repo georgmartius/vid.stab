@@ -34,10 +34,11 @@ add_library (filter_transform SHARED filter_transform.c
   ../src/transformfixedpoint.c) #  orc/transformorc.c) 
 add_library (filter_stabilize SHARED filter_stabilize.c 
   ../src/transformtype.c ../src/libdeshake.c ../src/motiondetect.c 
-   ../src/boxblur.c ../src/dsvector.c ../src/orc/motiondetectorc.c) 
+   ../src/boxblur.c ../src/dsvector.c ../src/orc/motiondetectorc.c
+   ../src/motiondetect_opt.c) 
 add_library (filter_deshake SHARED filter_deshake.c 
   ../src/transformtype.c ../src/libdeshake.c ../src/motiondetect.c 
-  ../src/orc/motiondetectorc.c ../src/boxblur.c ../src/transform.c 
+  ../src/orc/motiondetectorc.c ../src/boxblur.c ../src/transform.c ../src/motiondetect_opt.c 
   ../src/transformfixedpoint.c ../src/dsvector.c) 
 
 

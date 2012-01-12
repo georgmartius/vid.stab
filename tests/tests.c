@@ -10,6 +10,8 @@
 #endif
 
 #include "libdeshake.h"
+// load optimized functions 
+#include "motiondetect_opt.h"
 
 #ifndef TESTING
 #error TESTING must be defined 

@@ -62,15 +62,18 @@ typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
 /// name of the interpolation type
 extern const char* interpolTypes[5];
 
+typedef enum { KeepBorder = 0, CropBorder } BorderType;
+
 typedef struct _TransformData {
     DSFrameInfo fiSrc;
     DSFrameInfo fiDest;
 
     unsigned char* src;  // copy of the current frame buffer
-    unsigned char* dest; // pointer to destination buffer or
-                         // the current frame buffer (depending on crop)
-    unsigned char* framebuf; // pointer to the current frame buffer
+    unsigned char* destbuf; // pointer to an additional buffer or
+                         // to the destination buffer (depending on crop)
+    unsigned char* dest; // pointer to the destination buffer
 
+    short srcMalloced;   // 1 if the source buffer was internally malloced
     const char* modName;
  
     interpolateFun interpolate; // pointer to interpolation function
@@ -89,8 +92,8 @@ typedef struct _TransformData {
     /* number of frames (forward and backward) 
      * to use for smoothing transforms */
     int smoothing;  
-    int crop;       // 1: black bg, 0: keep border from last frame(s)
-    int invert;     // 1: invert transforms, 0: nothing
+    BorderType crop;  // 1: black bg, 0: keep border from last frame(s)
+    int invert;       // 1: invert transforms, 0: nothing
     /* constants */
     /* threshhold below which no rotation is performed */
     double rotationThreshhold; 
@@ -173,9 +176,10 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
                             const Transform* trans);
 
 /** call this function to prepare for a next transformation (transformRGB/transformYUV)
-    and supply the frame buffer for the frame to write
+    and supply the src frame buffer and the frame to write to. These can be the same pointer
+    for an inplace operation (working on framebuffer directly)
  */
-int transformPrepare(TransformData* td, unsigned char* frame_buf);
+int transformPrepare(TransformData* td, const unsigned char* src, unsigned char* dest);
 
 /** call this function to finish the transformation of a frame (transformRGB/transformYUV)
  */

@@ -70,10 +70,10 @@ static void generateFrames(unsigned char **frames, int num, const DSFrameInfo fi
     fprintf(stderr, "%i, %6.4lf %6.4lf %8.5lf %6.4lf %i\n", 
 	    i, t.x, t.y, t.alpha, t.zoom, t.extra);
 
-    memcpy(frames[i], frames[i-1], fi.framesize);
-    assert(transformPrepare(&td,frames[i])== DS_OK);
+    assert(transformPrepare(&td,frames[i-1],frames[i])== DS_OK);
     assert(transformYUV_float(&td, t)== DS_OK);      
-    memcpy(frames[i], td.dest, fi.framesize);
+    assert(transformFinish(&td)== DS_OK); 
+
 
   }
   cleanupTransformData(&td);

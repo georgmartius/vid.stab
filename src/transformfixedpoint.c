@@ -263,7 +263,7 @@ int transformRGB(TransformData* td, Transform t)
     unsigned char *D_1, *D_2;
   
     D_1  = td->src;  
-    D_2  = td->dest;  
+    D_2  = td->destbuf;  
     fp16 c_s_x = iToFp16(td->fiSrc.width/2);
     fp16 c_s_y = iToFp16(td->fiSrc.height/2);
     int32_t c_d_x = td->fiDest.width/2;
@@ -323,11 +323,11 @@ int transformYUV(TransformData* td, Transform t)
     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return DS_OK; // noop
 
     Y_1  = td->src;  
-    Y_2  = td->dest;  
+    Y_2  = td->destbuf;  
     Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height;
-    Cb_2 = td->dest + td->fiDest.width * td->fiDest.height;
+    Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height;
     Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4;
-    Cr_2 = td->dest + 5*td->fiDest.width * td->fiDest.height/4;
+    Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4;
     fp16 c_s_x = iToFp16(td->fiSrc.width / 2);
     fp16 c_s_y = iToFp16(td->fiSrc.height / 2);
     int32_t c_d_x = td->fiDest.width / 2;
@@ -415,11 +415,11 @@ int transformYUV(TransformData* td, Transform t)
 /*     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return DS_OK; // noop */
 
 /*     Y_1  = td->src;   */
-/*     Y_2  = td->dest;   */
+/*     Y_2  = td->destbuf;   */
 /*     Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height; */
-/*     Cb_2 = td->dest + td->fiDest.width * td->fiDest.height; */
+/*     Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height; */
 /*     Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4; */
-/*     Cr_2 = td->dest + 5*td->fiDest.width * td->fiDest.height/4; */
+/*     Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4; */
 /*     fp16 c_s_x = iToFp16(td->fiSrc.width / 2); */
 /*     fp16 c_s_y = iToFp16(td->fiSrc.height / 2); */
 /*     int32_t c_d_x = td->fiDest.width / 2; */

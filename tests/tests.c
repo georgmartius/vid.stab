@@ -119,7 +119,7 @@ int test_transform_implementation(){
     assert(configureTransformData(&td)== DS_OK);
     
     fprintf(stderr,"Transform: %s\n", interpolTypes[it]);
-    assert(transformPrepare(&td,dest)== DS_OK);
+    assert(transformPrepare(&td,dest,dest)== DS_OK);
     assert(transformYUV_float(&td, t)== DS_OK);      
     
     memcpy(cfinal,td.dest,fi.framesize);
@@ -128,7 +128,7 @@ int test_transform_implementation(){
     assert(initTransformData(&td, &fi, &fi, "test") == DS_OK);  
     td.interpolType=it;
     assert(configureTransformData(&td)== DS_OK);
-    assert(transformPrepare(&td,dest)== DS_OK);
+    assert(transformPrepare(&td,dest,dest)== DS_OK);
     assert(transformYUV(&td, t)== DS_OK);      
 
     // validate
@@ -334,7 +334,7 @@ int main(int argc, char** argv){
 	t.alpha = (i+1)*2*M_PI/(180.0);       
 	t.zoom = 0;
 	memcpy(dest, frames[0], fi.framesize);
-	assert(transformPrepare(&td,dest)== DS_OK);
+	assert(transformPrepare(&td,dest,dest)== DS_OK);
 	assert(transformYUV_float(&td, t)== DS_OK);      
       }
       timeC = timeOfDayinMS() - start;  
@@ -358,7 +358,7 @@ int main(int argc, char** argv){
 	t.alpha = (i+1)*2*M_PI/(180.0);
 	t.zoom = 0;
 	memcpy(dest, frames[0], fi.framesize);
-	assert(transformPrepare(&td,dest)== DS_OK);
+	assert(transformPrepare(&td,dest,dest)== DS_OK);
 	assert(transformYUV(&td, t)== DS_OK);      
       }
       timeCFP = timeOfDayinMS() - start;  

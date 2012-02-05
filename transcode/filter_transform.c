@@ -232,7 +232,7 @@ static int transform_filter_video(TCModuleInstance *self,
   
     fd = self->userdata;
 
-    transformPrepare(&fd->td, frame->video_buf);  
+    transformPrepare(&fd->td, frame->video_buf, frame->video_buf);  
                      
     if (fd->vob->im_v_codec == CODEC_RGB) {
         transformRGB(&fd->td, getNextTransform(&fd->td, &fd->trans));

@@ -2,27 +2,27 @@
  *  filter_deshake.c
  *
  *  Copyright (C) Georg Martius - November 2011
- *   georg dot martius at web dot de 
- * 
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
- * 
- *   This program is distributed in the hope that it will be useful, 
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *   GNU General Public License for more details. 
- * 
- *   You should have received a copy of the GNU General Public License 
- *   along with this program; if not, write to the 
- *   Free Software Foundation, Inc., 
- *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA. 
+ *   georg dot martius at web dot de
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program; if not, write to the
+ *   Free Software Foundation, Inc.,
+ *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
 
 /* Typical call:
- *  transcode -V -J deshake=shakiness=5:smoothing=10 
+ *  transcode -V -J deshake=shakiness=5:smoothing=10
  *         -i inp.mpeg -y xvid,tc_aud -o out.avi
  *  all parameters are optional
  */
@@ -45,7 +45,7 @@
 
 #include <math.h>
 #include <libgen.h>
-  
+
 #include "transcode.h"
 #include "filter.h"
 #include "libtc/libtc.h"
@@ -60,11 +60,11 @@ typedef struct _deshake_data {
   MotionDetect md;
   TransformData td;
   SlidingAvgTrans avg;
-  
+
   vob_t* vob;  // pointer to information structure
   char* result;
   FILE* f;
-  
+
   char conf_str[TC_BUF_MIN];
 } DeshakeData;
 
@@ -168,7 +168,7 @@ static int deshake_configure(TCModuleInstance *self,
 
   sd = self->userdata;
 
-  /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES * 
+  /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
 	sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
   MotionDetect* md = &(sd->md);
@@ -185,7 +185,7 @@ static int deshake_configure(TCModuleInstance *self,
     tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
     return TC_ERROR;
   }
-    
+
   sd->result = tc_malloc(TC_BUF_LINE);
   filenamecopy = tc_strdup(sd->vob->video_in_file);
   filebasename = basename(filenamecopy);
@@ -212,8 +212,8 @@ static int deshake_configure(TCModuleInstance *self,
   td->verbose=verbose;
 
 
-  if (options != NULL) {            
-    // for some reason this plugin is called in the old fashion 
+  if (options != NULL) {
+    // for some reason this plugin is called in the old fashion
     //  (not with inspect). Anyway we support both ways of getting help.
     if(optstr_lookup(options, "help")) {
       tc_log_info(MOD_NAME,deshake_help);
@@ -231,7 +231,7 @@ static int deshake_configure(TCModuleInstance *self,
     optstr_get(options, "maxshift",  "%d", &td->maxShift);
     optstr_get(options, "maxangle",  "%lf", &td->maxAngle);
     optstr_get(options, "smoothing", "%d", &td->smoothing);
-    optstr_get(options, "crop"     , "%d", &td->crop);
+    optstr_get(options, "crop"     , "%d", (int*)&td->crop);
     optstr_get(options, "zoom"     , "%lf",&td->zoom);
     optstr_get(options, "optzoom"  , "%d", &td->optZoom);
     optstr_get(options, "interpol" , "%d", (int*)(&td->interpolType));
@@ -248,7 +248,7 @@ static int deshake_configure(TCModuleInstance *self,
     tc_log_error(MOD_NAME, "configuration of Tranform failed");
     return TC_ERROR;
   }
-    
+
   if (verbose) {
     tc_log_info(MOD_NAME, "Video Deshake  Settings:");
     tc_log_info(MOD_NAME, "    smoothing = %d", td->smoothing);
@@ -261,12 +261,12 @@ static int deshake_configure(TCModuleInstance *self,
     tc_log_info(MOD_NAME, "       result = %s", sd->result);
     tc_log_info(MOD_NAME, "    maxshift  = %d", td->maxShift);
     tc_log_info(MOD_NAME, "    maxangle  = %f", td->maxAngle);
-    tc_log_info(MOD_NAME, "         crop = %s", 
+    tc_log_info(MOD_NAME, "         crop = %s",
 		td->crop ? "Black" : "Keep");
     tc_log_info(MOD_NAME, "         zoom = %f", td->zoom);
-    tc_log_info(MOD_NAME, "      optzoom = %s", 
+    tc_log_info(MOD_NAME, "      optzoom = %s",
 		td->optZoom ? "On" : "Off");
-    tc_log_info(MOD_NAME, "     interpol = %s", 
+    tc_log_info(MOD_NAME, "     interpol = %s",
 		interpolTypes[td->interpolType]);
     tc_log_info(MOD_NAME, "      sharpen = %f", td->sharpen);
 
@@ -278,7 +278,7 @@ static int deshake_configure(TCModuleInstance *self,
   if (sd->f == NULL) {
     tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
     return TC_ERROR;
-  }    
+  }
 
   return TC_OK;
 }
@@ -289,15 +289,15 @@ static int deshake_configure(TCModuleInstance *self,
  * See tcmodule-data.h for function details.
  */
 
-static int deshake_filter_video(TCModuleInstance *self, 
+static int deshake_filter_video(TCModuleInstance *self,
 				vframe_list_t *frame)
 {
   DeshakeData *sd = NULL;
-  
+
   TC_MODULE_SELF_CHECK(self, "filter_video");
   TC_MODULE_SELF_CHECK(frame, "filter_video");
-  
-  sd = self->userdata;    
+
+  sd = self->userdata;
   MotionDetect* md = &(sd->md);
   Transform motion;
   if(motionDetection(md, &motion, frame->video_buf)!= DS_OK){
@@ -305,17 +305,17 @@ static int deshake_filter_video(TCModuleInstance *self,
     return TC_ERROR;
   } else {
     fprintf(sd->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-	    md->frameNum, motion.x, motion.y, motion.alpha, motion.zoom, 
+	    md->frameNum, motion.x, motion.y, motion.alpha, motion.zoom,
 	    motion.extra);
   }
-    
-  transformPrepare(&sd->td, frame->video_buf);  
-    
+
+  transformPrepare(&sd->td, frame->video_buf, frame->video_buf);
+
   Transform t = lowPassTransforms(&sd->td, &sd->avg, &motion);
   /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */
   /* 	       motion.x, motion.y, motion.alpha, */
   /* 	       t.x, t.y, t.alpha, t.zoom); */
-                     
+
   if (sd->vob->im_v_codec == CODEC_RGB) {
     transformRGB(&sd->td, t);
   } else if (sd->vob->im_v_codec == CODEC_YUV) {
@@ -325,7 +325,7 @@ static int deshake_filter_video(TCModuleInstance *self,
     return TC_ERROR;
   }
   transformFinish(&sd->td);
-  return TC_OK;    
+  return TC_OK;
 }
 
 /**
@@ -351,7 +351,7 @@ static int deshake_stop(TCModuleInstance *self)
   }
 
   cleanupTransformData(&sd->td);
-    
+
   return TC_OK;
 }
 
@@ -372,7 +372,7 @@ static int deshake_inspect(TCModuleInstance *self,
 			   const char *param, const char **value)
 {
   DeshakeData *sd = NULL;
-    
+
   TC_MODULE_SELF_CHECK(self, "inspect");
   TC_MODULE_SELF_CHECK(param, "inspect");
   TC_MODULE_SELF_CHECK(value, "inspect");
@@ -398,13 +398,13 @@ static int deshake_inspect(TCModuleInstance *self,
   return TC_OK;
 }
 
-static const TCCodecID deshake_codecs_in[] = { 
-  TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID deshake_codecs_in[] = {
+  TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-static const TCCodecID deshake_codecs_out[] = { 
-  TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID deshake_codecs_out[] = {
+  TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-TC_MODULE_FILTER_FORMATS(deshake); 
+TC_MODULE_FILTER_FORMATS(deshake);
 
 TC_MODULE_INFO(deshake);
 

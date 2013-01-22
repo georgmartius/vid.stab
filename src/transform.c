@@ -83,7 +83,7 @@ int configureTransformData(TransformData* td){
     if (td->maxShift > td->fiDest.height/2)
         td->maxShift = td->fiDest.height/2;
     
-    td->interpolType = DS_MIN(td->interpolType,BiCubic);
+    td->interpolType = DS_MAX(DS_MIN(td->interpolType,BiCubic),Zero);
 
     switch(td->interpolType){
       case Zero:     td->interpolate = &interpolateZero; break;

@@ -2,7 +2,6 @@
 *~
 *.so
 *.a
-
 CMakeFiles
 CMakeCache.txt
 Makefile

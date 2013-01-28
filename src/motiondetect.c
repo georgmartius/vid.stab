@@ -2,33 +2,33 @@
  * motiondetect.c
  *
  *  Copyright (C) Georg Martius - February 1007-2011
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *  Copyright (C) Alexey Osipov - Jule 2011
  *   simba at lerlan dot ru
  *   speed optimizations (threshold, spiral, SSE, asm)
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
+ *  This work is licensed under the Creative Commons
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
+ *  San Francisco, California, 94105, USA.
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
@@ -100,11 +100,11 @@ int configureMotionDetect(MotionDetect* md) {
     md->stepSize = 6; // maybe 4
   }
 
-  // shift: shakiness 1: height/40; 10: height/4 
+  // shift: shakiness 1: height/40; 10: height/4
   int minDimension = DS_MIN(md->fi.width, md->fi.height);
   md->maxShift
     = DS_MAX(4,(minDimension*md->shakiness)/40);
-  // size: shakiness 1: height/40; 10: height/6 (clipped) 
+  // size: shakiness 1: height/40; 10: height/6 (clipped)
   md->fieldSize
     = DS_MAX(4,DS_MIN(minDimension/6, (minDimension*md->shakiness)/40));
 
@@ -128,7 +128,7 @@ int configureMotionDetect(MotionDetect* md) {
   //  else
   //    md->currcopy=NULL;
   md->currtmp = ds_zalloc(md->fi.framesize);
-  
+
   md->initialized = 2;
   return DS_OK;
 }
@@ -170,28 +170,28 @@ int writeTransformToFile(const MotionDetect* md, FILE* f, Transform* t){
     if(fprintf(f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
                md->frameNum, t->x, t->y, t->alpha, t->zoom, t->extra)>0)
         return DS_OK;
-    else 
+    else
         return DS_ERROR;
 }
 
 
-int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame) {
+int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *frame) {
   assert(md->initialized==2);
 
   md->currorig = frame;
-  // smoothen image to do better motion detection 
-  //  (larger stepsize or eventually gradient descent (need higher resolution)
-  if (md->fi.pFormat == PF_RGB) { 
+  // smoothen image to do better motion detection
+  //  (larger stepsize or eventually gradient descent (need higher resolution))
+  if (md->fi.pFormat == PF_RGB) {
     // we could calculate a grayscale version and use the YUV stuff afterwards
-    // so far only YUV implemented
+    // so far smoothing is only implemented for YUV
     memcpy(md->curr, frame, md->fi.framesize);
   } else {
     // box-kernel smoothing (plain average of pixels), which is fine for us
-    boxblurYUV(md->curr, frame, md->currtmp, &md->fi, md->stepSize*1/*1.4*/, 
-    	       BoxBlurNoColor);
+    boxblurYUV(md->curr, frame, md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
+               BoxBlurNoColor);
     // two times yields tent-kernel smoothing, which may be better, but I don't
     //  think we need it
-    //boxblurYUV(md->curr, md->curr, md->currtmp, &md->fi, md->stepSize*1, 
+    //boxblurYUV(md->curr, md->curr, md->currtmp, &md->fi, md->stepSize*1,
     // BoxBlurNoColor);
   }
 
@@ -199,22 +199,22 @@ int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame) {
     //    md->curr = frame;
     if (md->fi.pFormat == PF_RGB) {
       if (md->algo == 0)
-	*trans = calcShiftRGBSimple(md);
+        *motions = calcShiftRGBSimple(md);
       else if (md->algo == 1)
-	*trans = calcTransFields(md, calcFieldTransRGB, contrastSubImgRGB);
+        *motions = calcTransFields(md, calcFieldTransRGB, contrastSubImgRGB);
     } else if (md->fi.pFormat == PF_YUV) {
       if (md->algo == 0)
-	*trans = calcShiftYUVSimple(md);
+        *motions = calcShiftYUVSimple(md);
       else if (md->algo == 1)
-	*trans = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
+        *motions = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
     } else {
       ds_log_warn(md->modName, "unsupported Pixel Format (Codec: %i)\n",
-		  md->fi.pFormat);
+                  md->fi.pFormat);
       return DS_ERROR;
     }
   } else {
+    ds_vector_init(motions,md->maxFields);
     md->hasSeenOneFrame = 1;
-    *trans = null_transform();
   }
 
   // copy current frame (smoothed) to prev for next frame comparison
@@ -238,7 +238,7 @@ int initFields(MotionDetect* md) {
   // ds_log_msg(md->modName, "field setup: rows: %i cols: %i Total: %i fields",
   //            rows, cols, md->field_num);
 
-  if (!(md->fields = (Field*) malloc(sizeof(Field) * md->fieldNum))) {
+  if (!(md->fields = (Field*) ds_malloc(sizeof(Field) * md->fieldNum))) {
     ds_log_error(md->modName, "malloc failed!\n");
     return 0;
   } else {
@@ -251,10 +251,10 @@ int initFields(MotionDetect* md) {
     int step_y = (md->fi.height - 2 * border) / DS_MAX(rows-1,1);
     for (j = 0; j < rows; j++) {
       for (i = 0; i < cols; i++) {
-	int idx = j * cols + i;
-	md->fields[idx].x = border + i * step_x;
-	md->fields[idx].y = border + j * step_y;
-	md->fields[idx].size = size;
+        int idx = j * cols + i;
+        md->fields[idx].x = border + i * step_x;
+        md->fields[idx].y = border + j * step_y;
+        md->fields[idx].size = size;
       }
     }
   }
@@ -268,7 +268,7 @@ int initFields(MotionDetect* md) {
    \param d_y shift in y direction
 */
 unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
-	       int bytesPerPixel, int d_x, int d_y) {
+                        int bytesPerPixel, int d_x, int d_y) {
   int i, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
@@ -303,7 +303,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
     for (j = 0; j < effectWidth * bytesPerPixel; j++) {
       /*// debugging code continued */
       /* fwrite(p1,1,1,pic1);fwrite(p1,1,1,pic1);fwrite(p1,1,1,pic1);
-	 fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);
+         fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);fwrite(p2,1,1,pic2);
       */
       sum += abs((int) *p1 - (int) *p2);
       p1++;
@@ -313,7 +313,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
   /*  fclose(pic1);
       fclose(pic2);
   */
-  return sum; 
+  return sum;
 }
 
 
@@ -324,7 +324,7 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field) {
 #else
   return contrastSubImg(md->curr,field,md->fi.width,md->fi.height,1);
 #endif
-  
+
 }
 
 /**
@@ -334,8 +334,8 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field) {
 double contrastSubImgRGB(MotionDetect* md, const Field* field) {
   unsigned char* const I = md->curr;
   return (contrastSubImg(I, field, md->fi.width, md->fi.height, 3)
-	  + contrastSubImg(I + 1, field, md->fi.width, md->fi.height, 3)
-	  + contrastSubImg(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
+          + contrastSubImg(I + 1, field, md->fi.width, md->fi.height, 3)
+          + contrastSubImg(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
 }
 
 /**
@@ -349,7 +349,7 @@ double contrastSubImgRGB(MotionDetect* md, const Field* field) {
    \param bytesPerPixel calc contrast for only for first channel
 */
 double contrastSubImg(unsigned char* const I, const Field* field, int width,
-				int height, int bytesPerPixel) {
+                      int height, int bytesPerPixel) {
   int k, j;
   unsigned char* p = NULL;
   int s2 = field->size / 2;
@@ -374,22 +374,30 @@ double contrastSubImg(unsigned char* const I, const Field* field, int width,
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-Transform calcShiftRGBSimple(MotionDetect* md) {
-  int x = 0, y = 0;
+LocalMotions calcShiftRGBSimple(MotionDetect* md) {
+  LocalMotions localmotions;
+  ds_vector_init(&localmotions,1);
+  LocalMotion lm;
   int i, j;
   int minerror =  INT_MAX;
+  lm.v.x = 0, lm.v.y = 0;
   for (i = -md->maxShift; i <= md->maxShift; i++) {
     for (j = -md->maxShift; j <= md->maxShift; j++) {
       int error = compareImg(md->curr, md->prev, md->fi.width,
-				md->fi.height, 3, i, j);
+                             md->fi.height, 3, i, j);
       if (error < minerror) {
-	minerror = error;
-	x = i;
-	y = j;
+        minerror = error;
+        lm.v.x = i;
+        lm.v.y = j;
       }
     }
   }
-  return new_transform(x, y, 0, 0, 0);
+  lm.f.x=0;
+  lm.f.y=0;
+  lm.match=minerror;
+  lm.contrast=1;
+  ds_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
+  return localmotions;
 }
 
 /** tries to register current frame onto previous frame.
@@ -398,8 +406,10 @@ Transform calcShiftRGBSimple(MotionDetect* md) {
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-Transform calcShiftYUVSimple(MotionDetect* md) {
-  int x = 0, y = 0;
+LocalMotions calcShiftYUVSimple(MotionDetect* md) {
+  LocalMotions localmotions;
+  ds_vector_init(&localmotions,1);
+  LocalMotion lm;
   int i, j;
   unsigned char *Y_c, *Y_p;// , *Cb, *Cr;
 #ifdef STABVERBOSE
@@ -409,6 +419,7 @@ Transform calcShiftYUVSimple(MotionDetect* md) {
   f = fopen(buffer, "w");
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
+  lm.v.x = 0, lm.v.y = 0;
 
   // we only use the luminance part of the image
   Y_c = md->curr;
@@ -422,14 +433,14 @@ Transform calcShiftYUVSimple(MotionDetect* md) {
   for (i = -md->maxShift; i <= md->maxShift; i++) {
     for (j = -md->maxShift; j <= md->maxShift; j++) {
       int error = compareImg(Y_c, Y_p, md->fi.width, md->fi.height, 1,
-				i, j);
+                             i, j);
 #ifdef STABVERBOSE
       fprintf(f, "%i %i %f\n", i, j, error);
 #endif
       if (error < minerror) {
-	minerror = error;
-	x = i;
-	y = j;
+        minerror = error;
+        lm.v.x = i;
+        lm.v.y = j;
       }
     }
   }
@@ -437,22 +448,27 @@ Transform calcShiftYUVSimple(MotionDetect* md) {
   fclose(f);
   ds_log_msg(md->modName, "Minerror: %f\n", minerror);
 #endif
-  return new_transform(x, y, 0, 0, 0);
+  lm.f.x=0;
+  lm.f.y=0;
+  lm.match=minerror;
+  lm.contrast=1;
+  ds_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
+  return localmotions;
 }
 
 /* calculates rotation angle for the given transform and
  * field with respect to the given center-point
  */
-double calcAngle(MotionDetect* md, Field* field, Transform* t, int center_x,
-		 int center_y) {
+double calcAngle(MotionDetect* md, const LocalMotion* lm,
+                 int center_x, int center_y){
   // we better ignore fields that are to close to the rotation center
-  if (abs(field->x - center_x) + abs(field->y - center_y) < md->maxShift) {
+  if (abs(lm->f.x - center_x) + abs(lm->f.y - center_y) < md->maxShift) {
     return 0;
   } else {
-    // double r = sqrt(field->x*field->x + field->y*field->y);
-    double a1 = atan2(field->y - center_y, field->x - center_x);
-    double a2 = atan2(field->y - center_y + t->y, field->x - center_x
-		      + t->x);
+    // double r = sqrt(lm->f.x*lm->f.x + lm->f.y*lm->f.y);
+    double a1 = atan2(lm->f.y - center_y, lm->f.x - center_x);
+    double a2 = atan2(lm->f.y - center_y + lm->v.y,
+                      lm->f.x - center_x + lm->v.x);
     double diff = a2 - a1;
     return (diff > M_PI) ? diff - 2 * M_PI : ((diff < -M_PI) ? diff + 2
 					      * M_PI : diff);
@@ -462,7 +478,7 @@ double calcAngle(MotionDetect* md, Field* field, Transform* t, int center_x,
 /* calculates the optimal transformation for one field in YUV frames
  * (only luminance)
  */
-Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) {
+LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) {
   int tx = 0;
   int ty = 0;
   uint8_t *Y_c = md->curr, *Y_p = md->prev;
@@ -488,67 +504,67 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   int step = 0;
   int dir = 0;
   while (j >= -md->maxShift && j <= md->maxShift && i >= -md->maxShift && i <= md->maxShift) {
-      unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-                 1, i, j, minerror);
+    unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
+                                       1, i, j, minerror);
 
-      if (error < minerror) {
-          minerror = error;
-          tx = i;
-          ty = j;
-      }
+    if (error < minerror) {
+      minerror = error;
+      tx = i;
+      ty = j;
+    }
 
-      //spiral indexing...
-      step++;
-      switch (dir) {
-      case 0:
-         i += stepSize;
-         if (step == limit) {
-             dir = 1;
-             step = 0;
-         }
-	 break;	 
-      case 1:
-         j += stepSize;
-         if (step == limit) {
-             dir = 2;
-             step = 0;
-             limit++;
-         }
-	 break;
-      case 2:
-         i -= stepSize;
-         if (step == limit) {
-	   dir = 3;
-	   step = 0;
-         }
-	 	 break;
-      case 3:
-         j -= stepSize;
-         if (step == limit) {
-             dir = 0;
-             step = 0;
-             limit++;
-         }
-	 break;
+    //spiral indexing...
+    step++;
+    switch (dir) {
+     case 0:
+      i += stepSize;
+      if (step == limit) {
+        dir = 1;
+        step = 0;
       }
+      break;
+     case 1:
+      j += stepSize;
+      if (step == limit) {
+        dir = 2;
+        step = 0;
+        limit++;
+      }
+      break;
+     case 2:
+      i -= stepSize;
+      if (step == limit) {
+        dir = 3;
+        step = 0;
+      }
+      break;
+     case 3:
+      j -= stepSize;
+      if (step == limit) {
+        dir = 0;
+        step = 0;
+        limit++;
+      }
+      break;
+    }
   }
 #else
   /* Here we improve speed by checking first the most probable position
-     then the search paths are most effectively cut. (0,0) is a simple start    
+     then the search paths are most effectively cut. (0,0) is a simple start
   */
   unsigned int minerror = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-					1, 0, 0, UINT_MAX);
+                                        1, 0, 0, UINT_MAX);
   // check all positions...
   for (i = -md->maxShift; i <= md->maxShift; i += stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += stepSize) {
-      if( i==0 && j==0 ) 
-	continue; //no need to check this since already done      
+      if( i==0 && j==0 )
+        continue; //no need to check this since already done
       unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-					 1, i, j, minerror);
+                                         1, i, j, minerror);
       if (error < minerror) {
-	minerror = error;
-	tx = i;
-	ty = j;
+        minerror = error;
+        tx = i;
+        ty = j;
       }
 #ifdef STABVERBOSE
       fprintf(f, "%i %i %f\n", i, j, error);
@@ -557,26 +573,26 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
   }
 
 #endif
-  
+
   while(stepSize > 1) {// make fine grain check around the best match
     int txc = tx; // save the shifts
     int tyc = ty;
-    int newStepSize = stepSize/2; 
+    int newStepSize = stepSize/2;
     int r = stepSize - newStepSize;
     for (i = txc - r; i <= txc + r; i += newStepSize) {
       for (j = tyc - r; j <= tyc + r; j += newStepSize) {
-	if (i == txc && j == tyc)
-	  continue; //no need to check this since already done
-	unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
-					   md->fi.height, 1, i, j, minerror);
+        if (i == txc && j == tyc)
+          continue; //no need to check this since already done
+        unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
+                                           md->fi.height, 1, i, j, minerror);
 #ifdef STABVERBOSE
-	fprintf(f, "%i %i %f\n", i, j, error);
+        fprintf(f, "%i %i %f\n", i, j, error);
 #endif
-	if (error < minerror) {
-	  minerror = error;
-	  tx = i;
-	  ty = j;
-	}
+        if (error < minerror) {
+          minerror = error;
+          tx = i;
+          ty = j;
+        }
       }
     }
     stepSize /= 2;
@@ -598,37 +614,40 @@ Transform calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) 
 #endif
     ty = 0;
   }
-  Transform t = null_transform();
-  t.x = tx;
-  t.y = ty;
-  return t;
+  LocalMotion lm = null_localmotion();
+  lm.f = *field;
+  lm.v.x = tx;
+  lm.v.y = ty;
+  lm.match = minerror;
+  return lm;
 }
 
 /* calculates the optimal transformation for one field in RGB
  *   slower than the YUV version because it uses all three color channels
  */
-Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) {
+LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
+                              int fieldnum) {
   int tx = 0;
   int ty = 0;
   uint8_t *I_c = md->curr, *I_p = md->prev;
   int i, j;
 
   /* Here we improve speed by checking first the most probable position
-     then the search paths are most effectively cut. (0,0) is a simple start    
+     then the search paths are most effectively cut. (0,0) is a simple start
   */
   unsigned int minerror = compareSubImg(I_c, I_p, field, md->fi.width, md->fi.height,
-					3, 0, 0, UINT_MAX);
+                                        3, 0, 0, UINT_MAX);
   // check all positions...
   for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
-      if( i==0 && j==0 ) 
-	continue; //no need to check this since already done
+      if( i==0 && j==0 )
+        continue; //no need to check this since already done
       unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
-					 md->fi.height, 3, i, j, minerror);
+                                         md->fi.height, 3, i, j, minerror);
       if (error < minerror) {
-	minerror = error;
-	tx = i;
-	ty = j;
+        minerror = error;
+        tx = i;
+        ty = j;
       }
     }
   }
@@ -638,15 +657,15 @@ Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) 
     int r = md->stepSize - 1;
     for (i = txc - r; i <= txc + r; i += 1) {
       for (j = tyc - r; j <= tyc + r; j += 1) {
-	if (i == txc && j == tyc)
-	  continue; //no need to check this since already done
-	unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
-					   md->fi.height, 3, i, j, minerror);
-	if (error < minerror) {
-	  minerror = error;
-	  tx = i;
-	  ty = j;
-	}
+        if (i == txc && j == tyc)
+          continue; //no need to check this since already done
+        unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
+                                           md->fi.height, 3, i, j, minerror);
+        if (error < minerror) {
+          minerror = error;
+          tx = i;
+          ty = j;
+        }
       }
     }
   }
@@ -663,10 +682,12 @@ Transform calcFieldTransRGB(MotionDetect* md, const Field* field, int fieldnum) 
 #endif
     ty = 0;
   }
-  Transform t = null_transform();
-  t.x = tx;
-  t.y = ty;
-  return t;
+  LocalMotion lm = null_localmotion();
+  lm.f = *field;
+  lm.v.x = tx;
+  lm.v.y = ty;
+  lm.match = minerror;
+  return lm;
 }
 
 /* compares contrast_idx structures respect to the contrast
@@ -688,7 +709,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
   contrast_idx *ci =
     (contrast_idx*) ds_malloc(sizeof(contrast_idx) * md->fieldNum);
   ds_vector_init(&goodflds, md->fieldNum);
-  
+
   // we split all fields into row+1 segments and take from each segment
   // the best fields
   int numsegms = (md->fieldRows + 1);
@@ -705,7 +726,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
     if (ci[i].contrast < md->contrastThreshold)
       ci[i].contrast = 0;
     // else printf("%i %lf\n", ci[i].index, ci[i].contrast);
-  }  
+  }
 
   memcpy(ci_segms, ci, sizeof(contrast_idx) * md->fieldNum);
   // get best fields from each segment
@@ -717,18 +738,18 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
 
     // sort within segment
     qsort(ci_segms + startindex, endindex - startindex,
-	  sizeof(contrast_idx), cmp_contrast_idx);
+          sizeof(contrast_idx), cmp_contrast_idx);
     // take maxfields/numsegms
     for (j = 0; j < md->maxFields / numsegms; j++) {
       if (startindex + j >= endindex)
-	continue;
+        continue;
       // printf("%i %lf\n", ci_segms[startindex+j].index,
       //                    ci_segms[startindex+j].contrast);
       if (ci_segms[startindex + j].contrast > 0) {
-	ds_vector_append_dup(&goodflds, &ci[ci_segms[startindex+j].index],
-			   sizeof(contrast_idx));
-	// don't consider them in the later selection process
-	ci_segms[startindex + j].contrast = 0;
+        ds_vector_append_dup(&goodflds, &ci[ci_segms[startindex+j].index],
+                             sizeof(contrast_idx));
+        // don't consider them in the later selection process
+        ci_segms[startindex + j].contrast = 0;
       }
     }
   }
@@ -740,7 +761,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
     qsort(ci_segms, md->fieldNum, sizeof(contrast_idx), cmp_contrast_idx);
     for (j = 0; j < remaining; j++) {
       if (ci_segms[j].contrast > 0) {
-	ds_vector_append_dup(&goodflds, &ci_segms[j], sizeof(contrast_idx));
+        ds_vector_append_dup(&goodflds, &ci_segms[j], sizeof(contrast_idx));
       }
     }
   }
@@ -762,13 +783,13 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
  *   calculate rotation angle as cleaned mean of all angles
  *   compensate for possibly off-center rotation
  */
-Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
-			  contrastSubImgFunc contrastfunc) {
-  Transform* ts = (Transform*) ds_malloc(sizeof(Transform) * md->fieldNum);
-  Field** fs = (Field**) ds_malloc(sizeof(Field*) * md->fieldNum);
-  double *angles = (double*) ds_malloc(sizeof(double) * md->fieldNum);
-  int i, index = 0, num_trans;
-  Transform t;
+LocalMotions calcTransFields(MotionDetect* md,
+                             calcFieldTransFunc fieldfunc,
+                             contrastSubImgFunc contrastfunc) {
+  LocalMotions localmotions;
+  ds_vector_init(&localmotions,md->maxFields);
+
+  int i, index = 0, num_motions;
 #ifdef STABVERBOSE
   FILE *file = NULL;
   char buffer[32];
@@ -777,116 +798,127 @@ Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
   fprintf(file, "# plot \"%s\" w l, \"\" every 2:1:0\n", buffer);
 #endif
 
-  DSVector goodflds = selectfields(md, contrastfunc);  
+  DSVector goodflds = selectfields(md, contrastfunc);
   // use all "good" fields and calculate optimal match to previous frame
 #ifdef USE_OMP
-#pragma omp parallel for shared(goodflds, md, ts, fs) // does not bring speedup
+#pragma omp parallel for shared(goodflds, md, localmotions, fs) // does not bring speedup
 #endif
   for(index=0; index < ds_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)ds_vector_get(&goodflds,index))->index;
-       
-    t = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransYUV
+    LocalMotion m;
+    m = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransYUV
+    m.contrast = ((contrast_idx*)ds_vector_get(&goodflds,index))->contrast;
 #ifdef STABVERBOSE
-    fprintf(file, "%i %i\n%f %f %i\n \n\n", md->fields[i].x, md->fields[i].y,
-	    md->fields[i].x + t.x, md->fields[i].y + t.y, t.extra);
+    fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
+            m.f.x + m.v.x, m.f.y + m.v.y, m.match, m.contrast);
 #endif
-    if (t.extra != -1) { // ignore if extra == -1 (unused at the moment)
-      ts[index] = t;
-      fs[index] = md->fields + i;
-    }
+    //if (t.match > somethreshold) { // ignore if too bad
+    ds_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
+      //}
   }
 
-  t = null_transform();
-  num_trans = ds_vector_size(&goodflds); // amount of transforms we actually have
+  num_motions = ds_vector_size(&localmotions); // amount of transforms we actually have
   ds_vector_del(&goodflds);
-  if (num_trans < 1) {
+  if (num_motions < 1) {
     ds_log_warn(md->modName, "too low contrast! No field remains.\n \
                     (no translations are detected in frame %i)", md->frameNum);
-    return t;
   }
-
-  int center_x = 0;
-  int center_y = 0;
-  // calc center point of all remaining fields
-  for (i = 0; i < num_trans; i++) {
-    center_x += fs[i]->x;
-    center_y += fs[i]->y;
-  }
-  center_x /= num_trans;
-  center_y /= num_trans;
 
   if (md->show) { // draw fields and transforms into frame.
     // this has to be done one after another to handle possible overlap
     if (md->show > 1) {
-      for (i = 0; i < num_trans; i++)
-	drawFieldScanArea(md, fs[i], &ts[i]);
+      for (i = 0; i < num_motions; i++)
+        drawFieldScanArea(md, LMGet(&localmotions,i));
     }
-    for (i = 0; i < num_trans; i++)
-      drawField(md, fs[i], &ts[i]);
-    for (i = 0; i < num_trans; i++)
-      drawFieldTrans(md, fs[i], &ts[i]);
+    for (i = 0; i < num_motions; i++)
+      drawField(md, LMGet(&localmotions,i));
+    for (i = 0; i < num_motions; i++)
+      drawFieldTrans(md, LMGet(&localmotions,i));
   }
-  /* median over all transforms
-     t= median_xy_transform(ts, md->field_num);*/
-  // cleaned mean
-  t = cleanmean_xy_transform(ts, num_trans);
+#ifdef STABVERBOSE
+  fclose(file);
+#endif
+  return localmotions;
+}
 
-  // substract avg
-  for (i = 0; i < num_trans; i++) {
-    ts[i] = sub_transforms(&ts[i], &t);
+
+
+
+Transform simpleMotionsToTransform(MotionDetect* md,
+                                   const LocalMotions* motions){
+  int center_x = 0;
+  int center_y = 0;
+  int num_motions=ds_vector_size(motions);
+  double *angles = (double*) ds_malloc(sizeof(double) * num_motions);
+  Transform t;
+  LocalMotion meanmotion;
+  int i;
+  if(num_motions < 1)
+    return null_transform();
+
+  // calc center point of all remaining fields
+  for (i = 0; i < num_motions; i++) {
+    center_x += LMGet(motions,i)->f.x;
+    center_y += LMGet(motions,i)->f.y;
   }
+  center_x /= num_motions;
+  center_y /= num_motions;
+
+  // cleaned mean
+  meanmotion = cleanmean_localmotions(motions);
+
   // figure out angle
-  if (md->fieldNum < 6) {
+  if (num_motions < 6) {
     // the angle calculation is inaccurate for 5 and less fields
     t.alpha = 0;
   } else {
-    for (i = 0; i < num_trans; i++) {
-      angles[i] = calcAngle(md, fs[i], &ts[i], center_x, center_y);
+    for (i = 0; i < num_motions; i++) {
+      // substract avg and calc angle
+      LocalMotion m = sub_localmotion(LMGet(motions,i),&meanmotion);
+      angles[i] = calcAngle(md, &m, center_x, center_y);
     }
     double min, max;
-    t.alpha = -cleanmean(angles, num_trans, &min, &max);
+    t.alpha = -cleanmean(angles, num_motions, &min, &max);
     if (max - min > md->maxAngleVariation) {
       t.alpha = 0;
       ds_log_info(md->modName, "too large variation in angle(%f)\n",
 		  max-min);
     }
   }
+  ds_free(angles);
   // compensate for off-center rotation
   double p_x = (center_x - md->fi.width / 2);
   double p_y = (center_y - md->fi.height / 2);
-  t.x += (cos(t.alpha) - 1) * p_x - sin(t.alpha) * p_y;
-  t.y += sin(t.alpha) * p_x + (cos(t.alpha) - 1) * p_y;
+  t.x = meanmotion.v.x + (cos(t.alpha) - 1) * p_x - sin(t.alpha) * p_y;
+  t.y = meanmotion.v.y + sin(t.alpha) * p_x + (cos(t.alpha) - 1) * p_y;
 
-#ifdef STABVERBOSE
-  fclose(file);
-#endif
   return t;
 }
 
 /** draws the field scanning area */
-void drawFieldScanArea(MotionDetect* md, const Field* field, const Transform* t) {
+void drawFieldScanArea(MotionDetect* md, const LocalMotion* lm) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y,
-	  field->size + 2 * md->maxShift, field->size + 2 * md->maxShift, 80);
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y,
+	  lm->f.size + 2 * md->maxShift, lm->f.size + 2 * md->maxShift, 80);
 }
 
 /** draws the field */
-void drawField(MotionDetect* md, const Field* field, const Transform* t) {
+void drawField(MotionDetect* md, const LocalMotion* lm) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y,
-	  field->size, field->size, t->extra == -1 ? 100 : 40);
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y,
+          lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
 }
 
 /** draws the transform data of this field */
-void drawFieldTrans(MotionDetect* md, const Field* field, const Transform* t) {
+void drawFieldTrans(MotionDetect* md, const LocalMotion* lm) {
   if (!md->fi.pFormat == PF_YUV)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x, field->y, 5, 5,
-	  128); // draw center
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, field->x + t->x, field->y
-	  + t->y, 8, 8, 250); // draw translation
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y, 5, 5,
+          128); // draw center
+  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x + lm->v.x, lm->f.y
+          + lm->v.y, 8, 8, 250); // draw translation
 }
 
 /**
@@ -919,14 +951,14 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
 //   if (!md->transs || !md->transs->head) {
 //     return null_transform();
 //   }
-//   return *((Transform*)md->transs->tail);  
+//   return *((Transform*)md->transs->tail);
 // }
 
 
 //#ifdef TESTING
 /// plain C implementation of compareSubImg (without ORC)
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-			     const Field* field, int width, int height, 
+			     const Field* field, int width, int height,
 			     int bytesPerPixel, int d_x, int d_y,
 			     unsigned int threshold) {
   int k, j;
@@ -958,6 +990,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   tab-width:  2
+ *   c-basic-offset: 2 t
  * End:
  *
  */

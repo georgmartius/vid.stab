@@ -2,28 +2,28 @@
  *  filter_stabilize.c
  *
  *  Copyright (C) Georg Martius - June 2007
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of transcode, a video stream processing tool
- *      
+ *
  *  transcode is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
  *  any later version.
- *   
+ *
  *  transcode is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
 
 /* Typical call:
- *  transcode -V -J stabilize=shakiness=5:show=1,preview 
+ *  transcode -V -J stabilize=shakiness=5:show=1,preview
  *         -i inp.mpeg -y null,null -o dummy
  *  all parameters are optional
  */
@@ -52,7 +52,7 @@
 
 #include <math.h>
 #include <libgen.h>
-  
+
 #include "transcode.h"
 #include "filter.h"
 #include "libtc/libtc.h"
@@ -141,7 +141,7 @@ static int stabilize_configure(TCModuleInstance *self,
 
     sd = self->userdata;
 
-    /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES * 
+    /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
           sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
     MotionDetect* md = &(sd->md);
@@ -155,7 +155,7 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
-    
+
     sd->result = tc_malloc(TC_BUF_LINE);
     filenamecopy = tc_strdup(sd->vob->video_in_file);
     filebasename = basename(filenamecopy);
@@ -167,8 +167,8 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_snprintf(sd->result, TC_BUF_LINE, DEFAULT_TRANS_FILE_NAME);
     }
 
-    if (options != NULL) {            
-        // for some reason this plugin is called in the old fashion 
+    if (options != NULL) {
+        // for some reason this plugin is called in the old fashion
         //  (not with inspect). Anyway we support both ways of getting help.
         if(optstr_lookup(options, "help")) {
             tc_log_info(MOD_NAME,motiondetect_help);
@@ -188,7 +188,7 @@ static int stabilize_configure(TCModuleInstance *self,
     	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
         return TC_ERROR;
     }
-    
+
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Stabilization Settings:");
         tc_log_info(MOD_NAME, "     shakiness = %d", md->shakiness);
@@ -199,7 +199,7 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "          show = %d", md->show);
         tc_log_info(MOD_NAME, "        result = %s", sd->result);
     }
-  
+
     sd->f = fopen(sd->result, "w");
     if (sd->f == NULL) {
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
@@ -230,26 +230,28 @@ static int stabilize_configure(TCModuleInstance *self,
  * See tcmodule-data.h for function details.
  */
 
-static int stabilize_filter_video(TCModuleInstance *self, 
+static int stabilize_filter_video(TCModuleInstance *self,
                                   vframe_list_t *frame)
 {
     StabData *sd = NULL;
-  
+
     TC_MODULE_SELF_CHECK(self, "filter_video");
     TC_MODULE_SELF_CHECK(frame, "filter_video");
-  
-    sd = self->userdata;    
+
+    sd = self->userdata;
     MotionDetect* md = &(sd->md);
+    LocalMotions localmotions;
     Transform t;
-    if(motionDetection(md, &t, frame->video_buf)!= DS_OK){
+    if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
-    } else {
-        if(writeTransformToFile(md, sd->f, &t) != DS_OK)
-            return TC_ERROR;
-        else 
-            return TC_OK;
     }
+    t = simpleMotionsToTransform(md, &localmotions);
+    ds_vector_del(&localmotions);
+    if(writeTransformToFile(md, sd->f, &t) != DS_OK)
+        return TC_ERROR;
+    else
+        return TC_OK;
 }
 
 /**
@@ -293,7 +295,7 @@ static int stabilize_inspect(TCModuleInstance *self,
 			     const char *param, const char **value)
 {
     StabData *sd = NULL;
-    
+
     TC_MODULE_SELF_CHECK(self, "inspect");
     TC_MODULE_SELF_CHECK(param, "inspect");
     TC_MODULE_SELF_CHECK(value, "inspect");
@@ -311,13 +313,13 @@ static int stabilize_inspect(TCModuleInstance *self,
     return TC_OK;
 }
 
-static const TCCodecID stabilize_codecs_in[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID stabilize_codecs_in[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-static const TCCodecID stabilize_codecs_out[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID stabilize_codecs_out[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-TC_MODULE_FILTER_FORMATS(stabilize); 
+TC_MODULE_FILTER_FORMATS(stabilize);
 
 TC_MODULE_INFO(stabilize);
 

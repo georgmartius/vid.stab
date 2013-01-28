@@ -2,33 +2,33 @@
  *  motiondetect.h
  *
  *  Copyright (C) Georg Martius - February 2011
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *  Copyright (C) Alexey Osipov - Jule 2011
  *   simba at lerlan dot ru
  *   speed optimizations (threshold, spiral, SSE, asm)
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
+ *  This work is licensed under the Creative Commons
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
+ *  San Francisco, California, 94105, USA.
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
@@ -45,13 +45,6 @@
 #include "frameinfo.h"
 
 #define USE_SPIRAL_FIELD_CALC
-
-/** stores x y and size of a measurement field */
-typedef struct _field {
-  int x;     // middle position x
-  int y;     // middle position y
-  int size;  // size of field
-} Field;
 
 
 /** data structure for motion detection part of deshaking*/
@@ -95,7 +88,7 @@ typedef struct motiondetect {
 
 /* type for a function that calculates the transformation of a certain field
  */
-typedef Transform (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
+typedef LocalMotion (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
 
 /* type for a function that calculates the contrast of a certain field
  */
@@ -106,7 +99,7 @@ static const char motiondetect_help[] = ""
     "Overview:\n"
     "    Generates a file with relative transform information\n"
     "     (translation, rotation) about subsequent frames."
-    " See also transform.\n" 
+    " See also transform.\n"
     "Options\n"
     "    'result'      path to the file used to write the transforms\n"
     "                  (def:inputfile.stab)\n"
@@ -139,9 +132,16 @@ int configureMotionDetect(MotionDetect* md);
  *  Performs a motion detection step
  *  Only the new current frame is given. The last frame
  *  is stored internally
- *  @param trans: calculated transform is stored here
+ *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int motionDetection(MotionDetect* md, Transform* trans, unsigned char *frame);
+int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *frame);
+
+/** calculates the transformation that caused the observed motions.
+    Using a simple cleaned-means approach to eliminate outliers.
+    translation and rotation is calculated.
+*/
+Transform simpleMotionsToTransform(MotionDetect* md,
+                                   const LocalMotions* motions);
 
 /** Deletes internal data structures.
  * In order to use the MotionDetect again, you have to call initMotionDetect
@@ -153,8 +153,6 @@ int prepareTransformFile(const MotionDetect* td, FILE* f);
 
 /// appends the given transformation to the transform file
 int writeTransformToFile(const MotionDetect* td, FILE* f, Transform* trans);
-
-
 
 
 int initFields(MotionDetect* md);
@@ -170,21 +168,21 @@ double contrastSubImg(unsigned char* const I, const Field* field,
 int cmp_contrast_idx(const void *ci1, const void* ci2);
 DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
 
-Transform calcShiftRGBSimple(MotionDetect* md);
-Transform calcShiftYUVSimple(MotionDetect* md);
-double calcAngle(MotionDetect* md, Field* field, Transform* t,
+LocalMotions calcShiftRGBSimple(MotionDetect* md);
+LocalMotions calcShiftYUVSimple(MotionDetect* md);
+double calcAngle(MotionDetect* md, const LocalMotion* lm,
                  int center_x, int center_y);
-Transform calcFieldTransYUV(MotionDetect* md, const Field* field,
+LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field,
                             int fieldnum);
-Transform calcFieldTransRGB(MotionDetect* md, const Field* field,
+LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
                             int fieldnum);
-Transform calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
-                          contrastSubImgFunc contrastfunc);
+LocalMotions calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
+                             contrastSubImgFunc contrastfunc);
 
 
-void drawFieldScanArea(MotionDetect* md, const Field* field, const Transform* t);
-void drawField(MotionDetect* md, const Field* field, const Transform* t);
-void drawFieldTrans(MotionDetect* md, const Field* field, const Transform* t);
+void drawFieldScanArea(MotionDetect* md, const LocalMotion* motion);
+void drawField(MotionDetect* md, const LocalMotion* motion);
+void drawFieldTrans(MotionDetect* md, const LocalMotion* motion);
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
 

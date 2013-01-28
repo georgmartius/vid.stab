@@ -4,20 +4,20 @@
  *  Copyright (C) Georg Martius - June 2007
  *
  *  This file is part of transcode, a video stream processing tool
- *      
+ *
  *  transcode is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
  *  any later version.
- *   
+ *
  *  transcode is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
 #include <stdlib.h>
@@ -31,9 +31,9 @@
  */
 
 /* create an initialized transform*/
-Transform new_transform(double x, double y, double alpha, 
+Transform new_transform(double x, double y, double alpha,
                         double zoom, int extra)
-{ 
+{
     Transform t;
     t.x     = x;
     t.y     = y;
@@ -45,7 +45,7 @@ Transform new_transform(double x, double y, double alpha,
 
 /* create a zero initialized transform*/
 Transform null_transform(void)
-{ 
+{
     return new_transform(0, 0, 0, 0, 0);
 }
 
@@ -128,15 +128,23 @@ int cmp_double(const void *t1, const void* t2)
     return a < b ? -1 : ( a > b ? 1 : 0 );
 }
 
+/* compares two int values (for sort function)*/
+int cmp_int(const void *t1, const void* t2)
+{
+    int a = *((int*)t1);
+    int b = *((int*)t2);
+    return a < b ? -1 : ( a > b ? 1 : 0 );
+}
+
 /**
- * median_xy_transform: calulcates the median of an array 
+ * median_xy_transform: calulcates the median of an array
  * of transforms, considering only x and y
  *
  * Parameters:
  *    transforms: array of transforms.
  *           len: length  of array
  * Return value:
- *     A new transform with x and y beeing the median of 
+ *     A new transform with x and y beeing the median of
  *     all transforms. alpha and other fields are 0.
  * Preconditions:
  *     len>0
@@ -147,7 +155,7 @@ Transform median_xy_transform(const Transform* transforms, int len)
 {
     Transform* ts = ds_malloc(sizeof(Transform) * len);
     Transform t;
-    memcpy(ts,transforms, sizeof(Transform)*len ); 
+    memcpy(ts,transforms, sizeof(Transform)*len );
     int half = len/2;
     qsort(ts, len, sizeof(Transform), cmp_trans_x);
     t.x = len % 2 == 0 ? ts[half].x : (ts[half].x + ts[half+1].x)/2;
@@ -161,15 +169,15 @@ Transform median_xy_transform(const Transform* transforms, int len)
 }
 
 /**
- * cleanmean_xy_transform: calulcates the cleaned mean of an array 
+ * cleanmean_xy_transform: calulcates the cleaned mean of an array
  * of transforms, considering only x and y
  *
  * Parameters:
  *    transforms: array of transforms.
  *           len: length  of array
  * Return value:
- *     A new transform with x and y beeing the cleaned mean 
- *     (meaning upper and lower pentile are removed) of 
+ *     A new transform with x and y beeing the cleaned mean
+ *     (meaning upper and lower pentile are removed) of
  *     all transforms. alpha and other fields are 0.
  * Preconditions:
  *     len>0
@@ -181,7 +189,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
     Transform* ts = ds_malloc(sizeof(Transform) * len);
     Transform t = null_transform();
     int i, cut = len / 5;
-    memcpy(ts, transforms, sizeof(Transform) * len); 
+    memcpy(ts, transforms, sizeof(Transform) * len);
     qsort(ts,len, sizeof(Transform), cmp_trans_x);
     for (i = cut; i < len - cut; i++){ // all but cutted
         t.x += ts[i].x;
@@ -195,7 +203,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
 }
 
 
-/** 
+/**
  * calulcates the cleaned maximum and minimum of an array of transforms,
  * considerung only x and y
  * It cuts off the upper and lower x-th percentil
@@ -213,12 +221,12 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
  * Side effects:
  *     only on min and max
  */
-void cleanmaxmin_xy_transform(const Transform* transforms, int len, 
-                              int percentil, 
+void cleanmaxmin_xy_transform(const Transform* transforms, int len,
+                              int percentil,
                               Transform* min, Transform* max){
     Transform* ts = ds_malloc(sizeof(Transform) * len);
     int cut = len * percentil / 100;
-    memcpy(ts, transforms, sizeof(Transform) * len); 
+    memcpy(ts, transforms, sizeof(Transform) * len);
     qsort(ts,len, sizeof(Transform), cmp_trans_x);
     min->x = ts[cut].x;
     max->x = ts[len-cut-1].x;
@@ -248,7 +256,7 @@ double median(double* ds, int len)
 }
 
 /**
- * mean: mean of a double array 
+ * mean: mean of a double array
  *
  * Parameters:
  *            ds: array of values
@@ -267,7 +275,7 @@ double mean(const double* ds, int len)
 }
 
 /**
- * cleanmean: mean with cutted upper and lower pentile 
+ * cleanmean: mean with cutted upper and lower pentile
  *
  * Parameters:
  *            ds: array of values
@@ -275,7 +283,7 @@ double mean(const double* ds, int len)
  *       minimum: minimal value (after cleaning) if not NULL
  *       maximum: maximal value (after cleaning) if not NULL
  * Return value:
- *     the mean value of the array without the upper 
+ *     the mean value of the array without the upper
  *     and lower pentile (20% each)
  *     and minimum and maximum without the pentiles
  * Preconditions: len>0
@@ -295,6 +303,86 @@ double cleanmean(double* ds, int len, double* minimum, double* maximum)
     if (maximum)
         *maximum = ds[len-cut-1];
     return sum / (len - (2.0 * cut));
+}
+
+/************************************************/
+/***************LOCALMOTION**********************/
+
+LocalMotion null_localmotion(){
+  LocalMotion lm;
+  memset(&lm,0,sizeof(lm));
+  return lm;
+}
+
+int* localmotions_getx(const LocalMotions* localmotions){
+  int len = ds_vector_size(localmotions);
+  int* xs = ds_malloc(sizeof(int) * len);
+  int i;
+  for (i=0; i<len; i++){
+    xs[i]=LMGet(localmotions,i)->v.x;
+  }
+  return xs;
+}
+
+int* localmotions_gety(const LocalMotions* localmotions){
+  int len = ds_vector_size(localmotions);
+ int* ys = ds_malloc(sizeof(int) * len);
+  int i;
+  for (i=0; i<len; i++){
+    ys[i]=LMGet(localmotions,i)->v.y;
+  }
+  return ys;
+}
+
+void localmotion_print(const LocalMotion* lm, FILE* f){
+  fprintf(f,"lm %i %i, centr: %i %i, match: %f contr: %f\n",
+          lm->v.x, lm->v.y, lm->f.x, lm->f.y, lm->match, lm->contrast);
+}
+
+LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2){
+  LocalMotion res = *lm1;
+  res.v.x -= lm2->v.x;
+  res.v.y -= lm2->v.y;
+  return res;
+}
+
+
+/**
+ * cleanmean_localmotions: calulcates the cleaned mean of a vector
+ * of local motions considering
+ *
+ * Parameters:
+ *    localmotions : ds_vector of local motions
+ * Return value:
+ *     A localmotion with vec with x and y being the cleaned mean
+ *     (meaning upper and lower pentile are removed) of
+ *     all local motions. all other fields are 0.
+ * Preconditions:
+ *     size of vector >0
+ * Side effects:
+ *     None
+ */
+LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
+{
+  int len = ds_vector_size(localmotions);
+  int i, cut = len / 5;
+  int* xs = localmotions_getx(localmotions);
+  int* ys = localmotions_gety(localmotions);
+  LocalMotion m = null_localmotion();
+  m.v.x=0; m.v.y=0;
+  qsort(xs,len, sizeof(int), cmp_int);
+  for (i = cut; i < len - cut; i++){ // all but cutted
+    m.v.x += xs[i];
+  }
+  qsort(ys, len, sizeof(int), cmp_int);
+  for (i = cut; i < len - cut; i++){ // all but cutted
+    m.v.y += ys[i];
+  }
+  ds_free(xs);
+  ds_free(ys);
+  m.v.x/=(len - (2.0 * cut));
+  m.v.y/=(len - (2.0 * cut));
+  return m;
 }
 
 

@@ -1,30 +1,30 @@
 /*
  * dsvector.h -- an dynamic array
  * (C) 2011 - Georg Martius
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
+ *  This work is licensed under the Creative Commons
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
+ *  San Francisco, California, 94105, USA.
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
@@ -33,7 +33,9 @@
 
 #include <stddef.h>
 
-
+/**
+   A vector for arbrary elements that resizes
+*/
 typedef struct dsvector_ DSVector;
 struct dsvector_ {
   void**	data;
@@ -44,7 +46,7 @@ struct dsvector_ {
 /**
  * ds_vector_init:
  *     intializes a vector data structure.
- *     A vector will grow but not shrink if elements are added. 
+ *     A vector will grow but not shrink if elements are added.
  *
  * Parameters:
  *              V: pointer to list to be initialized.
@@ -68,8 +70,6 @@ int ds_vector_init(DSVector *V, int buffersize);
  */
 int ds_vector_fini(DSVector *V);
 
-
-
 /**
  * ds_vector_del:
  *     like ds_vector_fini, but also deletes the data pointed by vector elements.
@@ -83,8 +83,15 @@ int ds_vector_fini(DSVector *V);
 int ds_vector_del(DSVector *V);
 
 /**
+ * ds_vector_zero:
+ *    deletes all data pointed to by the vector elements.
+ *    sets the number of elements to 0 but does not delete buffer
+*/
+int ds_vector_zero(DSVector *V);
+
+/**
  * ds_vector_size:
- *     gives the number of elements present in the vector 
+ *     gives the number of elements present in the vector
  *     (not the internal buffer size).
  *
  * Parameters:
@@ -93,7 +100,7 @@ int ds_vector_del(DSVector *V);
  *    -1 on error,
  *    the number of elements otherwise
  */
-int ds_vector_size(DSVector *V);
+int ds_vector_size(const DSVector *V);
 
 
 /**
@@ -140,7 +147,7 @@ int ds_vector_append_dup(DSVector *V, void *data, int data_size);
  *     NULL on error (requested element doesn't exist)
  *     a pointer to the data belonging to the requested vector item.
  */
-void *ds_vector_get(DSVector *V, int pos);
+void *ds_vector_get(const DSVector *V, int pos);
 
 /* to be implemented
  * ds_vector_pop:

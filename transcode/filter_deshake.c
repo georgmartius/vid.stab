@@ -299,15 +299,16 @@ static int deshake_filter_video(TCModuleInstance *self,
 
   sd = self->userdata;
   MotionDetect* md = &(sd->md);
+  LocalMotions localmotions;
   Transform motion;
-  if(motionDetection(md, &motion, frame->video_buf)!= DS_OK){
+  if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
     tc_log_error(MOD_NAME, "motion detection failed");
     return TC_ERROR;
-  } else {
-    fprintf(sd->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-	    md->frameNum, motion.x, motion.y, motion.alpha, motion.zoom,
-	    motion.extra);
   }
+  motion = simpleMotionsToTransform(&(sd->md), &localmotions);
+  ds_vector_del(&localmotions);
+
+  if(writeTransformToFile(&(sd->md), sd->f, &motion) != DS_OK)
 
   transformPrepare(&sd->td, frame->video_buf, frame->video_buf);
 

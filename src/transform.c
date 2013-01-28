@@ -2,30 +2,30 @@
  *  transform.c
  *
  *  Copyright (C) Georg Martius - June 2007 - 2011
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
+ *  This work is licensed under the Creative Commons
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
+ *  San Francisco, California, 94105, USA.
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
@@ -40,23 +40,23 @@
 #include <math.h>
 #include <libgen.h>
 
-const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)", 
+const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                 "Bi-Cubic (3)"};
 
 
-int initTransformData(TransformData* td, const DSFrameInfo* fi_src, 
+int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
                       const DSFrameInfo* fi_dest , const char* modName){
     td->modName = modName;
-    
+
     td->fiSrc = *fi_src;
-    td->fiDest = *fi_dest;   
-    
-    td->src= NULL; 
+    td->fiDest = *fi_dest;
+
+    td->src= NULL;
     td->srcMalloced = 0;
 
     td->destbuf = 0;
     td->dest = 0;
-    
+
     /* Options */
     td->maxShift = -1;
     td->maxAngle = -1;
@@ -65,24 +65,24 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     td->relative = 1;
     td->invert = 0;
     td->smoothing = 10;
-  
+
     td->rotationThreshhold = 0.25/(180/M_PI);
 
     td->zoom    = 0;
     td->optZoom = 1;
     td->interpolType = BiLinear;
-    td->sharpen = 0.8;  
+    td->sharpen = 0.8;
 
     td->verbose = 0;
     return DS_OK;
 }
 
 int configureTransformData(TransformData* td){
-    if (td->maxShift > td->fiDest.width/2) 
+    if (td->maxShift > td->fiDest.width/2)
         td->maxShift = td->fiDest.width/2;
     if (td->maxShift > td->fiDest.height/2)
         td->maxShift = td->fiDest.height/2;
-    
+
     td->interpolType = DS_MAX(DS_MIN(td->interpolType,BiCubic),Zero);
 
     switch(td->interpolType){
@@ -121,7 +121,7 @@ int transformPrepare(TransformData* td, const unsigned char* src, unsigned char*
     // with the transformed version
     td->dest = dest;
     if(src==dest || td->srcMalloced){ // in place operation: we have to copy the src first
-        if(td->src == NULL) td->src = ds_malloc(td->fiSrc.framesize);       
+        if(td->src == NULL) td->src = ds_malloc(td->fiSrc.framesize);
         if (td->src == NULL) {
             ds_log_error(td->modName, "ds_malloc failed\n");
             return DS_ERROR;
@@ -132,26 +132,26 @@ int transformPrepare(TransformData* td, const unsigned char* src, unsigned char*
     }else{ // otherwise no copy needed
         td->src=(unsigned char *)src;
     }
-    if (td->crop == KeepBorder) { 
+    if (td->crop == KeepBorder) {
       if(td->destbuf == 0) {
-	// if we keep the borders, we need a second buffer to store 
+	// if we keep the borders, we need a second buffer to store
 	//  the previous stabilized frame, so we use destbuf
 	td->destbuf = ds_malloc(td->fiDest.framesize);
 	if (td->destbuf == NULL) {
 	  ds_log_error(td->modName, "ds_malloc failed\n");
 	  return DS_ERROR;
-	}      
+	}
 	// if we keep borders, save first frame into the background buffer (destbuf)
 	memcpy(td->destbuf, src, td->fiSrc.framesize);
       }
     }else{ // otherwise we directly operate on the destination
         td->destbuf = dest;
     }
-    return DS_OK;   
+    return DS_OK;
 }
-  
+
 int transformFinish(TransformData* td){
-    if(td->crop == KeepBorder){ 
+    if(td->crop == KeepBorder){
         // we have to store our result to video buffer
         // note: destbuf stores stabilized frame to be the default for next frame
         memcpy(td->dest, td->destbuf, td->fiSrc.framesize);
@@ -166,7 +166,7 @@ Transform getNextTransform(const TransformData* td, Transformations* trans){
         trans->current = trans->len;
         if(!trans->warned_end)
             ds_log_warn(td->modName, "not enough transforms found, use last transformation!\n");
-        trans->warned_end = 1;                 
+        trans->warned_end = 1;
     }else{
         trans->current++;
     }
@@ -177,30 +177,30 @@ void initTransformations(Transformations* trans){
     trans->ts = 0;
     trans->len = 0;
     trans->current = 0;
-    trans->warned_end = 0;  
+    trans->warned_end = 0;
 }
 
 void cleanupTransformations(Transformations* trans){
     if (trans->ts) {
         ds_free(trans->ts);
-        trans->ts = NULL;        
+        trans->ts = NULL;
     }
     trans->len=0;
 }
 
-/** 
+/**
  * readTransforms: read transforms file
  *  The format is as follows:
  *   Lines with # at the beginning are comments and will be ignored
  *   Data lines have 5 columns seperated by space or tab containing
  *   time, x-translation, y-translation, alpha-rotation, extra
- *   where time and extra are integers 
+ *   where time and extra are integers
  *   and the latter is unused at the moment
  *
  * Parameters:
  *         f:  file description
  *         trans: place to store the transforms
- * Return value: 
+ * Return value:
  *         number of transforms read
  * Preconditions: f is opened
  */
@@ -211,23 +211,23 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
     int i = 0;
     int ti; // time (ignored)
     Transform t;
-    
+
     while (fgets(l, sizeof(l), f)) {
         if (l[0] == '#')
             continue;    //  ignore comments
         if (strlen(l) == 0)
             continue; //  ignore empty lines
         // try new format
-        if (sscanf(l, "%i %lf %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha, 
+        if (sscanf(l, "%i %lf %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
                    &t.zoom, &t.extra) != 6) {
-            if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha, 
-                       &t.extra) != 5) {                
+            if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
+                       &t.extra) != 5) {
                 ds_log_error(td->modName, "Cannot parse line: %s", l);
                 return 0;
             }
             t.zoom=0;
         }
-    
+
         if (i>=s) { // resize transform array
             if (s == 0)
                 s = 256;
@@ -252,9 +252,9 @@ int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
 /**
  * preprocessTransforms: does smoothing, relative to absolute conversion,
  *  and cropping of too large transforms.
- *  This is actually the core algorithm for canceling the jiggle in the 
+ *  This is actually the core algorithm for canceling the jiggle in the
  *  movie. We perform a low-pass filter in terms of transformation size.
- *  This enables still camera movement, but in a smooth fasion.
+ *  This supports slow camera movement (low frequency), but in a smooth fasion.
  *
  * Parameters:
  *            td: transform private data structure
@@ -288,35 +288,35 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
          */
         int s = td->smoothing * 2 + 1;
         Transform null = null_transform();
-        /* avg is the average over [-smoothing, smoothing] transforms 
+        /* avg is the average over [-smoothing, smoothing] transforms
            around the current point */
         Transform avg;
-        /* avg2 is a sliding average over the filtered signal! (only to past) 
+        /* avg2 is a sliding average over the filtered signal! (only to past)
          *  with smoothing * 10 horizont to kill offsets */
         Transform avg2 = null_transform();
         double tau = 1.0/(3 * s);
         /* initialise sliding sum with hypothetic sum centered around
          * -1st element. We have two choices:
-         * a) assume the camera is not moving at the beginning 
+         * a) assume the camera is not moving at the beginning
          * b) assume that the camera moves and we use the first transforms
          */
-        Transform s_sum = null; 
+        Transform s_sum = null;
         for (i = 0; i < td->smoothing; i++){
             s_sum = add_transforms(&s_sum, i < trans->len ? &ts2[i]:&null);
         }
         mult_transform(&s_sum, 2); // choice b (comment out for choice a)
 
         for (i = 0; i < trans->len; i++) {
-            Transform* old = ((i - td->smoothing - 1) < 0) 
+            Transform* old = ((i - td->smoothing - 1) < 0)
                 ? &null : &ts2[(i - td->smoothing - 1)];
-            Transform* new = ((i + td->smoothing) >= trans->len) 
+            Transform* new = ((i + td->smoothing) >= trans->len)
                 ? &null : &ts2[(i + td->smoothing)];
             s_sum = sub_transforms(&s_sum, old);
             s_sum = add_transforms(&s_sum, new);
 
             avg = mult_transform(&s_sum, 1.0/s);
 
-            /* lowpass filter: 
+            /* lowpass filter:
              * meaning high frequency must be transformed away
              */
             ts[i] = sub_transforms(&ts2[i], &avg);
@@ -326,36 +326,36 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
             ts[i] = sub_transforms(&ts[i], &avg2);
 
             if (td->verbose & DS_DEBUG) {
-                ds_log_msg(td->modName, 
-                           "s_sum: %5lf %5lf %5lf, ts: %5lf, %5lf, %5lf\n", 
-                           s_sum.x, s_sum.y, s_sum.alpha, 
+                ds_log_msg(td->modName,
+                           "s_sum: %5lf %5lf %5lf, ts: %5lf, %5lf, %5lf\n",
+                           s_sum.x, s_sum.y, s_sum.alpha,
                            ts[i].x, ts[i].y, ts[i].alpha);
-                ds_log_msg(td->modName, 
-                           "  avg: %5lf, %5lf, %5lf avg2: %5lf, %5lf, %5lf", 
-                           avg.x, avg.y, avg.alpha, 
-                           avg2.x, avg2.y, avg2.alpha);      
+                ds_log_msg(td->modName,
+                           "  avg: %5lf, %5lf, %5lf avg2: %5lf, %5lf, %5lf",
+                           avg.x, avg.y, avg.alpha,
+                           avg2.x, avg2.y, avg2.alpha);
             }
         }
         ds_free(ts2);
     }
-  
-  
+
+
     /*  invert? */
     if (td->invert) {
         for (i = 0; i < trans->len; i++) {
-            ts[i] = mult_transform(&ts[i], -1);      
+            ts[i] = mult_transform(&ts[i], -1);
         }
     }
-  
+
     /* relative to absolute */
     if (td->relative) {
         Transform t = ts[0];
         for (i = 1; i < trans->len; i++) {
             if (td->verbose  & DS_DEBUG) {
-                ds_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n", 
+                ds_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n",
                            t.x, t.y, t.alpha *180/M_PI);
             }
-            ts[i] = add_transforms(&ts[i], &t); 
+            ts[i] = add_transforms(&ts[i], &t);
             t = ts[i];
         }
     }
@@ -369,16 +369,16 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
         for (i = 0; i < trans->len; i++)
             ts[i].alpha = DS_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
 
-    /* Calc optimal zoom 
+    /* Calc optimal zoom
      *  cheap algo is to only consider translations
-     *  uses cleaned max and min 
-     * Todo: use sliding average to zoom only as much as needed. 
+     *  uses cleaned max and min
+     * Todo: use sliding average to zoom only as much as needed.
      *       use also rotation angles (transform all four corners)
      *       optzoom=2?
      */
-    if (td->optZoom != 0 && trans->len > 1){    
+    if (td->optZoom != 0 && trans->len > 1){
         Transform min_t, max_t;
-        cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t); 
+        cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t);
         // the zoom value only for x
         double zx = 2*DS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
         // the zoom value only for y
@@ -386,11 +386,11 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
         td->zoom += 100* DS_MAX(zx,zy); // use maximum
         ds_log_info(td->modName, "Final zoom: %lf\n", td->zoom);
     }
-        
+
     /* apply global zoom */
     if (td->zoom != 0){
         for (i = 0; i < trans->len; i++)
-            ts[i].zoom += td->zoom;       
+            ts[i].zoom += td->zoom;
     }
 
     return DS_OK;
@@ -411,7 +411,7 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
  * Preconditions:
  *     None
  */
-Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem, 
+Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
                             const Transform* trans)
 {
 
@@ -432,15 +432,15 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
     }else{
       mem->avg = *trans;
     }
-    
-    /* lowpass filter: 
+
+    /* lowpass filter:
      * meaning high frequency must be transformed away
      */
     Transform newtrans = sub_transforms(trans, &mem->avg);
 
     /* relative to absolute */
     if (td->relative) {
-      newtrans = add_transforms(&newtrans, &mem->accum); 
+      newtrans = add_transforms(&newtrans, &mem->accum);
       mem->accum = newtrans;
       if(td->smoothing>0){
 	// kill accumulating effects
@@ -453,25 +453,25 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
       newtrans.x     = DS_CLAMP(newtrans.x, -td->maxShift, td->maxShift);
       newtrans.y     = DS_CLAMP(newtrans.y, -td->maxShift, td->maxShift);
     }
-    if (td->maxAngle != - 1.0)     
+    if (td->maxAngle != - 1.0)
       newtrans.alpha = DS_CLAMP(newtrans.alpha, -td->maxAngle, td->maxAngle);
 
-    /* Calc sliding optimal zoom 
+    /* Calc sliding optimal zoom
      *  cheap algo is to only consider translations and to sliding avg
      */
-    if (td->optZoom != 0 && td->smoothing > 0){    
+    if (td->optZoom != 0 && td->smoothing > 0){
       // the zoom value only for x
       double zx = 2*newtrans.x/td->fiSrc.width;
       // the zoom value only for y
       double zy = 2*newtrans.y/td->fiSrc.height;
       double reqzoom = 100* DS_MAX(fabs(zx),fabs(zy)); // maximum is requried zoom
       mem->zoomavg = (mem->zoomavg*(1-s) + reqzoom*s);
-      // since we only use past it is good to aniticipate 
+      // since we only use past it is good to aniticipate
       //  and zoom a little in any case (so set td->zoom to 2 or so)
       newtrans.zoom = mem->zoomavg;
-    }    
+    }
     if (td->zoom != 0){
-      newtrans.zoom += td->zoom;       
+      newtrans.zoom += td->zoom;
     }
     return newtrans;
   }

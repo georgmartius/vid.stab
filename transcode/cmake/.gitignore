@@ -1,0 +1,7 @@
+CMakeCache.txt
+cmake_install.cmake
+filter_deshake.so
+filter_stabilize.so
+filter_transform.so
+Makefile
+CMakeFiles/*

@@ -304,7 +304,16 @@ int main(int argc, char** argv){
 			LocalMotions localmotions;
 			Transform t;
       assert(motionDetection(&md, &localmotions,frames[i])== DS_OK);
-			/* printf("localm: %i\n",ds_vector_size(&localmotions)); */
+			store_localmotions(stderr,&localmotions);
+			FILE* f = fopen("lmtest","w");
+			store_localmotions(f,&localmotions);
+			fclose(f);
+			f = fopen("lmtest","r");
+			LocalMotions test = restore_localmotions(f);
+			fclose(f);
+			store_localmotions(stderr,&test);
+
+
 			/* for(k=0; k < ds_vector_size(&localmotions); k++){ */
 			/* 	localmotion_print(LMGet(&localmotions,k),stderr); */
 			/* } */

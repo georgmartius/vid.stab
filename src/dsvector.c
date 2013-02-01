@@ -41,17 +41,21 @@ int ds_vector_resize(DSVector *V, int newsize);
 
 int ds_vector_init(DSVector *V, int buffersize){
   assert(V);
-  if(buffersize<1) buffersize=1;
-  V->data=(void**)ds_zalloc(sizeof(void*)*buffersize);
+  if(buffersize>0){
+    V->data=(void**)ds_zalloc(sizeof(void*)*buffersize);
+    if(!V->data) return DS_ERROR;
+  }else{
+    V->data = 0;
+    buffersize = 0;
+  }
   V->buffersize=buffersize;
   V->nelems=0;
-  if(!V->data) return DS_ERROR;
   return DS_OK;
 }
 
 int ds_vector_fini(DSVector *V){
-  assert(V && V->data);
-  ds_free(V->data);
+  assert(V);
+  if(V->data) ds_free(V->data);
   V->data = 0;
   V->buffersize=0;
   V->nelems=0;
@@ -64,7 +68,8 @@ int ds_vector_del(DSVector *V){
 }
 
 int ds_vector_zero(DSVector *V){
-  assert(V && V->data);
+  assert(V);
+  assert(V->nelems < 1 || V->data);
   int i;
   for(i=0; i < V->nelems; i++){
     if(V->data[i])
@@ -76,15 +81,16 @@ int ds_vector_zero(DSVector *V){
 }
 
 int ds_vector_size(const DSVector *V){
-  assert(V && V->data);
+  assert(V);
   return V->nelems;
 }
 
 
 int ds_vector_append(DSVector *V, void *data){
-  assert(V && V->data && data);
+  assert(V && data);
+  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
   if(V->nelems >= V->buffersize){
-    if(!ds_vector_resize(V, V->buffersize*2)) return DS_ERROR;
+    if(ds_vector_resize(V, V->buffersize*2)!=DS_OK) return DS_ERROR;
   }
   V->data[V->nelems]=data;
   V->nelems++;
@@ -92,7 +98,8 @@ int ds_vector_append(DSVector *V, void *data){
 }
 
 int ds_vector_append_dup(DSVector *V, void *data, int data_size){
-  assert(V && V->data && data);
+  assert(V && data);
+  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
   void* d = ds_malloc(data_size);
   if(!d) return DS_ERROR;
   memcpy(d, data, data_size);
@@ -116,14 +123,17 @@ void *ds_vector_get(const DSVector *V, int pos){
 int ds_vector_resize(DSVector *V, int newsize){
   assert(V && V->data);
   if(newsize<1) newsize=1;
-  V->data = (void**)ds_realloc(V->data, newsize);
+  V->data = (void**)ds_realloc(V->data, newsize * sizeof(void*));
   V->buffersize=newsize;
-  if(V->nelems>V->buffersize)
+  if(V->nelems>V->buffersize){
     V->nelems=V->buffersize;
+  }
   if (V->data)
     return DS_OK;
-  else
+  else {
+    ds_log_error("DS_Vector","out of memory!");
     return DS_ERROR;
+  }
 }
 
 

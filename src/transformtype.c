@@ -334,11 +334,6 @@ int* localmotions_gety(const LocalMotions* localmotions){
   return ys;
 }
 
-void localmotion_print(const LocalMotion* lm, FILE* f){
-  fprintf(f,"lm %i %i, centr: %i %i, match: %f contr: %f\n",
-          lm->v.x, lm->v.y, lm->f.x, lm->f.y, lm->match, lm->contrast);
-}
-
 LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2){
   LocalMotion res = *lm1;
   res.v.x -= lm2->v.x;
@@ -384,6 +379,72 @@ LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
   m.v.y/=(len - (2.0 * cut));
   return m;
 }
+
+int store_localmotion(FILE* f, const LocalMotion* lm){
+  return fprintf(f,"(LM %i %i %i %i %i %lf %lf)", lm->v.x,lm->v.y,lm->f.x,lm->f.y,lm->f.size,
+                 lm->contrast, lm->match);
+}
+
+/// restore local motion from file
+LocalMotion restore_localmotion(FILE* f){
+  LocalMotion lm;
+  char c;
+  if(fscanf(f,"(LM %i %i %i %i %i %lf %lf", &lm.v.x,&lm.v.y,&lm.f.x,&lm.f.y,&lm.f.size,
+            &lm.contrast, &lm.match) != 7) {
+    ds_log_error("Parsing", "Cannot parse localmotion!\n");
+    return null_localmotion();
+  }
+  while((c=fgetc(f)) && c!=')' && c!=EOF);
+  if(c==EOF){
+    ds_log_error("Parsing", "Cannot parse localmotion missing ')'!\n");
+    return null_localmotion();
+  }
+  return lm;
+}
+
+int store_localmotions(FILE* f, const LocalMotions* lms){
+  int len = ds_vector_size(lms);
+  int i;
+  fprintf(f,"List %i [",len);
+  for (i=0; i<len; i++){
+    if(i>0) fprintf(f,",");
+    if(store_localmotion(f,LMGet(lms,i)) <= 0) return 0;
+  }
+  fprintf(f,"]");
+  return 1;
+}
+
+/// restores local motions from file
+LocalMotions restore_localmotions(FILE* f){
+  LocalMotions lms;
+  int i;
+  char c;
+  int len;
+  ds_vector_init(&lms,0);
+  if(fscanf(f,"List %i [", &len) != 1) {
+    ds_log_error("Parsing", "Cannot parse localmotions list expect 'List len ['!\n");
+    return lms;
+  }
+  if (len>0){
+    ds_vector_init(&lms,len);
+    for (i=0; i<len; i++){
+      if(i>0) while((c=fgetc(f)) && c!=',' && c!=EOF);
+      LocalMotion lm = restore_localmotion(f);
+      ds_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
+    }
+  }
+  if(len != ds_vector_size(&lms)){
+    ds_log_error("Parsing", "Cannot parse the given number of localmotions!\n");
+    return lms;
+  }
+  while((c=fgetc(f)) && c!=']' && c!=EOF);
+  if(c==EOF){
+    ds_log_error("Parsing", "Cannot parse localmotions list missing ']'!\n");
+    return lms;
+  }
+  return lms;
+}
+
 
 /*
  * Local variables:

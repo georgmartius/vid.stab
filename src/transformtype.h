@@ -1,7 +1,7 @@
 /*
  *  transform.h
  *
- *  Copyright (C) Georg Martius - June 2007
+ *  Copyright (C) Georg Martius - June 2007 - 2013
  *
  *  This file is part of transcode, a video stream processing tool
  *
@@ -130,12 +130,6 @@ int* localmotions_getx(const LocalMotions* localmotions);
 int* localmotions_gety(const LocalMotions* localmotions);
 /// lm1 - lm2 only for the Vec (the remaining values are taken from lm1)
 LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2);
-
-/// stores local motions to file
-int store_localmotions(FILE* f, const LocalMotions* lms);
-
-/// restores local motions from file
-LocalMotions restore_localmotions(FILE* f);
 
 /* calulcates the cleaned mean of the vector of localmotions
  * considerung only v.x and v.y

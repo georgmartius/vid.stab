@@ -188,66 +188,6 @@ void cleanupTransformations(Transformations* trans){
     trans->len=0;
 }
 
-/**
- * readTransforms: read transforms file
- *  The format is as follows:
- *   Lines with # at the beginning are comments and will be ignored
- *   Data lines have 5 columns seperated by space or tab containing
- *   time, x-translation, y-translation, alpha-rotation, extra
- *   where time and extra are integers
- *   and the latter is unused at the moment
- *
- * Parameters:
- *         f:  file description
- *         trans: place to store the transforms
- * Return value:
- *         number of transforms read
- * Preconditions: f is opened
- */
-int readTransforms(const TransformData* td, FILE* f , Transformations* trans)
-{
-    char l[1024];
-    int s = 0;
-    int i = 0;
-    int ti; // time (ignored)
-    Transform t;
-
-    while (fgets(l, sizeof(l), f)) {
-        if (l[0] == '#')
-            continue;    //  ignore comments
-        if (strlen(l) == 0)
-            continue; //  ignore empty lines
-        // try new format
-        if (sscanf(l, "%i %lf %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
-                   &t.zoom, &t.extra) != 6) {
-            if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
-                       &t.extra) != 5) {
-                ds_log_error(td->modName, "Cannot parse line: %s", l);
-                return 0;
-            }
-            t.zoom=0;
-        }
-
-        if (i>=s) { // resize transform array
-            if (s == 0)
-                s = 256;
-            else
-                s*=2;
-            /* ds_log_info(td->modName, "resize: %i\n", s); */
-            trans->ts = ds_realloc(trans->ts, sizeof(Transform)* s);
-            if (!trans->ts) {
-                ds_log_error(td->modName, "Cannot allocate memory"
-                                       " for transformations: %i\n", s);
-                return 0;
-            }
-        }
-        trans->ts[i] = t;
-        i++;
-    }
-    trans->len = i;
-
-    return i;
-}
 
 /**
  * preprocessTransforms: does smoothing, relative to absolute conversion,

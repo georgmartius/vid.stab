@@ -1,14 +1,9 @@
-#define NUM_RECTANGLES 100
+#include <assert.h>
 
-inline static unsigned char randPixel(){
-  return rand()%256;
-}
+#include "testutils.h"
+#include "libdeshake.h"
 
-inline static short randUpTo(short max){
-  return rand()%max;
-}
-
-static void paintRectangle(unsigned char* buffer, const DSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
+void paintRectangle(unsigned char* buffer, const DSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
   if(x>=0 && x+sizex < fi->width && y>=0 && y+sizey < fi->height){
     int i,j;
     for(j=y; j < y+sizey; j++){
@@ -20,9 +15,8 @@ static void paintRectangle(unsigned char* buffer, const DSFrameInfo* fi, int x, 
   }
 }
 
-
 /// corr: correlation length of noise
-static void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
+void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
   unsigned char avg=randPixel();
   int i=0;
   if(corr<1) corr=1;
@@ -33,50 +27,13 @@ static void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
   }
 }
 
-static Transform getTestFrameTransform(int i){
+Transform getTestFrameTransform(int i){
   Transform t = null_transform();
   t.x = ( (i%2)==0 ? -1 : 1)  *i*5;
   t.y = ( (i%3)==0 ?  1 : -1) *i*5;
   t.alpha = (i<3 ? 0 : 1) * (i)*1*M_PI/(180.0);
   t.zoom = 0;
   return t;
-}
-
-static void generateFrames(unsigned char **frames, int num, const DSFrameInfo fi){
-  int i;
-  for(i=0; i<num; i++){
-    frames[i] = (unsigned char*)malloc(fi.framesize);
-  }
-  // first frame noise
-  fillArrayWithNoise(frames[0], fi.framesize, 10);
-  // add rectangles
-  int k;
-  for(k=0; k<NUM_RECTANGLES; k++){
-    paintRectangle(frames[0],&fi,randUpTo(fi.width), randUpTo(fi.height),
-		   randUpTo((fi.width>>4)+4),randUpTo((fi.height>>4)+4),randPixel());
-
-  }
-
-  TransformData td;
-  assert(initTransformData(&td, &fi, &fi, "generate") == DS_OK);
-  td.interpolType=Zero;
-  assert(configureTransformData(&td)== DS_OK);
-
-
-  fprintf(stderr, "testframe transforms\n");
-
-  for(i=1; i<num; i++){
-    Transform t = getTestFrameTransform(i);
-    fprintf(stderr, "%i, %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-	    i, t.x, t.y, t.alpha, t.zoom, t.extra);
-
-    assert(transformPrepare(&td,frames[i-1],frames[i])== DS_OK);
-    assert(transformYUV_float(&td, t)== DS_OK);
-    assert(transformFinish(&td)== DS_OK);
-
-
-  }
-  cleanupTransformData(&td);
 }
 
 static int readNumber (const char* filename, FILE *f)
@@ -192,3 +149,4 @@ int storePGMImage(const char* filename, unsigned char * image_data, DSFrameInfo 
   fclose (f);
   return 1;
 }
+

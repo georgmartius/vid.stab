@@ -128,6 +128,19 @@ int ds_vector_append(DSVector *V, void *data);
 int ds_vector_append_dup(DSVector *V, void *data, int data_size);
 
 
+/* ds_vector_set:
+ *      the newly inserted element BECOMES the position `pos' in the vector.
+ *      and the old item is returned
+ */
+void* ds_vector_set(DSVector *V, int pos, void *data);
+
+/* ds_vector_set_dup:
+ *      the newly inserted element is copied and BECOMES the position `pos' in the vector
+ *      and the old item is returned
+ */
+void* ds_vector_set_dup(DSVector *V, int pos, void *data, int data_size);
+
+
 /* (to be implemented)
  * ds_vector_insert:
  *      the newly-inserted elements BECOMES the position `pos' on the vector.

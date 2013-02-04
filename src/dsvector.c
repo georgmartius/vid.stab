@@ -107,8 +107,6 @@ int ds_vector_append_dup(DSVector *V, void *data, int data_size){
 }
 
 
-//int ds_vector_insert(DSVector *V, int pos, void *data);
-
 void *ds_vector_get(const DSVector *V, int pos){
   assert(V && V->data);
   if(pos<0 || pos >= V->nelems)
@@ -117,7 +115,32 @@ void *ds_vector_get(const DSVector *V, int pos){
     return V->data[pos];
 }
 
-//void *ds_vector_pop(DSVector *V, int pos);
+void* ds_vector_set(DSVector *V, int pos, void *data){
+  assert(V && data && pos>=0);
+  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
+  if(V->buffersize <= pos) {
+    int nsize = V->buffersize;
+    while(nsize <= pos) nsize *=2;
+    if(ds_vector_resize(V, nsize)!=DS_OK) return 0; // insuficient error handling here! DS_ERROR
+  }
+  if(pos >= V->nelems){ // insert after end of vector
+    int i;
+    for(i=V->nelems; i< pos+1; i++){
+      V->data[i]=0;
+    }
+    V->nelems=pos+1;
+  }
+  void* old = V->data[pos];
+  V->data[pos] = data;
+  return old;
+}
+
+void* ds_vector_set_dup(DSVector *V, int pos, void *data, int data_size){
+  void* d = ds_malloc(data_size);
+  if(!d) return 0; // insuficient error handling here! DS_ERROR
+  memcpy(d, data, data_size);
+  return ds_vector_set(V, pos, d);
+}
 
 
 int ds_vector_resize(DSVector *V, int newsize){
@@ -128,12 +151,11 @@ int ds_vector_resize(DSVector *V, int newsize){
   if(V->nelems>V->buffersize){
     V->nelems=V->buffersize;
   }
-  if (V->data)
-    return DS_OK;
-  else {
+  if (!V->data){
     ds_log_error("DS_Vector","out of memory!");
     return DS_ERROR;
-  }
+  } else
+    return DS_OK;
 }
 
 

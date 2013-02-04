@@ -2,30 +2,30 @@
  *  transform.h
  *
  *  Copyright (C) Georg Martius - June 2007 - 2011
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
+ *  This work is licensed under the Creative Commons
+ *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
+ *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
+ *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
+ *  San Francisco, California, 94105, USA.
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
@@ -75,7 +75,7 @@ typedef struct _TransformData {
 
     short srcMalloced;   // 1 if the source buffer was internally malloced
     const char* modName;
- 
+
     interpolateFun interpolate; // pointer to interpolation function
 #ifdef TESTING
     _FLT(interpolateFun) _FLT(interpolate);
@@ -85,18 +85,18 @@ typedef struct _TransformData {
     int maxShift;        // maximum number of pixels we will shift
     double maxAngle;     // maximum angle in rad
 
-    /* whether to consider transforms as relative (to previous frame) 
-     * or absolute transforms  
+    /* whether to consider transforms as relative (to previous frame)
+     * or absolute transforms
      */
-    int relative;  
-    /* number of frames (forward and backward) 
+    int relative;
+    /* number of frames (forward and backward)
      * to use for smoothing transforms */
-    int smoothing;  
+    int smoothing;
     BorderType crop;  // 1: black bg, 0: keep border from last frame(s)
     int invert;       // 1: invert transforms, 0: nothing
     /* constants */
     /* threshhold below which no rotation is performed */
-    double rotationThreshhold; 
+    double rotationThreshhold;
     double zoom;      // percentage to zoom: 0->no zooming 10:zoom in 10%
     int optZoom;      // 1: determine optimal zoom, 0: nothing
     InterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
@@ -111,7 +111,7 @@ typedef struct _TransformData {
 static const char transform_help[] = ""
     "Overview\n"
     "    Reads a file with transform information for each frame\n"
-    "     and applies them. See also filter stabilize.\n" 
+    "     and applies them. See also filter stabilize.\n"
     "Options\n"
     "    'input'     path to the file used to read the transforms\n"
     "                (def: inputfile.stab)\n"
@@ -139,7 +139,7 @@ static const char transform_help[] = ""
  *  for the frames and stuff
  *  @return DS_OK on success otherwise DS_ERROR
  */
-int initTransformData(TransformData* td, const DSFrameInfo* fi_src, 
+int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
                       const DSFrameInfo* fi_dest , const char* modName);
 
 /** configures TransformData structure and checks ranges, initializes fields and so on.
@@ -161,18 +161,14 @@ void cleanupTransformations(Transformations* trans);
 /// return next Transform and increases internal counter
 Transform getNextTransform(const TransformData* td, Transformations* trans);
 
-/// read the transformations from the given file
-int readTransforms(const TransformData* td, FILE* f , Transformations* trans);
-
 /** preprocesses the list of transforms all at once. Here the deshaking is calculated!
  */
 int preprocessTransforms(TransformData* td, Transformations* trans);
 
-
 /**
  * lowPassTransforms: single step smoothing of transforms, using only the past.
  *  see also preprocessTransforms. */
-Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem, 
+Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
                             const Transform* trans);
 
 /** call this function to prepare for a next transformation (transformRGB/transformYUV)

@@ -2,39 +2,38 @@
  *  filter_transform.c
  *
  *  Copyright (C) Georg Martius - June 2007
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of transcode, a video stream processing tool
- *      
+ *
  *  transcode is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
  *  any later version.
- *   
+ *
  *  transcode is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  * Typical call:
  * transcode -J transform -i inp.mpeg -y xdiv,tcaud inp_stab.avi
 */
 
 #define MOD_NAME    "filter_transform.so"
-#define MOD_VERSION "v0.93 (2011-11-09)"
+#define MOD_VERSION "v0.95 (2013-02-06)"
 #define MOD_CAP     "transforms each frame according to transformations\n\
  given in an input file (e.g. translation, rotate) see also filter stabilize"
 #define MOD_AUTHOR  "Georg Martius"
-
 #define MOD_FEATURES \
     TC_MODULE_FEATURE_FILTER|TC_MODULE_FEATURE_VIDEO
 #define MOD_FLAGS \
     TC_MODULE_FLAG_RECONFIGURABLE
-  
+
 #include "transcode.h"
 #include "filter.h"
 
@@ -47,15 +46,17 @@
 #include "deshakedefines.h"
 #include "transform.h"
 #include "transformfixedpoint.h"
+#include "serialize.h"
+#include "localmotion2transform.h"
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
 typedef struct {
     TransformData td;
     vob_t* vob;          // pointer to information structure
-    
+
     Transformations trans; // transformations
-    
+
     char input[TC_BUF_LINE];
     char conf_str[TC_BUF_MIN];
 } FilterData;
@@ -70,7 +71,7 @@ static int transform_init(TCModuleInstance *self, uint32_t features)
     FilterData* fd = NULL;
     TC_MODULE_SELF_CHECK(self, "init");
     TC_MODULE_INIT_CHECK(self, MOD_FEATURES, features);
-    
+
     fd = tc_zalloc(sizeof(FilterData));
     if (fd == NULL) {
         tc_log_error(MOD_NAME, "init: out of memory!");
@@ -89,7 +90,7 @@ static int transform_init(TCModuleInstance *self, uint32_t features)
  * transform_configure:  Configure this instance of the module.  See
  * tcmodule-data.h for function details.
  */
-static int transform_configure(TCModuleInstance *self, 
+static int transform_configure(TCModuleInstance *self,
 			       const char *options, vob_t *vob)
 {
     FilterData *fd = NULL;
@@ -109,9 +110,9 @@ static int transform_configure(TCModuleInstance *self,
     DSFrameInfo fi_src;
     DSFrameInfo fi_dest;
 
-    fi_src.framesize = fd->vob->im_v_size;      
+    fi_src.framesize = fd->vob->im_v_size;
     fi_src.width  = fd->vob->ex_v_width;
-    fi_src.height = fd->vob->ex_v_height;  
+    fi_src.height = fd->vob->ex_v_height;
     /* Todo: in case we can scale the images, calc new size later */
     fi_dest.width  = fd->vob->ex_v_width;
     fi_dest.height = fd->vob->ex_v_height;
@@ -124,7 +125,7 @@ static int transform_configure(TCModuleInstance *self,
     td->verbose=verbose;
 
     initTransformations(&fd->trans);
-      
+
     filenamecopy = tc_strdup(fd->vob->video_in_file);
     filebasename = basename(filenamecopy);
     if (strlen(filebasename) < TC_BUF_LINE - 4) {
@@ -135,34 +136,20 @@ static int transform_configure(TCModuleInstance *self,
         tc_snprintf(fd->input, TC_BUF_LINE, DEFAULT_TRANS_FILE_NAME);
     }
 
-  
-    if (options != NULL) {
-        optstr_get(options, "input", "%[^:]", (char*)&fd->input);
-    }
-    
-    f = fopen(fd->input, "r");
-    if (f == NULL) {
-        tc_log_error(MOD_NAME, "cannot open input file %s!\n", fd->input);
-        /* return (-1); when called using tcmodinfo this will fail */ 
-    } else {
-        if (!readTransforms(td, f, &fd->trans)) { /* read input file */
-            tc_log_warn(MOD_NAME, "error parsing input file %s!\n", fd->input);
-            // return (-1);      
-        }
-        fclose(f);
-    }
+
 
     /* process remaining options */
-    if (options != NULL) {    
+    if (options != NULL) {
         // We support also the help option.
         if(optstr_lookup(options, "help")) {
             tc_log_info(MOD_NAME,transform_help);
             return(TC_IMPORT_ERROR);
         }
+        optstr_get(options, "input", "%[^:]", (char*)&fd->input);
         optstr_get(options, "maxshift",  "%d", &td->maxShift);
         optstr_get(options, "maxangle",  "%lf", &td->maxAngle);
         optstr_get(options, "smoothing", "%d", &td->smoothing);
-        optstr_get(options, "crop"     , "%d", &td->crop);
+        optstr_get(options, "crop"     , "%d", (int*)&td->crop);
         optstr_get(options, "invert"   , "%d", &td->invert);
         optstr_get(options, "relative" , "%d", &td->relative);
         optstr_get(options, "zoom"     , "%lf",&td->zoom);
@@ -170,50 +157,68 @@ static int transform_configure(TCModuleInstance *self,
         optstr_get(options, "interpol" , "%d", (int*)(&td->interpolType));
         optstr_get(options, "sharpen"  , "%lf",&td->sharpen);
     }
-    
+
     if(configureTransformData(td)!= DS_OK){
-        tc_log_error(MOD_NAME, "configuration of Tranform failed");
+        tc_log_error(MOD_NAME, "configuration of TransformData failed");
         return TC_ERROR;
     }
-    
+
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Transformation/Stabilization Settings:");
         tc_log_info(MOD_NAME, "    input     = %s", fd->input);
         tc_log_info(MOD_NAME, "    smoothing = %d", td->smoothing);
         tc_log_info(MOD_NAME, "    maxshift  = %d", td->maxShift);
         tc_log_info(MOD_NAME, "    maxangle  = %f", td->maxAngle);
-        tc_log_info(MOD_NAME, "    crop      = %s", 
+        tc_log_info(MOD_NAME, "    crop      = %s",
                         td->crop ? "Black" : "Keep");
-        tc_log_info(MOD_NAME, "    relative  = %s", 
+        tc_log_info(MOD_NAME, "    relative  = %s",
                     td->relative ? "True": "False");
-        tc_log_info(MOD_NAME, "    invert    = %s", 
+        tc_log_info(MOD_NAME, "    invert    = %s",
                     td->invert ? "True" : "False");
         tc_log_info(MOD_NAME, "    zoom      = %f", td->zoom);
-        tc_log_info(MOD_NAME, "    optzoom   = %s", 
+        tc_log_info(MOD_NAME, "    optzoom   = %s",
                     td->optZoom ? "On" : "Off");
-        tc_log_info(MOD_NAME, "    interpol  = %s", 
+        tc_log_info(MOD_NAME, "    interpol  = %s",
                     interpolTypes[td->interpolType]);
         tc_log_info(MOD_NAME, "    sharpen   = %f", td->sharpen);
     }
-    
+
+    f = fopen(fd->input, "r");
+    if (f == NULL) {
+        tc_log_error(MOD_NAME, "cannot open input file %s!\n", fd->input);
+        /* return (-1); when called using tcmodinfo this will fail */
+    } else {
+        ManyLocalMotions mlms;
+        if(readLocalMotionsFile(f,&mlms)==DS_OK){
+            // calculate the actual transforms from the localmotions
+            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=DS_OK)
+                tc_log_error(MOD_NAME, "calculating transformations failed!\n");
+        }else{ // try to read old format
+            if (!readOldTransforms(td, f, &fd->trans)) { /* read input file */
+                tc_log_error(MOD_NAME, "error parsing input file %s!\n", fd->input);
+            }
+        }
+    }
+    fclose(f);
+
     if (preprocessTransforms(td, &fd->trans)!= DS_OK ) {
         tc_log_error(MOD_NAME, "error while preprocessing transforms!");
-        return TC_ERROR;            
-    }  
+        return TC_ERROR;
+    }
 
     // sharpen is still in transcode...
     /* Is this the right point to add the filter? Seems to be the case.*/
     if(td->sharpen>0){
         /* load unsharp filter */
         char unsharp_param[256];
-        sprintf(unsharp_param,"luma=%f:%s:chroma=%f:%s", 
-                td->sharpen, "luma_matrix=5x5", 
+        sprintf(unsharp_param,"luma=%f:%s:chroma=%f:%s",
+                td->sharpen, "luma_matrix=5x5",
                 td->sharpen/2, "chroma_matrix=5x5");
         if (!tc_filter_add("unsharp", unsharp_param)) {
             tc_log_warn(MOD_NAME, "cannot load unsharp filter!");
         }
     }
-    
+
     return TC_OK;
 }
 
@@ -222,22 +227,24 @@ static int transform_configure(TCModuleInstance *self,
  * transform_filter_video: performs the transformation of frames
  * See tcmodule-data.h for function details.
  */
-static int transform_filter_video(TCModuleInstance *self, 
-                                  vframe_list_t *frame) 
+static int transform_filter_video(TCModuleInstance *self,
+                                  vframe_list_t *frame)
 {
     FilterData *fd = NULL;
-  
+
     TC_MODULE_SELF_CHECK(self, "filter_video");
     TC_MODULE_SELF_CHECK(frame, "filter_video");
-  
+
     fd = self->userdata;
 
-    transformPrepare(&fd->td, frame->video_buf, frame->video_buf);  
-                     
+    transformPrepare(&fd->td, frame->video_buf, frame->video_buf);
+
+    Transform t = getNextTransform(&fd->td, &fd->trans);
     if (fd->vob->im_v_codec == CODEC_RGB) {
-        transformRGB(&fd->td, getNextTransform(&fd->td, &fd->trans));
+        transformRGB(&fd->td, t);
     } else if (fd->vob->im_v_codec == CODEC_YUV) {
-        transformYUV(&fd->td, getNextTransform(&fd->td, &fd->trans));
+        transformYUV(&fd->td, t);
+        storeTransform(stderr,&t);
     } else {
         tc_log_error(MOD_NAME, "unsupported Codec: %i\n", fd->vob->im_v_codec);
         return TC_ERROR;
@@ -272,7 +279,7 @@ static int transform_stop(TCModuleInstance *self)
     TC_MODULE_SELF_CHECK(self, "stop");
     fd = self->userdata;
     cleanupTransformData(&fd->td);
-    
+
     cleanupTransformations(&fd->trans);
     return TC_OK;
 }
@@ -289,19 +296,19 @@ static int transform_stop(TCModuleInstance *self)
  * stabilize_inspect:  Return the value of an option in this instance of
  * the module.  See tcmodule-data.h for function details.
  */
-static int transform_inspect(TCModuleInstance *self, 
+static int transform_inspect(TCModuleInstance *self,
             			     const char *param, const char **value)
 {
     FilterData *fd = NULL;
     TC_MODULE_SELF_CHECK(self,  "inspect");
     TC_MODULE_SELF_CHECK(param, "inspect");
     TC_MODULE_SELF_CHECK(value, "inspect");
-  
+
     fd = self->userdata;
 
     if (optstr_lookup(param, "help")) {
         *value = transform_help;
-    }    
+    }
     CHECKPARAM("maxshift", "maxshift=%d",  fd->td.maxShift);
     CHECKPARAM("maxangle", "maxangle=%f",  fd->td.maxAngle);
     CHECKPARAM("smoothing","smoothing=%d", fd->td.smoothing);
@@ -312,16 +319,16 @@ static int transform_inspect(TCModuleInstance *self,
     CHECKPARAM("optzoom",  "optzoom=%i",   fd->td.optZoom);
     CHECKPARAM("zoom",     "zoom=%f",      fd->td.zoom);
     CHECKPARAM("sharpen",  "sharpen=%f",   fd->td.sharpen);
-        
+
     return TC_OK;
 };
 
 
-static const TCCodecID transform_codecs_in[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID transform_codecs_in[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-static const TCCodecID transform_codecs_out[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID transform_codecs_out[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
 TC_MODULE_FILTER_FORMATS(transform);
 
@@ -329,7 +336,7 @@ TC_MODULE_INFO(transform);
 
 static const TCModuleClass transform_class = {
     TC_MODULE_CLASS_HEAD(transform),
-  
+
     .init         = transform_init,
     .fini         = transform_fini,
     .configure    = transform_configure,

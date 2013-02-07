@@ -29,7 +29,7 @@
  */
 
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION "v0.93 (2011-11-09)"
+#define MOD_VERSION "v0.95 (2013-02-06)"
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -205,8 +205,8 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        if(prepareTransformFile(md, sd->f) != DS_OK){
-            tc_log_error(MOD_NAME, "cannot write to transform file %s", sd->result);
+        if(prepareFile(md, sd->f) != DS_OK){
+            tc_log_error(MOD_NAME, "cannot write to result file %s", sd->result);
             return TC_ERROR;
         }
     }
@@ -246,12 +246,13 @@ static int stabilize_filter_video(TCModuleInstance *self,
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     }
-    t = simpleMotionsToTransform(md, &localmotions);
-    ds_vector_del(&localmotions);
-    if(writeTransformToFile(md, sd->f, &t) != DS_OK)
+    if(writeToFile(md, sd->f, &localmotions) != DS_OK){
+        ds_vector_del(&localmotions);
         return TC_ERROR;
-    else
+    } else {
+        ds_vector_del(&localmotions);
         return TC_OK;
+    }
 }
 
 /**

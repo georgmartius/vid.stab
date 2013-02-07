@@ -60,6 +60,8 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     /* Options */
     td->maxShift = -1;
     td->maxAngle = -1;
+    td->maxAngleVariation = 1;
+
 
     td->crop = KeepBorder;
     td->relative = 1;
@@ -121,28 +123,29 @@ int transformPrepare(TransformData* td, const unsigned char* src, unsigned char*
     // with the transformed version
     td->dest = dest;
     if(src==dest || td->srcMalloced){ // in place operation: we have to copy the src first
-        if(td->src == NULL) td->src = ds_malloc(td->fiSrc.framesize);
+        if(td->src == NULL) {
+            td->src = ds_malloc(td->fiSrc.framesize);
+            td->srcMalloced = 1;
+        }
         if (td->src == NULL) {
             ds_log_error(td->modName, "ds_malloc failed\n");
             return DS_ERROR;
-        }else{
-            memcpy(td->src, src, td->fiSrc.framesize);
-            td->srcMalloced = 1;
         }
+        memcpy(td->src, src, td->fiSrc.framesize);
     }else{ // otherwise no copy needed
         td->src=(unsigned char *)src;
     }
     if (td->crop == KeepBorder) {
       if(td->destbuf == 0) {
-	// if we keep the borders, we need a second buffer to store
-	//  the previous stabilized frame, so we use destbuf
-	td->destbuf = ds_malloc(td->fiDest.framesize);
-	if (td->destbuf == NULL) {
-	  ds_log_error(td->modName, "ds_malloc failed\n");
-	  return DS_ERROR;
-	}
-	// if we keep borders, save first frame into the background buffer (destbuf)
-	memcpy(td->destbuf, src, td->fiSrc.framesize);
+          // if we keep the borders, we need a second buffer to store
+          //  the previous stabilized frame, so we use destbuf
+          td->destbuf = ds_malloc(td->fiDest.framesize);
+          if (td->destbuf == NULL) {
+              ds_log_error(td->modName, "ds_malloc failed\n");
+              return DS_ERROR;
+          }
+          // if we keep borders, save first frame into the background buffer (destbuf)
+          memcpy(td->destbuf, src, td->fiSrc.framesize);
       }
     }else{ // otherwise we directly operate on the destination
         td->destbuf = dest;

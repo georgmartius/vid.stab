@@ -29,7 +29,8 @@ include_directories (../src)
 
 add_executable (tests tests.c testutils.c testframework.c ../src/dsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
-  ../src/libdeshake.c ../src/transformtype.c ../src/serialize.c
+  ../src/libdeshake.c ../src/transformtype.c
+	../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c ../src/boxblur.c)
 
 target_link_libraries(tests m)

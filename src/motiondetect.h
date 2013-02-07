@@ -75,8 +75,6 @@ typedef struct motiondetect {
   int show;
   /* measurement fields with lower contrast are discarded */
   double contrastThreshold;
-  /* maximal difference in angles of fields */
-  double maxAngleVariation;
   /* meta parameter for maxshift and fieldsize between 1 and 15 */
   int shakiness;
   int accuracy;   // meta parameter for number of fields between 1 and 10
@@ -136,13 +134,6 @@ int configureMotionDetect(MotionDetect* md);
  * */
 int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *frame);
 
-/** calculates the transformation that caused the observed motions.
-    Using a simple cleaned-means approach to eliminate outliers.
-    translation and rotation is calculated.
-*/
-Transform simpleMotionsToTransform(MotionDetect* md,
-                                   const LocalMotions* motions);
-
 /** Deletes internal data structures.
  * In order to use the MotionDetect again, you have to call initMotionDetect
  */
@@ -164,8 +155,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
 
 LocalMotions calcShiftRGBSimple(MotionDetect* md);
 LocalMotions calcShiftYUVSimple(MotionDetect* md);
-double calcAngle(MotionDetect* md, const LocalMotion* lm,
-                 int center_x, int center_y);
+
 LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field,
                             int fieldnum);
 LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,

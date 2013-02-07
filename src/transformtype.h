@@ -83,6 +83,8 @@ Transform sub_transforms(const Transform* t1, const Transform* t2);
 Transform mult_transform(const Transform* t1, double f);
 Transform mult_transform_(const Transform t1, double f);
 
+void storeTransform(FILE* f, const Transform* t);
+
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2);
 /* compares a transform with respect to y (for sort function) */

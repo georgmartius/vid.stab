@@ -2,6 +2,10 @@ void test_motionDetect(const TestData* testdata){
 	MotionDetect md;
 	test_bool(initMotionDetect(&md, &testdata->fi, "test") == DS_OK);
 	test_bool(configureMotionDetect(&md)== DS_OK);
+	TransformData td;
+	test_bool(initTransformData(&td,
+															&testdata->fi, &testdata->fi, "test") == DS_OK);
+	test_bool(configureTransformData(&td)== DS_OK);
 	fprintf(stderr,"MotionDetect:\n");
 	int numruns =5;
 	int i;
@@ -18,7 +22,7 @@ void test_motionDetect(const TestData* testdata){
 		/* for(k=0; k < ds_vector_size(&localmotions); k++){ */
 		/* 	localmotion_print(LMGet(&localmotions,k),stderr); */
 		/* } */
-		t = simpleMotionsToTransform(&md, &localmotions);
+		t = simpleMotionsToTransform(&td, &localmotions);
 
 		ds_vector_del(&localmotions);
 		fprintf(stderr, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",

@@ -84,6 +84,9 @@ typedef struct _TransformData {
     /* Options */
     int maxShift;        // maximum number of pixels we will shift
     double maxAngle;     // maximum angle in rad
+    /* maximal difference in angles of fields */
+    double maxAngleVariation;
+
 
     /* whether to consider transforms as relative (to previous frame)
      * or absolute transforms

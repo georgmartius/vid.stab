@@ -30,6 +30,7 @@
 #include "transform.h"
 #include "boxblur.h"
 #include "serialize.h"
+#include "localmotion2transform.h"
 
 #include "transformfixedpoint.h"
 #ifdef TESTING

@@ -10,7 +10,6 @@
 #include "libdeshake.h"
 // load optimized functions
 #include "motiondetect_opt.h"
-#include "serialize.h"
 
 #ifndef TESTING
 #error TESTING must be defined

@@ -97,6 +97,10 @@ Transform mult_transform_(const Transform t1, double f)
   return mult_transform(&t1,f);
 }
 
+void storeTransform(FILE* f, const Transform* t){
+  fprintf(f,"Trans %lf %lf %lf %lf\n", t->x, t->y, t->alpha, t-zoom);
+}
+
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2)
 {

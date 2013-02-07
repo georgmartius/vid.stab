@@ -46,6 +46,7 @@
 
 #include "boxblur.h"
 #include "deshakedefines.h"
+#include "localmotion2transform.h"
 
 /* internal data structures */
 
@@ -75,12 +76,11 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->stepSize  = 6;
   md->allowMax  = 0;
   md->algo      = 1;
-  md->accuracy  = 5;
+  md->accuracy  = 9;
   md->shakiness = 5;
   md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
   md->show = 0;
   md->contrastThreshold = 0.25;
-  md->maxAngleVariation = 1;
   md->initialized = 1;
   return DS_OK;
 }
@@ -433,25 +433,6 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
   lm.contrast=1;
   ds_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
   return localmotions;
-}
-
-/* calculates rotation angle for the given transform and
- * field with respect to the given center-point
- */
-double calcAngle(MotionDetect* md, const LocalMotion* lm,
-                 int center_x, int center_y){
-  // we better ignore fields that are to close to the rotation center
-  if (abs(lm->f.x - center_x) + abs(lm->f.y - center_y) < md->maxShift) {
-    return 0;
-  } else {
-    // double r = sqrt(lm->f.x*lm->f.x + lm->f.y*lm->f.y);
-    double a1 = atan2(lm->f.y - center_y, lm->f.x - center_x);
-    double a2 = atan2(lm->f.y - center_y + lm->v.y,
-                      lm->f.x - center_x + lm->v.x);
-    double diff = a2 - a1;
-    return (diff > M_PI) ? diff - 2 * M_PI : ((diff < -M_PI) ? diff + 2
-					      * M_PI : diff);
-  }
 }
 
 /* calculates the optimal transformation for one field in YUV frames
@@ -823,56 +804,6 @@ LocalMotions calcTransFields(MotionDetect* md,
 
 
 
-Transform simpleMotionsToTransform(MotionDetect* md,
-                                   const LocalMotions* motions){
-  int center_x = 0;
-  int center_y = 0;
-  int num_motions=ds_vector_size(motions);
-  double *angles = (double*) ds_malloc(sizeof(double) * num_motions);
-  Transform t;
-  LocalMotion meanmotion;
-  int i;
-  if(num_motions < 1)
-    return null_transform();
-
-  // calc center point of all remaining fields
-  for (i = 0; i < num_motions; i++) {
-    center_x += LMGet(motions,i)->f.x;
-    center_y += LMGet(motions,i)->f.y;
-  }
-  center_x /= num_motions;
-  center_y /= num_motions;
-
-  // cleaned mean
-  meanmotion = cleanmean_localmotions(motions);
-
-  // figure out angle
-  if (num_motions < 6) {
-    // the angle calculation is inaccurate for 5 and less fields
-    t.alpha = 0;
-  } else {
-    for (i = 0; i < num_motions; i++) {
-      // substract avg and calc angle
-      LocalMotion m = sub_localmotion(LMGet(motions,i),&meanmotion);
-      angles[i] = calcAngle(md, &m, center_x, center_y);
-    }
-    double min, max;
-    t.alpha = -cleanmean(angles, num_motions, &min, &max);
-    if (max - min > md->maxAngleVariation) {
-      t.alpha = 0;
-      ds_log_info(md->modName, "too large variation in angle(%f)\n",
-		  max-min);
-    }
-  }
-  ds_free(angles);
-  // compensate for off-center rotation
-  double p_x = (center_x - md->fi.width / 2);
-  double p_y = (center_y - md->fi.height / 2);
-  t.x = meanmotion.v.x + (cos(t.alpha) - 1) * p_x - sin(t.alpha) * p_y;
-  t.y = meanmotion.v.y + sin(t.alpha) * p_x + (cos(t.alpha) - 1) * p_y;
-
-  return t;
-}
 
 /** draws the field scanning area */
 void drawFieldScanArea(MotionDetect* md, const LocalMotion* lm) {

@@ -28,7 +28,7 @@
  */
 
 #define MOD_NAME    "filter_deshake.so"
-#define MOD_VERSION "v0.93 (2011-11-09)"
+#define MOD_VERSION "v0.95 (2013-02-06)"
 #define MOD_CAP     "deshakes a video clip by extracting relative transformations\n\
     of subsequent frames and transforms the high-frequency away\n\
     This is a single pass verion of stabilize and transform plugin"
@@ -299,33 +299,34 @@ static int deshake_filter_video(TCModuleInstance *self,
 
   sd = self->userdata;
   MotionDetect* md = &(sd->md);
+  TransformData* td = &(sd->td);
   LocalMotions localmotions;
   Transform motion;
   if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
     tc_log_error(MOD_NAME, "motion detection failed");
     return TC_ERROR;
   }
-  motion = simpleMotionsToTransform(&(sd->md), &localmotions);
+
+  if(writeToFile(md, sd->f, &localmotions) != DS_OK)
+  motion = simpleMotionsToTransform(td, &localmotions);
   ds_vector_del(&localmotions);
 
-  if(writeTransformToFile(&(sd->md), sd->f, &motion) != DS_OK)
+  transformPrepare(td, frame->video_buf, frame->video_buf);
 
-  transformPrepare(&sd->td, frame->video_buf, frame->video_buf);
-
-  Transform t = lowPassTransforms(&sd->td, &sd->avg, &motion);
+  Transform t = lowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */
   /* 	       motion.x, motion.y, motion.alpha, */
   /* 	       t.x, t.y, t.alpha, t.zoom); */
 
   if (sd->vob->im_v_codec == CODEC_RGB) {
-    transformRGB(&sd->td, t);
+    transformRGB(td, t);
   } else if (sd->vob->im_v_codec == CODEC_YUV) {
-    transformYUV(&sd->td, t);
+    transformYUV(td, t);
   } else {
     tc_log_error(MOD_NAME, "unsupported Codec: %i\n", sd->vob->im_v_codec);
     return TC_ERROR;
   }
-  transformFinish(&sd->td);
+  transformFinish(td);
   return TC_OK;
 }
 

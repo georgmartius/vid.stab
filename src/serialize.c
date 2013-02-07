@@ -99,7 +99,7 @@ LocalMotions restoreLocalmotions(FILE* f){
 int prepareFile(const MotionDetect* md, FILE* f){
     if(!f) return DS_ERROR;
     fprintf(f, "VID.STAB 1\n");
-    fprintf(f, "#      accuracy = %d\n", md->accuracy);
+		//    fprintf(f, "#      accuracy = %d\n", md->accuracy);
     fprintf(f, "#      accuracy = %d\n", md->accuracy);
     fprintf(f, "#     shakiness = %d\n", md->shakiness);
     fprintf(f, "#      stepsize = %d\n", md->stepSize);
@@ -176,7 +176,9 @@ int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
 			ds_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
 									oldindex, index);
 		}
-		ds_vector_set_dup(mlms,index,&lms, sizeof(LocalMotions));
+		if(index<1)
+			ds_log_info(modname,"VID.STAB file: Frame number < 1 (%s)", index);
+		else ds_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
 		oldindex=index;
 	}
 	return DS_OK;

@@ -19,14 +19,14 @@
 
 /// pixel in single layer image
 #define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? (def)	\
-  : (((x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (w)]) 
+  : (((x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (w)])
 /// pixel in single layer image without rangecheck
-#define PIX(img, x, y, w, h) (img[(x) + (y) * (w)]) 
+#define PIX(img, x, y, w, h) (img[(x) + (y) * (w)])
 /// pixel in N-channel image. channel in {0..N-1}
 #define PIXELN(img, x, y, w, h, N,channel , def) ((x) < 0 || (y) < 0) ? (def) \
-  : (((x) >=(w) || (y) >= (h)) ? (def) : img[((x) + (y) * (w))*(N) + (channel)]) 
+  : (((x) >=(w) || (y) >= (h)) ? (def) : img[((x) + (y) * (w))*(N) + (channel)])
 /// pixel in N-channel image without rangecheck. channel in {0..N-1}
-#define PIXN(img, x, y, w, h, N,channel) (img[((x) + (y) * (w))*(N) + (channel)]) 
+#define PIXN(img, x, y, w, h, N,channel) (img[((x) + (y) * (w))*(N) + (channel)])
 
 
 // define here the functions to be used in the framework we are in
@@ -63,16 +63,17 @@
 #define ds_zalloc(size) memset(malloc(size),0,size)
 
 #define ds_log(type, tag, format, args...) \
-	printf("%s (%s):", type, tag); printf(format, ## args);
+	fprintf(stderr,"%s (%s):", type, tag); fprintf(stderr,format, ## args); \
+	fprintf(stderr,"\n");
 
 #define ds_log_error(tag, format, args...) \
-    ds_log("\nError:", tag, format , ## args)
+    ds_log("Error:", tag, format , ## args)
 #define ds_log_info(tag, format, args...) \
-    ds_log("\nInfo: ", tag, format , ## args)
+    ds_log("Info: ", tag, format , ## args)
 #define ds_log_warn(tag, format, args...) \
-    ds_log("\nWarn: ", tag, format , ## args)
+    ds_log("Warn: ", tag, format , ## args)
 #define ds_log_msg(tag, format, args...) \
-    ds_log("\nMsg:  ", tag, format , ## args)
+    ds_log("Msg:  ", tag, format , ## args)
 
 #define ds_strdup(s) strdup(s)
 #define ds_strndup(s, n) strndup(s, n)

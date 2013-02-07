@@ -181,6 +181,7 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "stepsize",   "%d", &md->stepSize);
         optstr_get(options, "algo",       "%d", &md->algo);
         optstr_get(options, "mincontrast","%lf",&md->contrastThreshold);
+        optstr_get(options, "tripod",     "%d", &md->virtualTripod);
         optstr_get(options, "show",       "%d", &md->show);
     }
 
@@ -196,6 +197,7 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "      stepsize = %d", md->stepSize);
         tc_log_info(MOD_NAME, "          algo = %d", md->algo);
         tc_log_info(MOD_NAME, "   mincontrast = %f", md->contrastThreshold);
+        tc_log_info(MOD_NAME, "        tripod = %d", md->virtualTripod);
         tc_log_info(MOD_NAME, "          show = %d", md->show);
         tc_log_info(MOD_NAME, "        result = %s", sd->result);
     }
@@ -241,7 +243,6 @@ static int stabilize_filter_video(TCModuleInstance *self,
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
     LocalMotions localmotions;
-    Transform t;
     if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
@@ -310,6 +311,8 @@ static int stabilize_inspect(TCModuleInstance *self,
     CHECKPARAM("stepsize", "stepsize=%d",  md->stepSize);
     CHECKPARAM("allowmax", "allowmax=%d",  md->allowMax);
     CHECKPARAM("algo",     "algo=%d",      md->algo);
+    CHECKPARAM("tripod",   "tripod=%d",    md->virtualTripod);
+    CHECKPARAM("show",     "show=%d",      md->show);
     CHECKPARAM("result",   "result=%s",    sd->result);
     return TC_OK;
 }

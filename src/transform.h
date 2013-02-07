@@ -136,6 +136,7 @@ static const char transform_help[] = ""
     "                3: bi-cubic\n"
     "    'sharpen'   amount of sharpening: 0: no sharpening (def: 0.8)\n"
     "                uses filter unsharp with 5x5 matrix\n"
+    "    'tripod'    virtual tripod mode (=relative=0:smoothing=0)\n"
     "    'help'      print this help message\n";
 
 /** initialized the TransformData structure and allocates memory

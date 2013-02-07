@@ -1,3 +1,9 @@
+0.95
+	local motions are now stored in the file (file format changed,
+	 old one still supported)
+	BUGFIX for zero-transforms
+	virtual tripod mode
+
 0.93
 	single pass version filter_deshake
 	made stabilize part print the transforms to the file right away

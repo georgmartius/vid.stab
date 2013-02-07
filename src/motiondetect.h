@@ -71,6 +71,8 @@ typedef struct motiondetect {
   int maxFields;  // maximum number of fields used (selected by contrast)
   int fieldSize; // size    = min(md->width, md->height)/10;
   int fieldRows; // number of rows
+  /* if >0 then all the frames are compared with the given frame (1 for first) */
+  int virtualTripod;
   /* if 1 and 2 then the fields and transforms are shown in the frames */
   int show;
   /* measurement fields with lower contrast are discarded */
@@ -110,6 +112,8 @@ static const char motiondetect_help[] = ""
     "    'algo'        0: brute force (translation only);\n"
     "                  1: small measurement fields (def)\n"
     "    'mincontrast' below this contrast a field is discarded (0-1) (def: 0.3)\n"
+    "    'tripod'      virtual tripod mode (if >0): motion is compared to a \n"
+    "                  reference frame (frame # is the value) (def: 0)\n"
     "    'show'        0: draw nothing (def); 1,2: show fields and transforms\n"
     "                  in the resulting frames. Consider the 'preview' filter\n"
     "    'help'        print this help message\n";

@@ -71,6 +71,7 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->currorig = 0;
   md->currtmp  = 0;
   md->hasSeenOneFrame = 0;
+  md->frameNum = 0;
 
   // Options
   md->stepSize  = 6;
@@ -79,6 +80,7 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->accuracy  = 9;
   md->shakiness = 5;
   md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
+  md->virtualTripod = 0;
   md->show = 0;
   md->contrastThreshold = 0.25;
   md->initialized = 1;
@@ -196,6 +198,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *fram
     md->hasSeenOneFrame = 1;
   }
 
+  if(md->virtualTripod < 1 || md->frameNum < md->virtualTripod)
   // copy current frame (smoothed) to prev for next frame comparison
   memcpy(md->prev, md->curr, md->fi.framesize);
   md->frameNum++;

@@ -156,6 +156,11 @@ static int transform_configure(TCModuleInstance *self,
         optstr_get(options, "optzoom"  , "%d", &td->optZoom);
         optstr_get(options, "interpol" , "%d", (int*)(&td->interpolType));
         optstr_get(options, "sharpen"  , "%lf",&td->sharpen);
+        if(optstr_lookup(options, "tripod")){
+            tc_log_info(MOD_NAME,"Virtual tripod mode: relative=False, smoothing=0");
+            td->relative=0;
+            td->smoothing=0;
+        }
     }
 
     if(configureTransformData(td)!= DS_OK){
@@ -244,7 +249,6 @@ static int transform_filter_video(TCModuleInstance *self,
         transformRGB(&fd->td, t);
     } else if (fd->vob->im_v_codec == CODEC_YUV) {
         transformYUV(&fd->td, t);
-        storeTransform(stderr,&t);
     } else {
         tc_log_error(MOD_NAME, "unsupported Codec: %i\n", fd->vob->im_v_codec);
         return TC_ERROR;

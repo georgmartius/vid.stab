@@ -143,7 +143,7 @@ int readFromFile(FILE* f, LocalMotions* lms){
 		return num;
 	} else if(c=='#') {
 		char l[1024];
-    fgets(l, sizeof(l), f);
+    if(fgets(l, sizeof(l), f)==0) return DS_ERROR;
 		return readFromFile(f,lms);
 	} else if(c=='\n' || c==' ') {
 		return readFromFile(f,lms);

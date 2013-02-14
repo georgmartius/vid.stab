@@ -125,7 +125,7 @@ void cleanmaxmin_xy_transform(const Transform* transforms, int len,
 
 /* helper function to work with local motions */
 
-LocalMotion null_localmotion();
+LocalMotion null_localmotion(void);
 /// a new array of the v.x values is returned (ds_free has to be called)
 int* localmotions_getx(const LocalMotions* localmotions);
 /// a new array of the v.y values is returned (ds_free has to be called)

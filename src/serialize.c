@@ -176,9 +176,11 @@ int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
 			ds_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
 									oldindex, index);
 		}
-		if(index<1)
-			ds_log_info(modname,"VID.STAB file: Frame number < 1 (%s)", index);
-		else ds_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
+		if(index<1){
+			ds_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
+		} else {
+			ds_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
+		}
 		oldindex=index;
 	}
 	return DS_OK;

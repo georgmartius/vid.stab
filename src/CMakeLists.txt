@@ -20,7 +20,7 @@ endif()
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+add_definitions( -fPIC -DUSE_SSE2 -msse2 -ffast-math )
 
 # Create the deshake library
 add_library (deshake STATIC

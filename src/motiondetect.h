@@ -51,10 +51,10 @@
 typedef struct motiondetect {
   DSFrameInfo fi;
 
-  unsigned char* curr;     // blurres version of current frame buffer
-  unsigned char* currorig; // current frame buffer (original) (only pointer)
-  unsigned char* currtmp;  //  temporary buffer for bluring
-  unsigned char* prev;     // frame buffer for last frame (copied)
+  DSFrame curr;     // blurred version of current frame buffer
+  DSFrame currorig; // current frame buffer (original) (only pointer)
+  DSFrame currtmp;  // temporary buffer for blurring
+  DSFrame prev;     // frame buffer for last frame (copied)
   short hasSeenOneFrame;   // true if we have a valid previous frame
 
   const char* modName;
@@ -136,7 +136,7 @@ int configureMotionDetect(MotionDetect* md);
  *  is stored internally
  *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *frame);
+int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame);
 
 /** Deletes internal data structures.
  * In order to use the MotionDetect again, you have to call initMotionDetect
@@ -145,8 +145,8 @@ void cleanupMotionDetection(MotionDetect* md);
 
 
 int initFields(MotionDetect* md);
-unsigned int compareImg(unsigned char* I1, unsigned char* I2,
-                        int width, int height,  int bytesPerPixel, int d_x, int d_y);
+unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
+                        int bytesPerPixel, int strive1, int strive2, int d_x, int d_y);
 
 double contrastSubImgYUV(MotionDetect* md, const Field* field);
 double contrastSubImgRGB(MotionDetect* md, const Field* field);
@@ -176,7 +176,7 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
 
 
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width, int height,
+                               const Field* field, int width1, int width2, int height,
                                int bytesPerPixel,
                                int d_x, int d_y, unsigned int threshold);
 

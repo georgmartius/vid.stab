@@ -68,10 +68,10 @@ typedef struct _TransformData {
     DSFrameInfo fiSrc;
     DSFrameInfo fiDest;
 
-    unsigned char* src;  // copy of the current frame buffer
-    unsigned char* destbuf; // pointer to an additional buffer or
+    DSFrame src;         // copy of the current frame buffer
+    DSFrame destbuf;     // pointer to an additional buffer or
                          // to the destination buffer (depending on crop)
-    unsigned char* dest; // pointer to the destination buffer
+    DSFrame dest;        // pointer to the destination buffer
 
     short srcMalloced;   // 1 if the source buffer was internally malloced
     const char* modName;
@@ -179,7 +179,7 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
-int transformPrepare(TransformData* td, const unsigned char* src, unsigned char* dest);
+int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest);
 
 /** call this function to finish the transformation of a frame (transformRGB/transformYUV)
  */

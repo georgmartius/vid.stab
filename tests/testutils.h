@@ -6,7 +6,7 @@
 typedef struct _test_data {
   DSFrameInfo fi;
   DSFrameInfo fi_color;
-  unsigned char* frames[5];
+  DSFrame frames[5];
 } TestData;
 
 
@@ -26,8 +26,8 @@ inline static short randUpTo(short max){
 }
 
 
-int loadPGMImage(const char* filename, char ** framebuffer, DSFrameInfo* fi);
+int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi);
 
-int storePGMImage(const char* filename, unsigned char * image_data, DSFrameInfo fi );
+int storePGMImage(const char* filename, const uint8_t* data, DSFrameInfo fi );
 
 #endif

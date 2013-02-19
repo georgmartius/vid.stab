@@ -196,14 +196,15 @@ void _FLT(interpolateN)(unsigned char *rv, float x, float y,
  * Preconditions:
  *  The frame must be in RGB format
  /// TODO Add zoom!
+ /// Add bytes per pixel usage
  */
 int _FLT(transformRGB)(TransformData* td, Transform t)
 {
   int x = 0, y = 0, z = 0;
   unsigned char *D_1, *D_2;
 
-  D_1  = td->src;
-  D_2  = td->destbuf;
+  D_1  = td->src.data[0];
+  D_2  = td->destbuf.data[0];
   float c_s_x = td->fiSrc.width/2.0;
   float c_s_y = td->fiSrc.height/2.0;
   float c_d_x = td->fiDest.width/2.0;
@@ -217,7 +218,8 @@ int _FLT(transformRGB)(TransformData* td, Transform t)
    *  t the translation, and M the rotation matrix
    *      p_s = M^{-1}(p_d - c_d - t) + c_s
    */
-  /* All 3 channels */
+	int channels = td->fiSrc.bytesPerPixel;
+  /* All channels */
   if (fabs(t.alpha) > td->rotationThreshhold) {
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
@@ -227,11 +229,11 @@ int _FLT(transformRGB)(TransformData* td, Transform t)
           + sin(-t.alpha) * y_d1 + c_s_x -t.x;
         float y_s  = -sin(-t.alpha) * x_d1
           + cos(-t.alpha) * y_d1 + c_s_y -t.y;
-        for (z = 0; z < 3; z++) { // iterate over colors
-          unsigned char* dest = &D_2[(x + y * td->fiDest.width)*3+z];
+        for (z = 0; z < channels; z++) { // iterate over colors
+          unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+z];
           _FLT(interpolateN)(dest, x_s, y_s, D_1,
                              td->fiSrc.width, td->fiSrc.height,
-                             3, z, td->crop ? 16 : *dest);
+                             channels, z, td->crop ? 16 : *dest);
         }
       }
     }
@@ -243,14 +245,14 @@ int _FLT(transformRGB)(TransformData* td, Transform t)
     int round_ty = myround(t.y);
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
-        for (z = 0; z < 3; z++) { // iterate over colors
+        for (z = 0; z < channels; z++) { // iterate over colors
           short p = PIXELN(D_1, x - round_tx, y - round_ty,
-                           td->fiSrc.width, td->fiSrc.height, 3, z, -1);
+                           td->fiSrc.width, td->fiSrc.height, channels, z, -1);
           if (p == -1) {
             if (td->crop == 1)
-              D_2[(x + y * td->fiDest.width)*3+z] = 16;
+              D_2[(x + y * td->fiDest.width)*channels+z] = 16;
           } else {
-            D_2[(x + y * td->fiDest.width)*3+z] = (unsigned char)p;
+            D_2[(x + y * td->fiDest.width)*channels+z] = (unsigned char)p;
           }
         }
       }
@@ -272,80 +274,59 @@ int _FLT(transformRGB)(TransformData* td, Transform t)
 int _FLT(transformYUV)(TransformData* td, Transform t)
 {
   int x = 0, y = 0;
-  unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2;
+  uint8_t *dat_1, *dat_2;
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
-    if(td->src==td->destbuf)
+    if(equalFrames(&td->src,&td->destbuf))
       return DS_OK; // noop
     else {
-      // FIXME: if framesizes differ this does not work
-      memcpy(td->destbuf, td->src, td->fiSrc.framesize);
+      copyFrame(&td->destbuf, &td->src, &td->fiSrc);
       return DS_OK;
     }
   }
+  int plane;
+  for(plane=0; plane< td->fiSrc.planes; plane++){
+    dat_1  = td->src.data[plane];
+    dat_2  = td->destbuf.data[plane];
 
+    int wsub = getPlaneWidthSubS(&td->fiSrc,plane);
+    int hsub = getPlaneHeightSubS(&td->fiSrc,plane);
+    float c_s_x = (td->fiSrc.width  >> wsub)/2.0;
+    float c_s_y = (td->fiSrc.height >> hsub)/2.0;
+    float c_d_x = (td->fiDest.width >> wsub)/2.0;
+    float c_d_y = (td->fiDest.height>> hsub)/2.0;
 
-  Y_1  = td->src;
-  Y_2  = td->destbuf;
-  Cb_1 = td->src     + td->fiSrc.width * td->fiSrc.height;
-  Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height;
-  Cr_1 = td->src     + 5*td->fiSrc.width * td->fiSrc.height/4;
-  Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4;
-  float c_s_x = td->fiSrc.width/2.0;
-  float c_s_y = td->fiSrc.height/2.0;
-  float c_d_x = td->fiDest.width/2.0;
-  float c_d_y = td->fiDest.height/2.0;
+    float z = 1.0-t.zoom/100;
+    float zcos_a = z*cos(-t.alpha); // scaled cos
+    float zsin_a = z*sin(-t.alpha); // scaled sin
+    float tx = t.x / (float)(1 << wsub);
+    float ty = t.y / (float)(1 << hsub);
 
-  float z = 1.0-t.zoom/100;
-  float zcos_a = z*cos(-t.alpha); // scaled cos
-  float zsin_a = z*sin(-t.alpha); // scaled sin
-
-  /* for each pixel in the destination image we calc the source
-   * coordinate and make an interpolation:
-   *      p_d = c_d + M(p_s - c_s) + t
-   * where p are the points, c the center coordinate,
-   *  _s source and _d destination,
-   *  t the translation, and M the rotation and scaling matrix
-   *      p_s = M^{-1}(p_d - c_d - t) + c_s
-   */
-  /* Luminance channel */
-  for (x = 0; x < td->fiDest.width; x++) {
-    for (y = 0; y < td->fiDest.height; y++) {
-      float x_d1 = (x - c_d_x);
-      float y_d1 = (y - c_d_y);
-      float x_s  =  zcos_a * x_d1
-        + zsin_a * y_d1 + c_s_x -t.x;
-      float y_s  = -zsin_a * x_d1
-        + zcos_a * y_d1 + c_s_y -t.y;
-      unsigned char* dest = &Y_2[x + y * td->fiDest.width];
-      td->_FLT(interpolate)(dest, x_s, y_s, Y_1,
-                            td->fiSrc.width, td->fiSrc.height,
-                            td->crop ? 16 : *dest);
+    /* for each pixel in the destination image we calc the source
+     * coordinate and make an interpolation:
+     *      p_d = c_d + M(p_s - c_s) + t
+     * where p are the points, c the center coordinate,
+     *  _s source and _d destination,
+     *  t the translation, and M the rotation and scaling matrix
+     *      p_s = M^{-1}(p_d - c_d - t) + c_s
+     */
+    int w = CHROMA_SIZE(td->fiDest.width,wsub);
+    int h = CHROMA_SIZE(td->fiDest.height,hsub);
+    for (x = 0; x < w; x++) {
+      for (y = 0; y < h; y++) {
+        float x_d1 = (x - c_d_x);
+        float y_d1 = (y - c_d_y);
+        float x_s  =  zcos_a * x_d1
+          + zsin_a * y_d1 + c_s_x -tx;
+        float y_s  = -zsin_a * x_d1
+          + zcos_a * y_d1 + c_s_y -ty;
+        unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
+        td->_FLT(interpolate)(dest, x_s, y_s, dat_1,
+                              td->src.linesize[plane], td->fiSrc.height>>hsub,
+                              td->crop ? 16 : *dest);
+      }
     }
   }
-
-  /* Color channels */
-  int ws2 = td->fiSrc.width/2;
-  int wd2 = td->fiDest.width/2;
-  int hs2 = td->fiSrc.height/2;
-  int hd2 = td->fiDest.height/2;
-  for (x = 0; x < wd2; x++) {
-    for (y = 0; y < hd2; y++) {
-      float x_d1 = x - (c_d_x)/2;
-      float y_d1 = y - (c_d_y)/2;
-      float x_s  =  zcos_a * x_d1
-        + zsin_a * y_d1 + (c_s_x -t.x)/2;
-      float y_s  = -zsin_a * x_d1
-        + zcos_a * y_d1 + (c_s_y -t.y)/2;
-      unsigned char* dest = &Cr_2[x + y * wd2];
-      td->_FLT(interpolate)(dest, x_s, y_s, Cr_1, ws2, hs2,
-                            td->crop ? 128 : *dest);
-      dest = &Cb_2[x + y * wd2];
-      td->_FLT(interpolate)(dest, x_s, y_s, Cb_1, ws2, hs2,
-                            td->crop ? 128 : *dest);
-    }
-  }
-
   return DS_OK;
 }
 

@@ -1,8 +1,13 @@
+0.96
+	libavfilter plugins work
+	flexible support of pixel formats, ala ffmpeg
 0.95
+	virtual tripod mode
+
+0.94
 	local motions are now stored in the file (file format changed,
 	 old one still supported)
 	BUGFIX for zero-transforms
-	virtual tripod mode
 
 0.93
 	single pass version filter_deshake

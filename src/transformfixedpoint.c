@@ -260,10 +260,10 @@ inline void interpolateN(unsigned char *rv, fp16 x, fp16 y,
 int transformRGB(TransformData* td, Transform t)
 {
 	int x = 0, y = 0, k = 0;
-	unsigned char *D_1, *D_2;
+	uint8_t *D_1, *D_2;
 
-	D_1  = td->src;
-	D_2  = td->destbuf;
+	D_1  = td->src.data[0];
+	D_2  = td->destbuf.data[0];
 	fp16 c_s_x = iToFp16(td->fiSrc.width/2);
 	fp16 c_s_y = iToFp16(td->fiSrc.height/2);
 	int32_t c_d_x = td->fiDest.width/2;
@@ -282,18 +282,20 @@ int transformRGB(TransformData* td, Transform t)
 	fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
 	fp16  c_tx    = c_s_x - fToFp16(t.x);
 	fp16  c_ty    = c_s_y - fToFp16(t.y);
-	/* All 3 channels */
+	int channels = td->fiSrc.bytesPerPixel;
+	/* All channels */
 	for (y = 0; y < td->fiDest.height; y++) {
 		int32_t y_d1 = (y - c_d_y);
 		for (x = 0; x < td->fiDest.width; x++) {
 			int32_t x_d1 = (x - c_d_x);
 			fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
 			fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
-			for (k = 0; k < 3; k++) { // iterate over colors
-				unsigned char* dest = &D_2[(x + y * td->fiDest.width)*3+k];
+
+			for (k = 0; k < channels; k++) { // iterate over colors
+				unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+k];
 				interpolateN(dest, x_s, y_s, D_1,
 										 td->fiSrc.width, td->fiSrc.height,
-										 3, k, td->crop ? 16 : *dest);
+										 channels, k, td->crop ? 16 : *dest);
 			}
 		}
 	}
@@ -318,80 +320,61 @@ int transformRGB(TransformData* td, Transform t)
 int transformYUV(TransformData* td, Transform t)
 {
 	int32_t x = 0, y = 0;
-	unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2;
+	uint8_t *dat_1, *dat_2;
 
-	if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
-		if(td->src==td->destbuf)
-			return DS_OK; // noop
-		else {
-			// FIXME: if framesizes differ this does not work
-			memcpy(td->destbuf, td->src, td->fiSrc.framesize);
-			return DS_OK;
-		}
-	}
+  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
+    if(equalFrames(&td->src,&td->destbuf))
+      return DS_OK; // noop
+    else {
+      copyFrame(&td->destbuf, &td->src, &td->fiSrc);
+      return DS_OK;
+    }
+  }
 
-	Y_1  = td->src;
-	Y_2  = td->destbuf;
-	Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height;
-	Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height;
-	Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4;
-	Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4;
-	fp16 c_s_x = iToFp16(td->fiSrc.width / 2);
-	fp16 c_s_y = iToFp16(td->fiSrc.height / 2);
-	int32_t c_d_x = td->fiDest.width / 2;
-	int32_t c_d_y = td->fiDest.height / 2;
+  int plane;
+  for(plane=0; plane< td->fiSrc.planes; plane++){
+		dat_1  = td->src.data[plane];
+    dat_2  = td->destbuf.data[plane];
+    int wsub = getPlaneWidthSubS(&td->fiSrc,plane);
+    int hsub = getPlaneHeightSubS(&td->fiSrc,plane);
+		int dw = CHROMA_SIZE(td->fiDest.width , wsub);
+		int dh = CHROMA_SIZE(td->fiDest.height, hsub);
+		int sw = CHROMA_SIZE(td->fiSrc.width  , wsub);
+		int sh = CHROMA_SIZE(td->fiSrc.height , hsub);
 
-	float z     = 1.0-t.zoom/100.0;
-	fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
-	fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
-	fp16  c_tx    = c_s_x - fToFp16(t.x);
-	fp16  c_ty    = c_s_y - fToFp16(t.y);
+		fp16 c_s_x = iToFp16(sw / 2);
+		fp16 c_s_y = iToFp16(sh / 2);
+		int32_t c_d_x = dw / 2;
+		int32_t c_d_y = dh / 2;
 
-	/* for each pixel in the destination image we calc the source
-	 * coordinate and make an interpolation:
-	 *      p_d = c_d + M(p_s - c_s) + t
-	 * where p are the points, c the center coordinate,
-	 *  _s source and _d destination,
-	 *  t the translation, and M the rotation and scaling matrix
-	 *      p_s = M^{-1}(p_d - c_d - t) + c_s
-	 */
-	/* Luminance channel */
-	for (y = 0; y < td->fiDest.height; y++) {
-		// swapping of the loops brought 15% performace gain
-		int32_t y_d1 = (y - c_d_y);
-		for (x = 0; x < td->fiDest.width; x++) {
-			int32_t x_d1 = (x - c_d_x);
-			fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-			fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
-			unsigned char* dest = &Y_2[x + y * td->fiDest.width];
-			// inlining the interpolation function would bring 10%
-			//  (but then we cannot use the function pointer anymore...)
-			td->interpolate(dest, x_s, y_s, Y_1,
-											td->fiSrc.width, td->fiSrc.height,
-											td->crop ? 16 : *dest);
-		}
-	}
+		float z     = 1.0-t.zoom/100.0;
+		fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
+		fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
+		fp16  c_tx    = c_s_x - (fToFp16(t.x) >> wsub);
+		fp16  c_ty    = c_s_y - (fToFp16(t.y) >> hsub);
 
-	/* Color channels */
-	int32_t ws2 = td->fiSrc.width/2;
-	int32_t wd2 = td->fiDest.width/2;
-	int32_t hs2 = td->fiSrc.height/2;
-	int32_t hd2 = td->fiDest.height/2;
-	fp16 c_tx2   = c_tx/2;
-	fp16 c_ty2   = c_ty/2;
-
-	for (y = 0; y < hd2; y++) {
-		int32_t y_d1 = y - (c_d_y)/2;
-		for (x = 0; x < wd2; x++) {
-			int32_t x_d1 = x - (c_d_x)/2;
-			fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2;
-			fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2;
-			unsigned char* dest = &Cr_2[x + y * wd2];
-			td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2,
-											td->crop ? 128 : *dest);
-			unsigned char* dest2 = &Cb_2[x + y * wd2];
-			td->interpolate(dest2, x_s, y_s, Cb_1, ws2, hs2,
-											td->crop ? 128 : *dest2);
+		/* for each pixel in the destination image we calc the source
+		 * coordinate and make an interpolation:
+		 *      p_d = c_d + M(p_s - c_s) + t
+		 * where p are the points, c the center coordinate,
+		 *  _s source and _d destination,
+		 *  t the translation, and M the rotation and scaling matrix
+		 *      p_s = M^{-1}(p_d - c_d - t) + c_s
+		 */
+		for (y = 0; y < dh; y++) {
+			// swapping of the loops brought 15% performace gain
+			int32_t y_d1 = (y - c_d_y);
+			for (x = 0; x < dw; x++) {
+				int32_t x_d1 = (x - c_d_x);
+				fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
+				fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
+				unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
+				// inlining the interpolation function would bring 10%
+				//  (but then we cannot use the function pointer anymore...)
+				td->interpolate(dest, x_s, y_s, dat_1,
+												td->src.linesize[plane], sh,
+												td->crop ? 16 : *dest);
+			}
 		}
 	}
 

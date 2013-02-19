@@ -1,6 +1,6 @@
 #define NUMCMP 2000
 
-int checkCompareImg(MotionDetect* md, unsigned char* frame){
+int checkCompareImg(MotionDetect* md, const DSFrame* frame){
   int i;
   int error;
   uint8_t *Y_c;
@@ -9,11 +9,13 @@ int checkCompareImg(MotionDetect* md, unsigned char* frame){
   field.y=400;
   field.size=12;
 
-  Y_c = frame;
+  Y_c = frame->data[0];
+	int linesize = frame->linesize[0];
 
   for(i=-10;i<10; i+=2){
     printf("\nCheck: shiftX = %i\n",i);
-    error = compareSubImg(Y_c, Y_c, &field, md->fi.width, md->fi.height,
+    error = compareSubImg(Y_c, Y_c, &field,
+													linesize, linesize, md->fi.height,
 													1, i, 0, INT_MAX);
     fprintf(stderr,"mismatch %i: %i\n", i, error);
   }
@@ -28,26 +30,27 @@ void test_checkCompareImg(const TestData* testdata){
   md.accuracy=12;
   fflush(stdout);
 	test_bool(configureMotionDetect(&md)== DS_OK);
-	test_bool(checkCompareImg(&md,testdata->frames[0]));
+	test_bool(checkCompareImg(&md,&testdata->frames[0]));
 	cleanupMotionDetection(&md);
 }
 
 
 typedef unsigned int (*cmpSubImgFunc)(unsigned char* const I1, unsigned char* const I2,
 																			const Field* field,
-																			int width, int height, int bytesPerPixel,
+																			int width1, int width2, int height, int bytesPerPixel,
 																			int d_x, int d_y, unsigned int threshold);
 
 // runs the compareSubImg routine and returns the time and stores the difference.
 //  if diffsRef is given than the results are validated
 int runcompare( cmpSubImgFunc cmpsubfunc,
-								unsigned char* frame1, unsigned char* frame2, Field f,
+								DSFrame frame1, DSFrame frame2, Field f,
 								DSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
   int start = timeOfDayinMS();
   int i;
   for(i=0; i<numruns; i++){
-    diffs[i]=cmpsubfunc(frame1, frame2,
-												&f, fi.width, fi.height, 2, i%200, i/200, INT_MAX);
+    diffs[i]=cmpsubfunc(frame1.data[0], frame2.data[0],
+												&f, frame1.linesize[0], frame2.linesize[0], fi.height,
+												2, i%200, i/200, INT_MAX);
   }
   int end = timeOfDayinMS();
   if(diffsRef)

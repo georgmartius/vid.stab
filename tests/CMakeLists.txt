@@ -18,7 +18,7 @@ else()
 add_definitions( -DDISABLE_ORC)
 endif()
 
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math ) # -DUSE_SSE2_ASM
+add_definitions( -DUSE_SSE2 -msse2 -ffast-math -fno-show-column ) # -DUSE_SSE2_ASM
 
 if(USE_OMP)
 add_definitions(-fopenmp -DUSE_OMP)
@@ -29,7 +29,7 @@ include_directories (../src)
 
 add_executable (tests tests.c testutils.c testframework.c ../src/dsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
-  ../src/libdeshake.c ../src/transformtype.c
+  ../src/libdeshake.c ../src/transformtype.c ../src/frameinfo.c
 	../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c ../src/boxblur.c)
 

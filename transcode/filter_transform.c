@@ -24,8 +24,10 @@
  * transcode -J transform -i inp.mpeg -y xdiv,tcaud inp_stab.avi
 */
 
+#include "libdeshake.h"
+
 #define MOD_NAME    "filter_transform.so"
-#define MOD_VERSION "v0.95 (2013-02-06)"
+#define MOD_VERSION LIBDESHAKE_VERSION
 #define MOD_CAP     "transforms each frame according to transformations\n\
  given in an input file (e.g. translation, rotate) see also filter stabilize"
 #define MOD_AUTHOR  "Georg Martius"
@@ -41,13 +43,8 @@
 #include "libtc/optstr.h"
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
-#include "transformtype.h"
-#include "frameinfo.h"
-#include "deshakedefines.h"
-#include "transform.h"
-#include "transformfixedpoint.h"
-#include "serialize.h"
-#include "localmotion2transform.h"
+
+#include "pix_formats.h"
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
@@ -109,14 +106,10 @@ static int transform_configure(TCModuleInstance *self,
 
     DSFrameInfo fi_src;
     DSFrameInfo fi_dest;
-
-    fi_src.framesize = fd->vob->im_v_size;
-    fi_src.width  = fd->vob->ex_v_width;
-    fi_src.height = fd->vob->ex_v_height;
-    /* Todo: in case we can scale the images, calc new size later */
-    fi_dest.width  = fd->vob->ex_v_width;
-    fi_dest.height = fd->vob->ex_v_height;
-    fi_dest.framesize = fd->vob->im_v_size;
+    initFrameInfo(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
+                  transcode2ourPF(fd->vob->im_v_codec));
+    initFrameInfo(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
+                  transcode2ourPF(fd->vob->im_v_codec));
 
     if(initTransformData(td, &fi_src, &fi_dest, MOD_NAME) != DS_OK){
         tc_log_error(MOD_NAME, "initialization of TransformData failed");
@@ -241,8 +234,10 @@ static int transform_filter_video(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(frame, "filter_video");
 
     fd = self->userdata;
+    DSFrame dsFrame;
+    fillFrameFromBuffer(&dsFrame,frame->video_buf, &fd->td.fiSrc);
 
-    transformPrepare(&fd->td, frame->video_buf, frame->video_buf);
+    transformPrepare(&fd->td, &dsFrame,  &dsFrame);
 
     Transform t = getNextTransform(&fd->td, &fd->trans);
     if (fd->vob->im_v_codec == CODEC_RGB) {

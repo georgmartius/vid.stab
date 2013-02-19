@@ -46,6 +46,7 @@
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/pixfmt.h"
 #include "libavutil/imgutils.h"
 #include "libavcodec/dsputil.h"
 #include "avfilter.h"
@@ -69,6 +70,26 @@ typedef struct _stab_data {
     FILE* f;
 
 } StabData;
+
+static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
+	switch(pf){
+    case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
+		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
+		case AV_PIX_FMT_YUV444P:	return PF_YUV444P;
+		case AV_PIX_FMT_YUV410P:	return PF_YUV410P;
+		case AV_PIX_FMT_YUV411P:	return PF_YUV411P;
+		case AV_PIX_FMT_YUV440P:	return PF_YUV440P;
+		case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
+		case AV_PIX_FMT_GRAY8:		return PF_GRAY8;
+		case AV_PIX_FMT_RGB24:		return PF_RGB24;
+		case AV_PIX_FMT_BGR24:		return PF_BGR24;
+		case AV_PIX_FMT_RGBA:		  return PF_RGBA;
+	default:
+		av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i!\n", pf);
+		return PF_NONE;
+	}
+}
+
 
 /*************************************************************************/
 
@@ -144,22 +165,21 @@ static int config_input(AVFilterLink *inlink)
     StabData *sd = ctx->priv;
 //    char* filenamecopy, *filebasename;
 
-    const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
-    int bpp = av_get_bits_per_pixel(desc);
-
     MotionDetect* md = &(sd->md);
     DSFrameInfo fi;
-    fi.width=inlink->w;
-    fi.height=inlink->h;
-    fi.strive=inlink->w;
-    // check framesize in ffmpeg
+    const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
 
-    fi.framesize=(inlink->w*inlink->h*bpp)/8;
-    //    PF_RGB=1, PF_YUV = 2
-    // TODO: pix format! Also change in my code.
-    fi.pFormat = PF_YUV; //420P
+    initFrameInfo(&fi,inlink->w, inlink->h, AV2OurPixelFormat(ctx, inlink->format));
+    // check
+    if(fi.bytesPerPixel != av_get_bits_per_pixel(desc)/8)
+        av_log(ctx, AV_LOG_ERROR, "pixel-format error: wrong bits/per/pixel");
+    if(fi.log2ChromaW != desc->log2_chroma_w)
+        av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_w");
+    if(fi.log2ChromaH != desc->log2_chroma_h)
+        av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_h");
+
     if(initMotionDetect(md, &fi, "stabilize") != DS_OK){
-        av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed\n");
+        av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed");
         return AVERROR(EINVAL);
     }
 
@@ -176,7 +196,6 @@ static int config_input(AVFilterLink *inlink)
 //    }
 
     if (sd->options != NULL) {
-        ///!CONTINUE
         if(optstr_lookup(sd->options, "help")) {
             av_log(ctx, AV_LOG_INFO, motiondetect_help);
             return AVERROR(EINVAL);
@@ -233,6 +252,8 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
     //int vsub0 = desc->log2_chroma_h;
     int direct = 0;
     AVFilterBufferRef *out;
+    DSFrame frame;
+    int plane;
 
     if (in->perms & AV_PERM_WRITE) {
         direct = 1;
@@ -246,7 +267,11 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
         avfilter_copy_buffer_ref_props(out, in);
     }
 
-    if(motionDetection(md, &localmotions, in->data[0]) !=  DS_OK){
+    for(plane=0; plane < md->fi.planes; plane++){
+        frame.data[plane] = in->data[plane];
+        frame.linesize[plane] = in->linesize[plane];
+    }
+    if(motionDetection(md, &localmotions, &frame) !=  DS_OK){
         av_log(ctx, AV_LOG_ERROR, "motion detection failed");
         return AVERROR(AVERROR_EXTERNAL);
     } else {

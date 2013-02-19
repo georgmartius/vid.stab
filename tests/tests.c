@@ -40,13 +40,8 @@ int main(int argc, char** argv){
 	int all = contains(argv,argc,"--all", "Perform all tests")!=0;
 
 	TestData testdata;
-	testdata.fi.width=1280;
-  testdata.fi.height=720;
-  testdata.fi.strive=1280;
-  testdata.fi.framesize=1382400;
-  testdata.fi.pFormat = PF_YUV;
-  testdata.fi_color.width=640;
-  testdata.fi_color.height=360;
+	initFrameInfo(&testdata.fi,1280, 720, PF_YUV420P);
+	initFrameInfo(&testdata.fi_color, 640, 360, PF_GRAY8);
 
   if(contains(argv,argc,"--load",
 							"Load frames from files from frames/frame001.raw (def: generate)")!=0){
@@ -54,24 +49,25 @@ int main(int argc, char** argv){
     char name[128];
 		int i;
     for(i=0; i<5; i++){
-      testdata.frames[i] = (unsigned char*)malloc(testdata.fi.framesize);
+      allocateFrame(&testdata.frames[i],&testdata.fi);
       sprintf(name,"../frames/frame%03i.raw",i+4);
       fprintf(stderr, "load file %s\n", name);
       file = fopen(name,"rb");
       test_bool(file!=0);
       fprintf(stderr,"read %li bytes\n",
-							(unsigned long)fread(testdata.frames[i], 1, testdata.fi.framesize,file));
+							(unsigned long)fread(testdata.frames[i].data[0], 1,
+																	 testdata.fi.width*testdata.fi.height,file));
       fclose(file);
     }
   }else{
 		UNIT(generateFrames(&testdata, 5));
   }
 	if(contains(argv,argc,"--store", "Store frames to files")!=0){
-		storePGMImage("test1.pgm", testdata.frames[0], testdata.fi);
-		storePGMImage("test2.pgm", testdata.frames[1], testdata.fi);
-		storePGMImage("test3.pgm", testdata.frames[2], testdata.fi);
-		storePGMImage("test4.pgm", testdata.frames[3], testdata.fi);
-		storePGMImage("test5.pgm", testdata.frames[4], testdata.fi);
+		storePGMImage("test1.pgm", testdata.frames[0].data[0], testdata.fi);
+		storePGMImage("test2.pgm", testdata.frames[1].data[0], testdata.fi);
+		storePGMImage("test3.pgm", testdata.frames[2].data[0], testdata.fi);
+		storePGMImage("test4.pgm", testdata.frames[3].data[0], testdata.fi);
+		storePGMImage("test5.pgm", testdata.frames[4].data[0], testdata.fi);
 	}
 
 #ifdef USE_OMP

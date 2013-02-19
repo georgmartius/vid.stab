@@ -1,8 +1,8 @@
 /*
- *  libdeshake.h
+ *  pix_formats.h
  *
- *  Created on: Feb 21, 2011
- *  Copyright (C) Georg Martius - June 2007
+ *  Copyright (C) Georg Martius - February 2013
+ *   georg dot martius at web dot de
  *
  *  This file is part of transcode, a video stream processing tool
  *
@@ -20,32 +20,26 @@
  *  along with GNU Make; see the file COPYING.  If not, write to
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- */
+*/
 
-#ifndef LIBDESHAKE_H
-#define LIBDESHAKE_H
-
-#define LIBDESHAKE_VERSION "v0.96 (2013-02-19)"
+#ifndef __PIX_FORMATS_H
+#define __PIX_FORMATS_H
 
 #include "frameinfo.h"
-#include "motiondetect.h"
-#include "transform.h"
-#include "boxblur.h"
-#include "serialize.h"
-#include "localmotion2transform.h"
+#include "transcode.h"
 
-#include "transformfixedpoint.h"
-#ifdef TESTING
-#include "transformfloat.h"
+static PixelFormat transcode2ourPF(int tc_img_codec){
+	switch(tc_img_codec){
+	case CODEC_RGB:
+		return PF_RGB24;
+	case CODEC_YUV:
+		return PF_YUV420P;
+	case CODEC_YUV422:
+		return PF_YUV422P;
+	default:
+		tc_log_error(MOD_NAME, "cannot deal with img format %i!\n", tc_img_codec);
+		return PF_NONE;
+	}
+}
+
 #endif
-
-#endif  /* LIBDESHAKE_H_ */
-
-/*
- * Local variables:
- *   c-file-style: "stroustrup"
- *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
- *   indent-tabs-mode: nil
- * End:
- *
- */

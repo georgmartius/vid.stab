@@ -27,8 +27,10 @@
  *  all parameters are optional
  */
 
+#include "libdeshake.h"
+
 #define MOD_NAME    "filter_deshake.so"
-#define MOD_VERSION "v0.95 (2013-02-06)"
+#define MOD_VERSION LIBDESHAKE_VERSION
 #define MOD_CAP     "deshakes a video clip by extracting relative transformations\n\
     of subsequent frames and transforms the high-frequency away\n\
     This is a single pass verion of stabilize and transform plugin"
@@ -53,7 +55,7 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 
-#include "libdeshake.h"
+#include "pix_formats.h"
 
 /* private date structure of this filter*/
 typedef struct _deshake_data {
@@ -67,6 +69,7 @@ typedef struct _deshake_data {
 
   char conf_str[TC_BUF_MIN];
 } DeshakeData;
+
 
 static const char deshake_help[] = ""
   "Overview:\n"
@@ -176,11 +179,9 @@ static int deshake_configure(TCModuleInstance *self,
 
   // init MotionDetect part
   DSFrameInfo fi;
-  fi.width=sd->vob->ex_v_width;
-  fi.height=sd->vob->ex_v_height;
-  fi.strive=sd->vob->ex_v_width;
-  fi.framesize=sd->vob->im_v_size;
-  fi.pFormat = vob->im_v_codec;
+  initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                transcode2ourPF(sd->vob->im_v_codec));
+
   if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
     tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
     return TC_ERROR;
@@ -199,11 +200,8 @@ static int deshake_configure(TCModuleInstance *self,
 
   // init trasform part
   DSFrameInfo fi_dest;
-  /* Todo: in case we can scale the images, calc new size later */
-  fi_dest.width     = sd->vob->ex_v_width;
-  fi_dest.height    = sd->vob->ex_v_height;
-  fi_dest.framesize = sd->vob->im_v_size;
-  fi_dest.strive    =	sd->vob->ex_v_width;
+  initFrameInfo(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                transcode2ourPF(sd->vob->im_v_codec));
 
   if(initTransformData(td, &fi, &fi_dest, MOD_NAME) != DS_OK){
     tc_log_error(MOD_NAME, "initialization of TransformData failed");
@@ -302,7 +300,10 @@ static int deshake_filter_video(TCModuleInstance *self,
   TransformData* td = &(sd->td);
   LocalMotions localmotions;
   Transform motion;
-  if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
+  DSFrame dsFrame;
+  fillFrameFromBuffer(&dsFrame,frame->video_buf, &td->fiSrc);
+
+  if(motionDetection(md, &localmotions, &dsFrame)!= DS_OK){
     tc_log_error(MOD_NAME, "motion detection failed");
     return TC_ERROR;
   }
@@ -311,7 +312,7 @@ static int deshake_filter_video(TCModuleInstance *self,
   motion = simpleMotionsToTransform(td, &localmotions);
   ds_vector_del(&localmotions);
 
-  transformPrepare(td, frame->video_buf, frame->video_buf);
+  transformPrepare(td, &dsFrame, &dsFrame);
 
   Transform t = lowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */

@@ -28,8 +28,10 @@
  *  all parameters are optional
  */
 
+#include "libdeshake.h"
+
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION "v0.95 (2013-02-06)"
+#define MOD_VERSION LIBDESHAKE_VERSION
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -60,7 +62,7 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 
-#include "libdeshake.h"
+#include "pix_formats.h"
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
@@ -72,7 +74,6 @@ typedef struct _stab_data {
 
     char conf_str[TC_BUF_MIN];
 } StabData;
-
 
 /*************************************************************************/
 
@@ -146,11 +147,9 @@ static int stabilize_configure(TCModuleInstance *self,
 
     MotionDetect* md = &(sd->md);
     DSFrameInfo fi;
-    fi.width=sd->vob->ex_v_width;
-    fi.height=sd->vob->ex_v_height;
-    fi.strive=sd->vob->ex_v_width;
-    fi.framesize=sd->vob->im_v_size;
-    fi.pFormat = vob->im_v_codec;
+    initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                  transcode2ourPF(vob->im_v_codec));
+
     if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
@@ -243,7 +242,10 @@ static int stabilize_filter_video(TCModuleInstance *self,
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
     LocalMotions localmotions;
-    if(motionDetection(md, &localmotions, frame->video_buf)!= DS_OK){
+    DSFrame dsFrame;
+    fillFrameFromBuffer(&dsFrame,frame->video_buf, &md->fi);
+
+    if(motionDetection(md, &localmotions, &dsFrame)!= DS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     }

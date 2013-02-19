@@ -63,8 +63,8 @@
 #define ds_zalloc(size) memset(malloc(size),0,size)
 
 #define ds_log(type, tag, format, args...) \
-	fprintf(stderr,"%s (%s):", type, tag); fprintf(stderr,format, ## args); \
-	fprintf(stderr,"\n");
+	{ fprintf(stderr,"%s (%s):", type, tag); fprintf(stderr,format, ## args); \
+	  fprintf(stderr,"\n"); }
 
 #define ds_log_error(tag, format, args...) \
     ds_log("Error:", tag, format , ## args)

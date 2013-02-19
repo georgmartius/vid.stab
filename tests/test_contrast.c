@@ -47,7 +47,7 @@ void test_contrastImg(const TestData* testdata){
 	{
 		int start = timeOfDayinMS();
 		for(i=0; i<numruns; i++){
-			contrastC[i]=contrastSubImg(testdata->frames[0],
+			contrastC[i]=contrastSubImg(testdata->frames[0].data[0],
 																	&f, testdata->fi.width, testdata->fi.height,1);
 		}
 		int end = timeOfDayinMS();
@@ -58,7 +58,7 @@ void test_contrastImg(const TestData* testdata){
 	{
 		int start = timeOfDayinMS();
 		for(i=0; i<numruns; i++){
-			contrastOpt[i]=contrastSubImg1_SSE(testdata->frames[0],
+			contrastOpt[i]=contrastSubImg1_SSE(testdata->frames[0].data[0],
 																				 &f, testdata->fi.width, testdata->fi.height);
 		}
 		int end = timeOfDayinMS();

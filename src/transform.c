@@ -51,11 +51,11 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     td->fiSrc = *fi_src;
     td->fiDest = *fi_dest;
 
-    td->src= NULL;
+    nullFrame(&td->src);
     td->srcMalloced = 0;
 
-    td->destbuf = 0;
-    td->dest = 0;
+    nullFrame(&td->destbuf);
+    nullFrame(&td->dest);
 
     /* Options */
     td->maxShift = -1;
@@ -108,58 +108,56 @@ int configureTransformData(TransformData* td){
 }
 
 void cleanupTransformData(TransformData* td){
-    if (td->srcMalloced && td->src) {
-        ds_free(td->src);
-        td->src = NULL;
+    if (td->srcMalloced && !isNullFrame(&td->src)) {
+        freeFrame(&td->src);
     }
-    if (td->crop == KeepBorder && td->destbuf) {
-        ds_free(td->destbuf);
-        td->destbuf = NULL;
+    if (td->crop == KeepBorder && !isNullFrame(&td->destbuf)) {
+        freeFrame(&td->destbuf);
     }
 }
 
-int transformPrepare(TransformData* td, const unsigned char* src, unsigned char* dest){
-    // we first copy the frame to the src and then overwrite the destination
+int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest){
+    // we first copy the frame to td->src and then overwrite the destination
     // with the transformed version
-    td->dest = dest;
+    td->dest = *dest;
     if(src==dest || td->srcMalloced){ // in place operation: we have to copy the src first
-        if(td->src == NULL) {
-            td->src = ds_malloc(td->fiSrc.framesize);
+        if(isNullFrame(&td->src)) {
+            allocateFrame(&td->src,&td->fiSrc);
             td->srcMalloced = 1;
         }
-        if (td->src == NULL) {
+        if (isNullFrame(&td->src)) {
             ds_log_error(td->modName, "ds_malloc failed\n");
             return DS_ERROR;
         }
-        memcpy(td->src, src, td->fiSrc.framesize);
+        copyFrame(&td->src, src, &td->fiSrc);
     }else{ // otherwise no copy needed
-        td->src=(unsigned char *)src;
+        td->src=*src;
     }
     if (td->crop == KeepBorder) {
-      if(td->destbuf == 0) {
-          // if we keep the borders, we need a second buffer to store
-          //  the previous stabilized frame, so we use destbuf
-          td->destbuf = ds_malloc(td->fiDest.framesize);
-          if (td->destbuf == NULL) {
-              ds_log_error(td->modName, "ds_malloc failed\n");
-              return DS_ERROR;
-          }
-          // if we keep borders, save first frame into the background buffer (destbuf)
-          memcpy(td->destbuf, src, td->fiSrc.framesize);
+      if(isNullFrame(&td->destbuf)) {
+        // if we keep the borders, we need a second buffer to store
+        //  the previous stabilized frame, so we use destbuf
+        allocateFrame(&td->destbuf,&td->fiDest);
+        if (isNullFrame(&td->destbuf)) {
+          ds_log_error(td->modName, "ds_malloc failed\n");
+          return DS_ERROR;
+        }
+        // if we keep borders, save first frame into the background buffer (destbuf)
+        copyFrame(&td->destbuf, src, &td->fiSrc);
       }
     }else{ // otherwise we directly operate on the destination
-        td->destbuf = dest;
+        td->destbuf = *dest;
     }
     return DS_OK;
 }
 
 int transformFinish(TransformData* td){
-    if(td->crop == KeepBorder){
-        // we have to store our result to video buffer
-        // note: destbuf stores stabilized frame to be the default for next frame
-        memcpy(td->dest, td->destbuf, td->fiSrc.framesize);
-    }
-    return DS_OK;
+  if(td->crop == KeepBorder){
+    // we have to store our result to video buffer
+    // note: destbuf stores stabilized frame to be the default for next frame
+    copyFrame(&td->dest, &td->destbuf, &td->fiSrc);
+  }
+  return DS_OK;
 }
 
 
@@ -425,7 +423,8 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

@@ -34,7 +34,7 @@ void unittest_init(){
 int unittest_summary(){
 	fprintf(stderr, "*********** SUMMARY **************\n");
 	fprintf(stderr, "UNIT TESTs succeeded:\t %s%i/%i\033[0m\n",
-					units_failed>0 ? "033[1;31m" : "\033[1;32m",
+					units_failed>0 ? "\033[1;31m" : "\033[1;32m",
 					units_success, units_success + units_failed);
 	return units_failed==0;
 

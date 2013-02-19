@@ -2,31 +2,23 @@
  *  frameinfo.h
  *
  *  Copyright (C) Georg Martius - June 2007 - 2011
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of vid.stab video stabilization library
- *      
+ *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below, 
- *  as published by the Free Software Foundation; either version 2, or 
- *  (at your option) any later version. 
- * 
+ *  as published by the Free Software Foundation; either version 2, or
+ *  (at your option) any later version.
+ *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
- *
- *  This work is licensed under the Creative Commons         
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of   
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/ 
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,   
- *  San Francisco, California, 94105, USA.                                
- *  This EXCLUDES COMMERCIAL USAGE
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
 #ifndef FRAMEINFO_H
@@ -34,17 +26,85 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
-typedef enum {PF_RGB=1, PF_YUV = 2 /*,PF_YUY2=8, PF_YUV422=256*/} PixelFormat;
+/// pixel formats
+typedef enum {PF_NONE = -1,
+              PF_GRAY8,     ///<        Y        ,  8bpp
+              PF_YUV420P,   ///< planar YUV 4:2:0, 12bpp, (1 Cr & Cb sample per 2x2 Y samples)
+              PF_YUV422P,   ///< planar YUV 4:2:2, 16bpp, (1 Cr & Cb sample per 2x1 Y samples)
+              PF_YUV444P,   ///< planar YUV 4:4:4, 24bpp, (1 Cr & Cb sample per 1x1 Y samples)
+              PF_YUV410P,   ///< planar YUV 4:1:0,  9bpp, (1 Cr & Cb sample per 4x4 Y samples)
+              PF_YUV411P,   ///< planar YUV 4:1:1, 12bpp, (1 Cr & Cb sample per 4x1 Y samples)
+              PF_YUV440P,   ///< planar YUV 4:4:0 (1 Cr & Cb sample per 1x2 Y samples)
+              PF_YUVA420P,  ///< planar YUV 4:2:0, 20bpp, (1 Cr & Cb sample per 2x2 Y & A samples)
+              PF_PACKED,    ///< dummy: packed formats start here
+              PF_RGB24,     ///< packed RGB 8:8:8, 24bpp, RGBRGB...
+              PF_BGR24,     ///< packed RGB 8:8:8, 24bpp, BGRBGR...
+              PF_RGBA,      ///< packed RGBA 8:8:8:8, 32bpp, RGBARGBA...
+              PF_NUMBER     ///< number of pixel formats
+} PixelFormat;
 
-/** frame information for deshaking lib*/
+/** frame information for deshaking lib
+    This only works for planar image formats
+ */
 typedef struct dsframeinfo {
-  size_t framesize;  // size of frame buffer in bytes (prev)
-  int width, height, strive;
+  int width, height;
+  int planes;        // number of planes (1 luma, 2,3 chroma, 4 alpha)
+  int log2ChromaW; // subsampling of width in chroma planes
+  int log2ChromaH; // subsampling of height in chroma planes
   PixelFormat pFormat;
+  int bytesPerPixel; // number of bytes per pixel (for packed formats)
 } DSFrameInfo;
 
+/** frame data according to frameinfo
+ */
+typedef struct dsframe {
+  uint8_t* data[4]; // data in planes. For packed data everthing is in plane 0
+  int linesize[4]; // line size of each line in a the planes
+} DSFrame;
 
+// use it to calculate the CHROMA sizes (rounding is correct)
+#define CHROMA_SIZE(width,log2sub)  (-(-(width) >> (log2sub)))
+
+/// initializes the frameinfo for the given format
+int initFrameInfo(DSFrameInfo* fi, int width, int height, PixelFormat pFormat);
+
+
+/// returns the subsampling shift amount, horizonatally for the given plane
+int getPlaneWidthSubS(const DSFrameInfo* fi, int plane);
+
+/// returns the subsampling shift amount, vertically for the given plane
+int getPlaneHeightSubS(const DSFrameInfo* fi, int plane);
+
+/// zero initialization
+void nullFrame(DSFrame* frame);
+
+/// returns true if frame is null (data[0]==0)
+int isNullFrame(const DSFrame* frame);
+
+/// compares two frames for identity (based in data[0])
+int equalFrames(const DSFrame* frame1,const DSFrame* frame2);
+
+/// allocates memory for a frame
+void allocateFrame(DSFrame* frame, const DSFrameInfo* fi);
+
+
+/// copies the given plane number from src to dest
+void copyFramePlane(DSFrame* dest, const DSFrame* src,
+										const DSFrameInfo* fi, int plane);
+
+/// copies src to dest
+void copyFrame(DSFrame* dest, const DSFrame* src, const DSFrameInfo* fi);
+
+/** fills the data pointer so that it corresponds to the img saved in the linear buffer.
+    No copying is performed.
+    Do not call freeFrame() on it.
+ */
+void fillFrameFromBuffer(DSFrame* frame, uint8_t* img, const DSFrameInfo* fi);
+
+/// frees memory
+void freeFrame(DSFrame* frame);
 
 #endif  /* FRAMEINFO_H */
 
@@ -53,7 +113,8 @@ typedef struct dsframeinfo {
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

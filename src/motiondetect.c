@@ -62,14 +62,21 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->fi = *fi;
   md->modName = modName;
 
-  md->prev = ds_zalloc(md->fi.framesize);
-  if (!md->prev) {
+  if(fi->pFormat<=PF_NONE ||  fi->pFormat==PF_PACKED || fi->pFormat>=PF_NUMBER) {
+    ds_log_warn(md->modName, "unsupported Pixel Format (%i)\n",
+                md->fi.pFormat);
+    return DS_ERROR;
+  }
+
+  allocateFrame(&md->prev, &md->fi);
+  if (isNullFrame(&md->prev)) {
     ds_log_error(md->modName, "malloc failed");
     return DS_ERROR;
   }
-  md->curr     = 0;
-  md->currorig = 0;
-  md->currtmp  = 0;
+
+  nullFrame(&md->curr);
+  nullFrame(&md->currorig);
+  nullFrame(&md->currtmp);
   md->hasSeenOneFrame = 0;
   md->frameNum = 0;
 
@@ -126,10 +133,8 @@ int configureMotionDetect(MotionDetect* md) {
 		md->maxFields, md->fieldNum);
   }
   //  if (md->show)
-  md->curr = ds_zalloc(md->fi.framesize);
-  //  else
-  //    md->currcopy=NULL;
-  md->currtmp = ds_zalloc(md->fi.framesize);
+  allocateFrame(&md->curr,&md->fi);
+  allocateFrame(&md->currtmp, &md->fi);
 
   md->initialized = 2;
   return DS_OK;
@@ -140,35 +145,27 @@ void cleanupMotionDetection(MotionDetect* md) {
     ds_free(md->fields);
     md->fields=0;
   }
-  if (md->prev) {
-    ds_free(md->prev);
-    md->prev = NULL;
-  }
-  if (md->curr) {
-    ds_free(md->curr);
-    md->curr = NULL;
-  }
-  if (md->currtmp) {
-    ds_free(md->currtmp);
-    md->currtmp = NULL;
-  }
+  freeFrame(&md->prev);
+  freeFrame(&md->curr);
+  freeFrame(&md->currtmp);
+
   md->initialized = 0;
 }
 
 
-int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *frame) {
+int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame) {
   assert(md->initialized==2);
 
-  md->currorig = frame;
+  md->currorig = *frame;
   // smoothen image to do better motion detection
   //  (larger stepsize or eventually gradient descent (need higher resolution))
-  if (md->fi.pFormat == PF_RGB) {
-    // we could calculate a grayscale version and use the YUV stuff afterwards
-    // so far smoothing is only implemented for YUV
-    memcpy(md->curr, frame, md->fi.framesize);
+  if (md->fi.pFormat > PF_PACKED) {
+    // we could calculate a grayscale version and use the PLANAR stuff afterwards
+    // so far smoothing is only implemented for PLANAR
+    copyFrame(&md->curr, frame, &md->fi);
   } else {
     // box-kernel smoothing (plain average of pixels), which is fine for us
-    boxblurYUV(md->curr, frame, md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
+    boxblurYUV(&md->curr, frame, &md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
                BoxBlurNoColor);
     // two times yields tent-kernel smoothing, which may be better, but I don't
     //  think we need it
@@ -178,20 +175,16 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *fram
 
   if (md->hasSeenOneFrame) {
     //    md->curr = frame;
-    if (md->fi.pFormat == PF_RGB) {
+    if (md->fi.pFormat > PF_PACKED) {
       if (md->algo == 0)
         *motions = calcShiftRGBSimple(md);
       else if (md->algo == 1)
         *motions = calcTransFields(md, calcFieldTransRGB, contrastSubImgRGB);
-    } else if (md->fi.pFormat == PF_YUV) {
+    } else { // PLANAR
       if (md->algo == 0)
         *motions = calcShiftYUVSimple(md);
       else if (md->algo == 1)
         *motions = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
-    } else {
-      ds_log_warn(md->modName, "unsupported Pixel Format (Codec: %i)\n",
-                  md->fi.pFormat);
-      return DS_ERROR;
     }
   } else {
     ds_vector_init(motions,md->maxFields);
@@ -200,7 +193,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, unsigned char *fram
 
   if(md->virtualTripod < 1 || md->frameNum < md->virtualTripod)
   // copy current frame (smoothed) to prev for next frame comparison
-  memcpy(md->prev, md->curr, md->fi.framesize);
+  copyFrame(&md->prev, &md->curr, &md->fi);
   md->frameNum++;
   return DS_OK;
 }
@@ -246,17 +239,21 @@ int initFields(MotionDetect* md) {
 /**
    This routine is used in the simpleAlgorithms and may be removed at some point
    compares the two given images and returns the average absolute difference
+   \param strive1 linesize of image 1 including bytesPerPixel
+   \param strive2 linesize of image 2 including bytesPerPixel
    \param d_x shift in x direction
    \param d_y shift in y direction
 */
 unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
-                        int bytesPerPixel, int d_x, int d_y) {
+                        int bytesPerPixel, int strive1, int strive2, int d_x, int d_y) {
   int i, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   unsigned int sum = 0;
   int effectWidth = width - abs(d_x);
   int effectHeight = height - abs(d_y);
+  assert(width*bytesPerPixel <= strive1);
+  assert(width*bytesPerPixel <= strive2);
 
   /*//   DEBUGGING code to export single frames */
   /*   char buffer[100]; */
@@ -271,11 +268,11 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
     p1 = I1;
     p2 = I2;
     if (d_y > 0) {
-      p1 += (i + d_y) * width * bytesPerPixel;
-      p2 += i * width * bytesPerPixel;
+      p1 += (i + d_y) * strive1;
+      p2 += i * strive2;
     } else {
-      p1 += i * width * bytesPerPixel;
-      p2 += (i - d_y) * width * bytesPerPixel;
+      p1 += i * strive1;
+      p2 += (i - d_y) * strive2;
     }
     if (d_x > 0) {
       p1 += d_x * bytesPerPixel;
@@ -302,9 +299,9 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
 /** \see contrastSubImg*/
 double contrastSubImgYUV(MotionDetect* md, const Field* field) {
 #ifdef USE_SSE2
-  return contrastSubImg1_SSE(md->curr,field,md->fi.width,md->fi.height);
+  return contrastSubImg1_SSE(md->curr.data[0], field, md->curr.linesize[0],md->fi.height);
 #else
-  return contrastSubImg(md->curr,field,md->fi.width,md->fi.height,1);
+  return contrastSubImg(md->curr.data[0],field,md->curr.linesize[0],md->fi.height,1);
 #endif
 
 }
@@ -314,10 +311,11 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field) {
    for all channels
 */
 double contrastSubImgRGB(MotionDetect* md, const Field* field) {
-  unsigned char* const I = md->curr;
-  return (contrastSubImg(I, field, md->fi.width, md->fi.height, 3)
-          + contrastSubImg(I + 1, field, md->fi.width, md->fi.height, 3)
-          + contrastSubImg(I + 2, field, md->fi.width, md->fi.height, 3)) / 3;
+  unsigned char* const I = md->curr.data[0];
+  int linesize2 = md->curr.linesize[0]/3; // linesize in pixels
+  return (contrastSubImg(I, field, linesize2, md->fi.height, 3)
+          + contrastSubImg(I + 1, field, linesize2, md->fi.height, 3)
+          + contrastSubImg(I + 2, field, linesize2, md->fi.height, 3)) / 3;
 }
 
 /**
@@ -326,7 +324,7 @@ double contrastSubImgRGB(MotionDetect* md, const Field* field) {
 
    \param I pointer to framebuffer
    \param field Field specifies position(center) and size of subimage
-   \param width width of frame
+   \param width width of frame (linesize in pixels)
    \param height height of frame
    \param bytesPerPixel calc contrast for only for first channel
 */
@@ -365,8 +363,10 @@ LocalMotions calcShiftRGBSimple(MotionDetect* md) {
   lm.v.x = 0, lm.v.y = 0;
   for (i = -md->maxShift; i <= md->maxShift; i++) {
     for (j = -md->maxShift; j <= md->maxShift; j++) {
-      int error = compareImg(md->curr, md->prev, md->fi.width,
-                             md->fi.height, 3, i, j);
+      int error = compareImg(md->curr.data[0], md->prev.data[0], md->fi.width,
+                             md->fi.height, 3, md->curr.linesize[0], md->prev.linesize[0],
+                             i, j);
+      // FIXME: linesize is not honored
       if (error < minerror) {
         minerror = error;
         lm.v.x = i;
@@ -393,7 +393,6 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
   ds_vector_init(&localmotions,1);
   LocalMotion lm;
   int i, j;
-  unsigned char *Y_c, *Y_p;// , *Cb, *Cr;
 #ifdef STABVERBOSE
   FILE *f = NULL;
   char buffer[32];
@@ -404,17 +403,12 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
   lm.v.x = 0, lm.v.y = 0;
 
   // we only use the luminance part of the image
-  Y_c = md->curr;
-  //  Cb_c = md->curr + md->fi.width*md->fi.height;
-  //Cr_c = md->curr + 5*md->fi.width*md->fi.height/4;
-  Y_p = md->prev;
-  //Cb_p = md->prev + md->fi.width*md->fi.height;
-  //Cr_p = md->prev + 5*md->fi.width*md->fi.height/4;
-
   int minerror = INT_MAX;
   for (i = -md->maxShift; i <= md->maxShift; i++) {
     for (j = -md->maxShift; j <= md->maxShift; j++) {
-      int error = compareImg(Y_c, Y_p, md->fi.width, md->fi.height, 1,
+      int error = compareImg(md->curr.data[0], md->prev.data[0],
+                             md->fi.width, md->fi.height, 1,
+                             md->curr.linesize[0], md->prev.linesize[0],
                              i, j);
 #ifdef STABVERBOSE
       fprintf(f, "%i %i %f\n", i, j, error);
@@ -444,7 +438,8 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
 LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) {
   int tx = 0;
   int ty = 0;
-  uint8_t *Y_c = md->curr, *Y_p = md->prev;
+  uint8_t *Y_c = md->curr.data[0], *Y_p = md->prev.data[0];
+  int linesize_c = md->curr.linesize[0], linesize_p = md->prev.linesize[0];
   // we only use the luminance part of the image
   int i, j;
   int stepSize = md->stepSize;
@@ -467,8 +462,8 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
   int step = 0;
   int dir = 0;
   while (j >= -md->maxShift && j <= md->maxShift && i >= -md->maxShift && i <= md->maxShift) {
-    unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-                                       1, i, j, minerror);
+    unsigned int error = compareSubImg(Y_c, Y_p, field, linesize_c, linesize_p,
+                                       md->fi.height, 1, i, j, minerror);
 
     if (error < minerror) {
       minerror = error;
@@ -515,15 +510,15 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start
   */
-  unsigned int minerror = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-                                        1, 0, 0, UINT_MAX);
+  unsigned int minerror = compareSubImg(Y_c, Y_p, field, linesize_c, linesize_p,
+                                        md->fi.height, 1, 0, 0, UINT_MAX);
   // check all positions...
   for (i = -md->maxShift; i <= md->maxShift; i += stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += stepSize) {
       if( i==0 && j==0 )
         continue; //no need to check this since already done
-      unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width, md->fi.height,
-                                         1, i, j, minerror);
+      unsigned int error = compareSubImg(Y_c, Y_p, field, linesize_c, linesize_p,
+                                         md->fi.height, 1, i, j, minerror);
       if (error < minerror) {
         minerror = error;
         tx = i;
@@ -546,7 +541,7 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
       for (j = tyc - r; j <= tyc + r; j += newStepSize) {
         if (i == txc && j == tyc)
           continue; //no need to check this since already done
-        unsigned int error = compareSubImg(Y_c, Y_p, field, md->fi.width,
+        unsigned int error = compareSubImg(Y_c, Y_p, field, linesize_c, linesize_p,
                                            md->fi.height, 1, i, j, minerror);
 #ifdef STABVERBOSE
         fprintf(f, "%i %i %f\n", i, j, error);
@@ -592,20 +587,22 @@ LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
                               int fieldnum) {
   int tx = 0;
   int ty = 0;
-  uint8_t *I_c = md->curr, *I_p = md->prev;
+  uint8_t *I_c = md->curr.data[0], *I_p = md->prev.data[0];
+  int width1 = md->curr.linesize[0]/3; // linesize in pixels
+  int width2 = md->prev.linesize[0]/3; // linesize in pixels
   int i, j;
 
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start
   */
-  unsigned int minerror = compareSubImg(I_c, I_p, field, md->fi.width, md->fi.height,
+  unsigned int minerror = compareSubImg(I_c, I_p, field, width1, width2, md->fi.height,
                                         3, 0, 0, UINT_MAX);
   // check all positions...
   for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
     for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
       if( i==0 && j==0 )
         continue; //no need to check this since already done
-      unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
+      unsigned int error = compareSubImg(I_c, I_p, field, width1, width2,
                                          md->fi.height, 3, i, j, minerror);
       if (error < minerror) {
         minerror = error;
@@ -622,7 +619,7 @@ LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
       for (j = tyc - r; j <= tyc + r; j += 1) {
         if (i == txc && j == tyc)
           continue; //no need to check this since already done
-        unsigned int error = compareSubImg(I_c, I_p, field, md->fi.width,
+        unsigned int error = compareSubImg(I_c, I_p, field, width1, width2,
                                            md->fi.height, 3, i, j, minerror);
         if (error < minerror) {
           minerror = error;
@@ -810,28 +807,28 @@ LocalMotions calcTransFields(MotionDetect* md,
 
 /** draws the field scanning area */
 void drawFieldScanArea(MotionDetect* md, const LocalMotion* lm) {
-  if (!md->fi.pFormat == PF_YUV)
+  if (md->fi.pFormat > PF_PACKED)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y,
-	  lm->f.size + 2 * md->maxShift, lm->f.size + 2 * md->maxShift, 80);
+  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
+          lm->f.size + 2 * md->maxShift, lm->f.size + 2 * md->maxShift, 80);
 }
 
 /** draws the field */
 void drawField(MotionDetect* md, const LocalMotion* lm) {
-  if (!md->fi.pFormat == PF_YUV)
+  if (md->fi.pFormat > PF_PACKED)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y,
+  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
           lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
 }
 
 /** draws the transform data of this field */
 void drawFieldTrans(MotionDetect* md, const LocalMotion* lm) {
-  if (!md->fi.pFormat == PF_YUV)
+  if (md->fi.pFormat > PF_PACKED)
     return;
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x, lm->f.y, 5, 5,
-          128); // draw center
-  drawBox(md->currorig, md->fi.width, md->fi.height, 1, lm->f.x + lm->v.x, lm->f.y
-          + lm->v.y, 8, 8, 250); // draw translation
+  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+          lm->f.x, lm->f.y, 5, 5, 128); // draw center
+  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+          lm->f.x + lm->v.x, lm->f.y + lm->v.y, 8, 8, 250); // draw translation
 }
 
 /**
@@ -871,7 +868,7 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
 //#ifdef TESTING
 /// plain C implementation of compareSubImg (without ORC)
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-			     const Field* field, int width, int height,
+                               const Field* field, int width1, int width2, int height,
 			     int bytesPerPixel, int d_x, int d_y,
 			     unsigned int threshold) {
   int k, j;
@@ -880,8 +877,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
   int s2 = field->size / 2;
   unsigned int sum = 0;
 
-  p1 = I1 + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
-  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width)
+  p1 = I1 + ((field->x - s2) + (field->y - s2) * width1) * bytesPerPixel;
+  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width2)
     * bytesPerPixel;
   for (j = 0; j < field->size; j++) {
     for (k = 0; k < field->size * bytesPerPixel; k++) {
@@ -891,8 +888,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
     }
     if( sum > threshold) // no need to calculate any longer: worse than the best match
       break;
-    p1 += (width - field->size) * bytesPerPixel;
-    p2 += (width - field->size) * bytesPerPixel;
+    p1 += (width1 - field->size) * bytesPerPixel;
+    p2 += (width2 - field->size) * bytesPerPixel;
   }
   return sum;
 }

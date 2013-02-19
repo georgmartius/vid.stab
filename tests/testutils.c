@@ -77,7 +77,7 @@ static void skipWhiteSpace (const char* filename, FILE *f)
   }
 }
 
-int loadPGMImage(const char* filename, char ** framebuffer, DSFrameInfo* fi)
+int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
 {
   FILE *f = fopen (filename,"rb");
   if (!f) {
@@ -117,9 +117,8 @@ int loadPGMImage(const char* filename, char ** framebuffer, DSFrameInfo* fi)
 
 
   // read in rest of data
-  char* image_data = (char*) ds_malloc(fi->width*fi->height*3);
-  *framebuffer = image_data;
-  if (fread( image_data, fi->width*fi->height, 1, f) != 1){
+	allocateFrame(frame,fi);
+  if (fread( frame->data[0], fi->width*fi->height, 1, f) != 1){
     ds_log_error("TEST", "Can't read data from image file '%s'", filename);
     return 0;
   }
@@ -128,7 +127,7 @@ int loadPGMImage(const char* filename, char ** framebuffer, DSFrameInfo* fi)
 }
 
 
-int storePGMImage(const char* filename, unsigned char * image_data, DSFrameInfo fi ) {
+int storePGMImage(const char* filename, const uint8_t* data, DSFrameInfo fi ) {
   FILE *f = fopen (filename,"wb");
   if (!f) {
     ds_log_error("TEST", "Can't open image file '%s'",  filename);
@@ -142,7 +141,7 @@ int storePGMImage(const char* filename, unsigned char * image_data, DSFrameInfo 
   fprintf(f,"255\n");
 
   // write data
-  if (fwrite( image_data, fi.width*fi.height, 1, f) != 1){
+  if (fwrite( data, fi.width*fi.height, 1, f) != 1){
     ds_log_error("TEST", "Can't write to image file '%s'", filename);
     return 0;
   }

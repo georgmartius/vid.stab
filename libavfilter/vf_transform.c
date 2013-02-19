@@ -23,24 +23,20 @@
  */
 
 /* Typical call:
- *  ffmpeg -i inp.mpeg ffmpeg -vf transform -i inp.mpeg inp_s.mpeg
+ *  ffmpeg -i inp.mpeg ffmpeg -vf transform inp_s.mpeg
  *  all parameters are optional
  */
-
 
 /*
   TODO: check AVERROR  codes
 */
-
-#define CHROMA_WIDTH(link)  -((-link->w) >> av_pix_fmt_descriptors[link->format].log2_chroma_w)
-#define CHROMA_HEIGHT(link) -((-link->h) >> av_pix_fmt_descriptors[link->format].log2_chroma_h)
-
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/pixfmt.h"
 #include "libavcodec/dsputil.h"
 #include "avfilter.h"
 #include "formats.h"
@@ -61,6 +57,25 @@ typedef struct {
     char* options;
     char input[DS_INPUT_MAXLEN];
 } FilterData;
+
+
+static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
+	switch(pf){
+    case AV_PIX_FMT_YUV420P: return PF_YUV420P;
+		case AV_PIX_FMT_RGB24:		return PF_RGB24;
+		case AV_PIX_FMT_BGR24:		return PF_BGR24;
+		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
+		case AV_PIX_FMT_YUV444P:	return PF_YUV444P;
+		case AV_PIX_FMT_YUV410P:	return PF_YUV410P;
+		case AV_PIX_FMT_YUV411P:	return PF_YUV411P;
+		case AV_PIX_FMT_GRAY8:		return PF_GRAY8;
+		case AV_PIX_FMT_YUVA420P:return PF_YUVA420P;
+		case AV_PIX_FMT_RGBA:		return PF_RGBA;
+	default:
+		av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i!\n", pf);
+		return PF_NONE;
+	}
+}
 
 
 /*************************************************************************/
@@ -102,13 +117,11 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    // TODO: check formats and add RGB
     static const enum AVPixelFormat pix_fmts[] = {
-        /*AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,*/  AV_PIX_FMT_YUV420P,
-        /*AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,  AV_PIX_FMT_YUVA420P,
+        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
+        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
         AV_PIX_FMT_YUV440P,  AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ440P,*/
+        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_NONE
     };
 
@@ -125,26 +138,34 @@ static int config_input(AVFilterLink *inlink)
 //    char* filenamecopy, *filebasename;
 
     const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
-    int bpp = av_get_bits_per_pixel(desc);
 
     TransformData* td = &(fd->td);
 
     DSFrameInfo fi_src;
     DSFrameInfo fi_dest;
+    if(!initFrameInfo(&fi_src, inlink->w, inlink->h,
+                      AV2OurPixelFormat(ctx,inlink->format)) ||
+       !initFrameInfo(&fi_dest, inlink->w, inlink->h,
+                      AV2OurPixelFormat(ctx, inlink->format))){
+        av_log(ctx, AV_LOG_ERROR, "unknown pixel format: %i (%s)",
+               inlink->format, desc->name);
+        return AVERROR(EINVAL);
+    }
 
-    fi_src.strive    =  inlink->w;
-    fi_src.width     =  inlink->w;
-    fi_src.height    =  inlink->h;
-
-    fi_src.framesize=(inlink->w*inlink->h*bpp)/8;
-    //    PF_RGB=1, PF_YUV = 2
-    // TODO: pix format! Also change in my code.
-    fi_src.pFormat = PF_YUV; //420P
-
-    fi_dest=fi_src;
+    // check
+    if(fi_src.bytesPerPixel != av_get_bits_per_pixel(desc)/8 ||
+       fi_src.log2ChromaW != desc->log2_chroma_w ||
+       fi_src.log2ChromaH != desc->log2_chroma_h){
+        av_log(ctx, AV_LOG_ERROR, "pixel-format error: bpp %i<>%i  ",
+               fi_src.bytesPerPixel, av_get_bits_per_pixel(desc)/8);
+        av_log(ctx, AV_LOG_ERROR, "chroma_subsampl: w: %i<>%i  h: %i<>%i\n",
+               fi_src.log2ChromaW, desc->log2_chroma_w,
+               fi_src.log2ChromaH, desc->log2_chroma_h);
+        return AVERROR(EINVAL);
+    }
 
     if(initTransformData(td, &fi_src, &fi_dest, "transform") != DS_OK){
-        av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed");
+        av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
         return AVERROR(EINVAL);
     }
     td->verbose=1; // TODO: get from somewhere
@@ -244,6 +265,9 @@ static int filter_frame(AVFilterLink *inlink,  AVFilterBufferRef *in)
     //int vsub0 = desc->log2_chroma_h;
     int direct = 0;
     AVFilterBufferRef *out;
+    DSFrame inframe;
+    DSFrame outframe;
+    int plane;
 
     if (in->perms & AV_PERM_WRITE) {
         direct = 1;
@@ -257,14 +281,22 @@ static int filter_frame(AVFilterLink *inlink,  AVFilterBufferRef *in)
         avfilter_copy_buffer_ref_props(out, in);
     }
 
-    transformPrepare(td, in->data[0], out->data[0]);
+    for(plane=0; plane < td->fiSrc.planes; plane++){
+        inframe.data[plane] = in->data[plane];
+        inframe.linesize[plane] = in->linesize[plane];
+    }
+    for(plane=0; plane < td->fiDest.planes; plane++){
+        outframe.data[plane] = out->data[plane];
+        outframe.linesize[plane] = out->linesize[plane];
+    }
 
-    if (fd->td.fiSrc.pFormat == PF_RGB) {
+
+    transformPrepare(td, &inframe, &outframe);
+
+    if (fd->td.fiSrc.pFormat > PF_PACKED) {
         transformRGB(td, getNextTransform(td, &fd->trans));
-    } else if (fd->td.fiSrc.pFormat == PF_YUV) {
-        transformYUV(td, getNextTransform(td, &fd->trans));
     } else {
-        av_log(ctx, AV_LOG_ERROR, "error while preprocessing transforms!\n");
+        transformYUV(td, getNextTransform(td, &fd->trans));
     }
     transformFinish(td);
 

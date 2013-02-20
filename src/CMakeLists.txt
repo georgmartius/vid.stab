@@ -6,8 +6,8 @@ SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
 #add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
-#add_definitions( -Wall -O3 -Wno-pointer-sign)
-add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+add_definitions( -Wall -O3 -Wno-pointer-sign)
+#add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 # I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)
 # find_package(Orc)  // it actually not used by any active code
@@ -22,18 +22,18 @@ endif()
 # our  -DUSE_SSE2_ASM code does not work with fpic
 add_definitions( -fPIC -DUSE_SSE2 -msse2 -ffast-math )
 
-# Create the deshake library
-add_library (deshake STATIC
-  frameinfo.c transformtype.c libdeshake.c transform.c transformfixedpoint.c
+# Create the vidstab library
+add_library (vidstab STATIC
+  frameinfo.c transformtype.c libvidstab.c transform.c transformfixedpoint.c
   motiondetect.c motiondetect_opt.c serialize.c
 	localmotion2transform.c
-	boxblur.c dsvector.c orc/motiondetectorc.c)
+	boxblur.c vsvector.c orc/motiondetectorc.c)
 #  orc/transformorc.c
 
-target_link_libraries(deshake m)
+target_link_libraries(vidstab m)
 if(ORC_FOUND)
-target_link_libraries(deshake ${ORC_LIBRARIES})
+target_link_libraries(vidstab ${ORC_LIBRARIES})
 endif()
 if(USE_OMP)
-target_link_libraries(deshake gomp)
+target_link_libraries(vidstab gomp)
 endif()

@@ -31,7 +31,7 @@
  */
 
 #include "boxblur.h"
-#include "deshakedefines.h"
+#include "vidstabdefines.h"
 
 
 void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
@@ -69,7 +69,7 @@ void boxblurYUV(DSFrame* dest, const DSFrame* src,
 		buf = *buffer;
 	}
   // odd and larger than 2 and maximally half of smaller image dimension
-  size  = DS_CLAMP((size/2)*2+1,3,DS_MIN(fi->height/2,fi->width/2));
+  size  = VS_CLAMP((size/2)*2+1,3,VS_MIN(fi->height/2,fi->width/2));
   //printf("%i\n",size);
 
   // luminance
@@ -121,19 +121,19 @@ void boxblurYUV(DSFrame* dest, const DSFrame* src,
 /* 		unsigned int size){ */
 /*   int localbuffer=0; */
 /*   if(buffer==0){ */
-/*     buffer=(unsigned char*) ds_malloc(fi->framesize); */
+/*     buffer=(unsigned char*) vs_malloc(fi->framesize); */
 /*     localbuffer=1; */
 /*   } */
 /*   // odd and larger than 2 and maximal half of smaller image dimension  */
 /*   //  (and not larger than 256, because otherwise we can get an overflow) */
-/*   size  = DS_CLAMP((size/2)*2+1,3,DS_MIN(256,DS_MIN(fi->height/2,fi->width/2)));  */
+/*   size  = VS_CLAMP((size/2)*2+1,3,VS_MIN(256,VS_MIN(fi->height/2,fi->width/2)));  */
 
 /*   // we need a different version of these functions for RGB */
 /*   boxblur_hori_C(src, buffer, fi->width, fi->height, fi->strive, size);   */
 /*   boxblur_vert_C(buffer, dest, fi->width, fi->height, fi->strive, size); */
 
 /*   if(localbuffer) */
-/*     ds_free(buffer); */
+/*     vs_free(buffer); */
 /* } */
 
 

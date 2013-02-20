@@ -36,7 +36,7 @@
 #include <libgen.h>
 #include "transformtype.h"
 #include "frameinfo.h"
-#include "deshakedefines.h"
+#include "vidstabdefines.h"
 #include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"
@@ -141,13 +141,13 @@ static const char transform_help[] = ""
 
 /** initialized the TransformData structure and allocates memory
  *  for the frames and stuff
- *  @return DS_OK on success otherwise DS_ERROR
+ *  @return VS_OK on success otherwise VS_ERROR
  */
 int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
                       const DSFrameInfo* fi_dest , const char* modName);
 
 /** configures TransformData structure and checks ranges, initializes fields and so on.
- *  @return DS_OK on success otherwise DS_ERROR
+ *  @return VS_OK on success otherwise VS_ERROR
  */
 int configureTransformData(TransformData* td);
 

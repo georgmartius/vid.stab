@@ -1,7 +1,7 @@
 #include <assert.h>
 
 #include "testutils.h"
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 void paintRectangle(unsigned char* buffer, const DSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
   if(x>=0 && x+sizex < fi->width && y>=0 && y+sizey < fi->height){
@@ -42,7 +42,7 @@ static int readNumber (const char* filename, FILE *f)
   for(;;) {
     c = fgetc(f);
     if (c==EOF)
-      ds_log_error("TEST", "unexpected end of file in '%s'", filename);
+      vs_log_error("TEST", "unexpected end of file in '%s'", filename);
     if (c >= '0' && c <= '9') n = n*10 + (c - '0');
     else {
       ungetc (c,f);
@@ -58,14 +58,14 @@ static void skipWhiteSpace (const char* filename, FILE *f)
   for(;;) {
     c = fgetc(f);
     if (c==EOF)
-      ds_log_error("TEST", "unexpected end of file in '%s'", filename);
+      vs_log_error("TEST", "unexpected end of file in '%s'", filename);
 
     // skip comments
     if (c == '#') {
       do {
 	d = fgetc(f);
 	if (d==EOF)
-	  ds_log_error("TEST", "unexpected end of file in '%s'", filename);
+	  vs_log_error("TEST", "unexpected end of file in '%s'", filename);
       } while (d != '\n');
       continue;
     }
@@ -81,13 +81,13 @@ int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
 {
   FILE *f = fopen (filename,"rb");
   if (!f) {
-    ds_log_error("TEST", "Can't open image file '%s'", filename);
+    vs_log_error("TEST", "Can't open image file '%s'", filename);
     return 0;
   }
 
   // read in header
   if (fgetc(f) != 'P' || fgetc(f) != '2')
-    ds_log_error("TEST","image file ist not binary PGM (no P5 header) '%s'", filename);
+    vs_log_error("TEST","image file ist not binary PGM (no P5 header) '%s'", filename);
   skipWhiteSpace (filename,f);
 
   // read in image parameters
@@ -99,9 +99,9 @@ int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
 
   // check values
   if (fi->width < 1 || fi->height < 1)
-    ds_log_error("TEST", "bad image file '%s'", filename);
+    vs_log_error("TEST", "bad image file '%s'", filename);
   if (max_value != 255)
-    ds_log_error("TEST", "image file '%s' must have color range 255", filename);
+    vs_log_error("TEST", "image file '%s' must have color range 255", filename);
 
   // read either nothing, LF (10), or CR,LF (13,10)
   int c = fgetc(f);
@@ -119,7 +119,7 @@ int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
   // read in rest of data
 	allocateFrame(frame,fi);
   if (fread( frame->data[0], fi->width*fi->height, 1, f) != 1){
-    ds_log_error("TEST", "Can't read data from image file '%s'", filename);
+    vs_log_error("TEST", "Can't read data from image file '%s'", filename);
     return 0;
   }
   fclose (f);
@@ -130,7 +130,7 @@ int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
 int storePGMImage(const char* filename, const uint8_t* data, DSFrameInfo fi ) {
   FILE *f = fopen (filename,"wb");
   if (!f) {
-    ds_log_error("TEST", "Can't open image file '%s'",  filename);
+    vs_log_error("TEST", "Can't open image file '%s'",  filename);
     return 0;
   }
 
@@ -142,7 +142,7 @@ int storePGMImage(const char* filename, const uint8_t* data, DSFrameInfo fi ) {
 
   // write data
   if (fwrite( data, fi.width*fi.height, 1, f) != 1){
-    ds_log_error("TEST", "Can't write to image file '%s'", filename);
+    vs_log_error("TEST", "Can't write to image file '%s'", filename);
     return 0;
   }
   fclose (f);

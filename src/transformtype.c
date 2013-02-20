@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "transformtype.h"
-#include "deshakedefines.h"
+#include "vidstabdefines.h"
 
 /***********************************************************************
  * helper functions to create and operate with transforms.
@@ -157,7 +157,7 @@ int cmp_int(const void *t1, const void* t2)
  */
 Transform median_xy_transform(const Transform* transforms, int len)
 {
-  Transform* ts = ds_malloc(sizeof(Transform) * len);
+  Transform* ts = vs_malloc(sizeof(Transform) * len);
   Transform t;
   memcpy(ts,transforms, sizeof(Transform)*len );
   int half = len/2;
@@ -168,7 +168,7 @@ Transform median_xy_transform(const Transform* transforms, int len)
   t.alpha = 0;
   t.zoom = 0;
   t.extra = 0;
-  ds_free(ts);
+  vs_free(ts);
   return t;
 }
 
@@ -190,7 +190,7 @@ Transform median_xy_transform(const Transform* transforms, int len)
  */
 Transform cleanmean_xy_transform(const Transform* transforms, int len)
 {
-  Transform* ts = ds_malloc(sizeof(Transform) * len);
+  Transform* ts = vs_malloc(sizeof(Transform) * len);
   Transform t = null_transform();
   int i, cut = len / 5;
   memcpy(ts, transforms, sizeof(Transform) * len);
@@ -202,7 +202,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
   for (i = cut; i < len - cut; i++){ // all but cutted
     t.y += ts[i].y;
   }
-  ds_free(ts);
+  vs_free(ts);
   return mult_transform(&t, 1.0 / (len - (2.0 * cut)));
 }
 
@@ -228,7 +228,7 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
 void cleanmaxmin_xy_transform(const Transform* transforms, int len,
                               int percentil,
                               Transform* min, Transform* max){
-  Transform* ts = ds_malloc(sizeof(Transform) * len);
+  Transform* ts = vs_malloc(sizeof(Transform) * len);
   int cut = len * percentil / 100;
   memcpy(ts, transforms, sizeof(Transform) * len);
   qsort(ts,len, sizeof(Transform), cmp_trans_x);
@@ -237,7 +237,7 @@ void cleanmaxmin_xy_transform(const Transform* transforms, int len,
   qsort(ts, len, sizeof(Transform), cmp_trans_y);
   min->y = ts[cut].y;
   max->y = ts[len-cut-1].y;
-  ds_free(ts);
+  vs_free(ts);
 }
 
 
@@ -319,8 +319,8 @@ LocalMotion null_localmotion(){
 }
 
 int* localmotions_getx(const LocalMotions* localmotions){
-  int len = ds_vector_size(localmotions);
-  int* xs = ds_malloc(sizeof(int) * len);
+  int len = vs_vector_size(localmotions);
+  int* xs = vs_malloc(sizeof(int) * len);
   int i;
   for (i=0; i<len; i++){
     xs[i]=LMGet(localmotions,i)->v.x;
@@ -329,8 +329,8 @@ int* localmotions_getx(const LocalMotions* localmotions){
 }
 
 int* localmotions_gety(const LocalMotions* localmotions){
-  int len = ds_vector_size(localmotions);
-  int* ys = ds_malloc(sizeof(int) * len);
+  int len = vs_vector_size(localmotions);
+  int* ys = vs_malloc(sizeof(int) * len);
   int i;
   for (i=0; i<len; i++){
     ys[i]=LMGet(localmotions,i)->v.y;
@@ -351,7 +351,7 @@ LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2){
  * of local motions considering
  *
  * Parameters:
- *    localmotions : ds_vector of local motions
+ *    localmotions : vs_vector of local motions
  * Return value:
  *     A localmotion with vec with x and y being the cleaned mean
  *     (meaning upper and lower pentile are removed) of
@@ -363,7 +363,7 @@ LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2){
  */
 LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
 {
-  int len = ds_vector_size(localmotions);
+  int len = vs_vector_size(localmotions);
   int i, cut = len / 5;
   int* xs = localmotions_getx(localmotions);
   int* ys = localmotions_gety(localmotions);
@@ -377,8 +377,8 @@ LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
   for (i = cut; i < len - cut; i++){ // all but cutted
     m.v.y += ys[i];
   }
-  ds_free(xs);
-  ds_free(ys);
+  vs_free(xs);
+  vs_free(ys);
   m.v.x/=(len - (2.0 * cut));
   m.v.y/=(len - (2.0 * cut));
   return m;

@@ -28,10 +28,10 @@
  *  all parameters are optional
  */
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION LIBDESHAKE_VERSION
+#define MOD_VERSION LIBVIDSTAB_VERSION
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -150,7 +150,7 @@ static int stabilize_configure(TCModuleInstance *self,
     initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                   transcode2ourPF(vob->im_v_codec));
 
-    if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
+    if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
@@ -184,7 +184,7 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "show",       "%d", &md->show);
     }
 
-    if(configureMotionDetect(md)!= DS_OK){
+    if(configureMotionDetect(md)!= VS_OK){
     	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
         return TC_ERROR;
     }
@@ -206,7 +206,7 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        if(prepareFile(md, sd->f) != DS_OK){
+        if(prepareFile(md, sd->f) != VS_OK){
             tc_log_error(MOD_NAME, "cannot write to result file %s", sd->result);
             return TC_ERROR;
         }
@@ -245,15 +245,15 @@ static int stabilize_filter_video(TCModuleInstance *self,
     DSFrame dsFrame;
     fillFrameFromBuffer(&dsFrame,frame->video_buf, &md->fi);
 
-    if(motionDetection(md, &localmotions, &dsFrame)!= DS_OK){
+    if(motionDetection(md, &localmotions, &dsFrame)!= VS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     }
-    if(writeToFile(md, sd->f, &localmotions) != DS_OK){
-        ds_vector_del(&localmotions);
+    if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+        vs_vector_del(&localmotions);
         return TC_ERROR;
     } else {
-        ds_vector_del(&localmotions);
+        vs_vector_del(&localmotions);
         return TC_OK;
     }
 }

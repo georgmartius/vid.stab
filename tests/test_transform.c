@@ -41,23 +41,23 @@ void test_transform_implementation(const TestData* testdata){
 
   for(it=Zero; it<=BiCubic; it++){
     copyFrame(&dest, &src, &fi);
-    test_bool(initTransformData(&td, &fi, &fi, "test") == DS_OK);
+    test_bool(initTransformData(&td, &fi, &fi, "test") == VS_OK);
     td.interpolType=it;
-    test_bool(configureTransformData(&td)== DS_OK);
+    test_bool(configureTransformData(&td)== VS_OK);
 
     fprintf(stderr,"Transform: %s\n", interpolTypes[it]);
-    test_bool(transformPrepare(&td,&dest,&dest)== DS_OK);
-    test_bool(transformYUV_float(&td, t)== DS_OK);
+    test_bool(transformPrepare(&td,&dest,&dest)== VS_OK);
+    test_bool(transformYUV_float(&td, t)== VS_OK);
 
     copyFrame(&cfinal,&td.dest,&fi);
 		cleanupTransformData(&td);
 
     copyFrame(&dest, &src, &fi);
-    test_bool(initTransformData(&td, &fi, &fi, "test") == DS_OK);
+    test_bool(initTransformData(&td, &fi, &fi, "test") == VS_OK);
     td.interpolType=it;
-    test_bool(configureTransformData(&td)== DS_OK);
-    test_bool(transformPrepare(&td,&dest,&dest)== DS_OK);
-    test_bool(transformYUV(&td, t)== DS_OK);
+    test_bool(configureTransformData(&td)== VS_OK);
+    test_bool(transformPrepare(&td,&dest,&dest)== VS_OK);
+    test_bool(transformYUV(&td, t)== VS_OK);
 
     // validate
     sum=0;
@@ -93,9 +93,9 @@ void test_transform_performance(const TestData* testdata){
 		TransformData td;
 		int i;
 		//// Float implementation
-		test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "test") == DS_OK);
+		test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
 		td.interpolType=it;
-		test_bool(configureTransformData(&td)== DS_OK);
+		test_bool(configureTransformData(&td)== VS_OK);
 
 		fprintf(stderr,"Transform: %s", interpolTypes[it]);
 		start = timeOfDayinMS();
@@ -105,8 +105,8 @@ void test_transform_performance(const TestData* testdata){
 			t.alpha = (i+1)*2*M_PI/(180.0);
 			t.zoom = 0;
 			copyFrame(&dest, &testdata->frames[0], &testdata->fi);
-			test_bool(transformPrepare(&td,&dest,&dest)== DS_OK);
-			test_bool(transformYUV_float(&td, t)== DS_OK);
+			test_bool(transformPrepare(&td,&dest,&dest)== VS_OK);
+			test_bool(transformYUV_float(&td, t)== VS_OK);
 		}
 		timeC = timeOfDayinMS() - start;
 		fprintf(stderr,"\n***C   elapsed time for %i runs: %i ms ****\n",
@@ -121,9 +121,9 @@ void test_transform_performance(const TestData* testdata){
 		cleanupTransformData(&td);
 
 		//// fixed point implementation
-		test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "test") == DS_OK);
+		test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
 		td.interpolType=it;
-		test_bool(configureTransformData(&td)== DS_OK);
+		test_bool(configureTransformData(&td)== VS_OK);
 		start = timeOfDayinMS();
 		for(i=0; i<numruns; i++){
 			Transform t = null_transform();
@@ -131,8 +131,8 @@ void test_transform_performance(const TestData* testdata){
 			t.alpha = (i+1)*2*M_PI/(180.0);
 			t.zoom = 0;
 			copyFrame(&dest, &testdata->frames[0], &testdata->fi);
-			test_bool(transformPrepare(&td,&dest,&dest)== DS_OK);
-			test_bool(transformYUV(&td, t)== DS_OK);
+			test_bool(transformPrepare(&td,&dest,&dest)== VS_OK);
+			test_bool(transformYUV(&td, t)== VS_OK);
 		}
 		timeCFP = timeOfDayinMS() - start;
 		fprintf(stderr,"***FP  elapsed time for %i runs: %i ms ****\n",

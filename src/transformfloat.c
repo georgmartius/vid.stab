@@ -278,10 +278,10 @@ int _FLT(transformYUV)(TransformData* td, Transform t)
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
     if(equalFrames(&td->src,&td->destbuf))
-      return DS_OK; // noop
+      return VS_OK; // noop
     else {
       copyFrame(&td->destbuf, &td->src, &td->fiSrc);
-      return DS_OK;
+      return VS_OK;
     }
   }
   int plane;
@@ -327,7 +327,7 @@ int _FLT(transformYUV)(TransformData* td, Transform t)
       }
     }
   }
-  return DS_OK;
+  return VS_OK;
 }
 
 /*

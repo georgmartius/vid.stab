@@ -23,7 +23,7 @@
  */
 
 #include "frameinfo.h"
-#include "deshakedefines.h"
+#include "vidstabdefines.h"
 #include <assert.h>
 
 int initFrameInfo(DSFrameInfo* fi, int width, int height, PixelFormat pFormat){
@@ -112,19 +112,19 @@ void allocateFrame(DSFrame* frame, const DSFrameInfo* fi){
     for (i=0; i< fi->planes; i++){
       int w = fi->width  >> getPlaneWidthSubS(fi, i);
       int h = fi->height >> getPlaneHeightSubS(fi, i);
-      frame->data[i] = ds_zalloc(w * h * sizeof(uint8_t));
+      frame->data[i] = vs_zalloc(w * h * sizeof(uint8_t));
       frame->linesize[i] = w;
       if(frame->data[i]==0)
-        ds_log_error("vid.stab","out of memory: cannot allocated buffer");
+        vs_log_error("vid.stab","out of memory: cannot allocated buffer");
     }
   }else{
     assert(fi->planes==1);
     int w = fi->width;
     int h = fi->height;
-    frame->data[0] = ds_zalloc(w * h * sizeof(uint8_t)*fi->bytesPerPixel);
+    frame->data[0] = vs_zalloc(w * h * sizeof(uint8_t)*fi->bytesPerPixel);
     frame->linesize[0] = w * fi->bytesPerPixel;
     if(frame->data[0]==0)
-      ds_log_error("vid.stab","out of memory: cannot allocated buffer");
+      vs_log_error("vid.stab","out of memory: cannot allocated buffer");
   }
 }
 
@@ -171,7 +171,7 @@ void fillFrameFromBuffer(DSFrame* frame, uint8_t* img, const DSFrameInfo* fi){
 void freeFrame(DSFrame* frame){
 	int plane;
 	for (plane=0; plane< 4; plane++){
-		if(frame->data[plane]) ds_free(frame->data[plane]);
+		if(frame->data[plane]) vs_free(frame->data[plane]);
 		frame->data[plane]=0;
 		frame->linesize[plane]=0;
 	}

@@ -24,7 +24,7 @@
 #define __TRANSFORMTYPE_H
 
 #include <stdio.h>
-#include "dsvector.h"
+#include "vsvector.h"
 
 /* structure to hold information about frame transformations
    x,y are translations, alpha is a rotation around the center in RAD,
@@ -62,10 +62,10 @@ typedef struct _localmotion {
     double match;    // quality of match
 } LocalMotion;
 
-typedef DSVector LocalMotions;
-/// helper macro to access a localmotion in the DSVector
+typedef VSVector LocalMotions;
+/// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \
-    ((LocalMotion*)ds_vector_get(localmotions,index))
+    ((LocalMotion*)vs_vector_get(localmotions,index))
 
 
 /* helper functions to create and operate with transforms.
@@ -126,9 +126,9 @@ void cleanmaxmin_xy_transform(const Transform* transforms, int len,
 /* helper function to work with local motions */
 
 LocalMotion null_localmotion(void);
-/// a new array of the v.x values is returned (ds_free has to be called)
+/// a new array of the v.x values is returned (vs_free has to be called)
 int* localmotions_getx(const LocalMotions* localmotions);
-/// a new array of the v.y values is returned (ds_free has to be called)
+/// a new array of the v.y values is returned (vs_free has to be called)
 int* localmotions_gety(const LocalMotions* localmotions);
 /// lm1 - lm2 only for the Vec (the remaining values are taken from lm1)
 LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2);

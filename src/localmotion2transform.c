@@ -29,16 +29,16 @@ int localmotions2TransformsSimple(TransformData* td,
 																	const ManyLocalMotions* motions,
 																	Transformations* trans ){
 	int i;
-	int len = ds_vector_size(motions);
+	int len = vs_vector_size(motions);
 	assert(trans->len==0 && trans->ts == 0);
-	trans->ts = ds_malloc(sizeof(Transform)*len );
-	for(i=0; i< ds_vector_size(motions); i++) {
+	trans->ts = vs_malloc(sizeof(Transform)*len );
+	for(i=0; i< vs_vector_size(motions); i++) {
 		trans->ts[i]=simpleMotionsToTransform(td,MLMGet(motions,i));
 		//    storeLocalmotions(stderr,MLMGet(motions,i));
 		//		storeTransform(stderr,&trans->ts[i]);
 	}
 	trans->len=len;
-	return DS_OK;
+	return VS_OK;
 }
 
 
@@ -67,8 +67,8 @@ Transform simpleMotionsToTransform(TransformData* td,
   int center_y = 0;
 	Transform t = null_transform();
   if(motions==0) return t;
-  int num_motions=ds_vector_size(motions);
-  double *angles = (double*) ds_malloc(sizeof(double) * num_motions);
+  int num_motions=vs_vector_size(motions);
+  double *angles = (double*) vs_malloc(sizeof(double) * num_motions);
   LocalMotion meanmotion;
   int i;
   if(num_motions < 1)
@@ -99,11 +99,11 @@ Transform simpleMotionsToTransform(TransformData* td,
     t.alpha = -cleanmean(angles, num_motions, &min, &max);
     if (max - min > td->maxAngleVariation) {
       t.alpha = 0;
-      ds_log_info(td->modName, "too large variation in angle(%f)\n",
+      vs_log_info(td->modName, "too large variation in angle(%f)\n",
 		  max-min);
     }
   }
-  ds_free(angles);
+  vs_free(angles);
   // compensate for off-center rotation
   double p_x = (center_x - td->fiSrc.width / 2);
   double p_y = (center_y - td->fiSrc.height / 2);

@@ -1,7 +1,7 @@
 #ifndef __TESTUTILS_H
 #define __TESTUTILS_H
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 typedef struct _test_data {
   DSFrameInfo fi;

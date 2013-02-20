@@ -45,7 +45,7 @@
 #endif
 
 #include "boxblur.h"
-#include "deshakedefines.h"
+#include "vidstabdefines.h"
 #include "localmotion2transform.h"
 
 /* internal data structures */
@@ -63,15 +63,15 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->modName = modName;
 
   if(fi->pFormat<=PF_NONE ||  fi->pFormat==PF_PACKED || fi->pFormat>=PF_NUMBER) {
-    ds_log_warn(md->modName, "unsupported Pixel Format (%i)\n",
+    vs_log_warn(md->modName, "unsupported Pixel Format (%i)\n",
                 md->fi.pFormat);
-    return DS_ERROR;
+    return VS_ERROR;
   }
 
   allocateFrame(&md->prev, &md->fi);
   if (isNullFrame(&md->prev)) {
-    ds_log_error(md->modName, "malloc failed");
-    return DS_ERROR;
+    vs_log_error(md->modName, "malloc failed");
+    return VS_ERROR;
   }
 
   nullFrame(&md->curr);
@@ -86,50 +86,50 @@ int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi,
   md->algo      = 1;
   md->accuracy  = 9;
   md->shakiness = 5;
-  md->fieldSize = DS_MIN(md->fi.width, md->fi.height) / 12;
+  md->fieldSize = VS_MIN(md->fi.width, md->fi.height) / 12;
   md->virtualTripod = 0;
   md->show = 0;
   md->contrastThreshold = 0.25;
   md->initialized = 1;
-  return DS_OK;
+  return VS_OK;
 }
 
 int configureMotionDetect(MotionDetect* md) {
   if (md->initialized != 1)
-    return DS_ERROR;
+    return VS_ERROR;
 
-  md->shakiness = DS_MIN(10,DS_MAX(1,md->shakiness));
-  md->accuracy = DS_MIN(15,DS_MAX(1,md->accuracy));
+  md->shakiness = VS_MIN(10,VS_MAX(1,md->shakiness));
+  md->accuracy = VS_MIN(15,VS_MAX(1,md->accuracy));
   if (md->accuracy < md->shakiness / 2) {
-    ds_log_info(md->modName, "Accuracy should not be lower than shakiness/2 -- fixed");
+    vs_log_info(md->modName, "Accuracy should not be lower than shakiness/2 -- fixed");
     md->accuracy = md->shakiness / 2;
   }
   if (md->accuracy > 9 && md->stepSize > 6) {
-    ds_log_info(md->modName, "For high accuracy use lower stepsize  -- set to 6 now");
+    vs_log_info(md->modName, "For high accuracy use lower stepsize  -- set to 6 now");
     md->stepSize = 6; // maybe 4
   }
 
   // shift: shakiness 1: height/40; 10: height/4
-  int minDimension = DS_MIN(md->fi.width, md->fi.height);
+  int minDimension = VS_MIN(md->fi.width, md->fi.height);
   md->maxShift
-    = DS_MAX(4,(minDimension*md->shakiness)/40);
+    = VS_MAX(4,(minDimension*md->shakiness)/40);
   // size: shakiness 1: height/40; 10: height/6 (clipped)
   md->fieldSize
-    = DS_MAX(4,DS_MIN(minDimension/6, (minDimension*md->shakiness)/40));
+    = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->shakiness)/40));
 
 #if defined(USE_SSE2) || defined(USE_SSE2_ASM)
   md->fieldSize = (md->fieldSize / 16 + 1) * 16;
 #endif
 
-  ds_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel",
+  vs_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel",
 	      md->fieldSize, md->maxShift);
   if (md->algo == 1) {
     // initialize measurement fields. field_num is set here.
     if (!initFields(md)) {
-      return DS_ERROR;
+      return VS_ERROR;
     }
     md->maxFields = (md->accuracy) * md->fieldNum / 15;
-    ds_log_info(md->modName, "Number of used measurement fields: %i out of %i",
+    vs_log_info(md->modName, "Number of used measurement fields: %i out of %i",
 		md->maxFields, md->fieldNum);
   }
   //  if (md->show)
@@ -137,12 +137,12 @@ int configureMotionDetect(MotionDetect* md) {
   allocateFrame(&md->currtmp, &md->fi);
 
   md->initialized = 2;
-  return DS_OK;
+  return VS_OK;
 }
 
 void cleanupMotionDetection(MotionDetect* md) {
   if(md->fields) {
-    ds_free(md->fields);
+    vs_free(md->fields);
     md->fields=0;
   }
   freeFrame(&md->prev);
@@ -187,7 +187,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame) {
         *motions = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
     }
   } else {
-    ds_vector_init(motions,md->maxFields);
+    vs_vector_init(motions,md->maxFields);
     md->hasSeenOneFrame = 1;
   }
 
@@ -195,7 +195,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame) {
   // copy current frame (smoothed) to prev for next frame comparison
   copyFrame(&md->prev, &md->curr, &md->fi);
   md->frameNum++;
-  return DS_OK;
+  return VS_OK;
 }
 
 
@@ -205,16 +205,16 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame) {
 */
 int initFields(MotionDetect* md) {
   int size = md->fieldSize;
-  int rows = DS_MAX(3,(md->fi.height - md->maxShift*2)/size-1);
-  int cols = DS_MAX(3,(md->fi.width - md->maxShift*2)/size-1);
+  int rows = VS_MAX(3,(md->fi.height - md->maxShift*2)/size-1);
+  int cols = VS_MAX(3,(md->fi.width - md->maxShift*2)/size-1);
   // make sure that the remaining rows have the same length
   md->fieldNum = rows * cols;
   md->fieldRows = rows;
-  // ds_log_msg(md->modName, "field setup: rows: %i cols: %i Total: %i fields",
+  // vs_log_msg(md->modName, "field setup: rows: %i cols: %i Total: %i fields",
   //            rows, cols, md->field_num);
 
-  if (!(md->fields = (Field*) ds_malloc(sizeof(Field) * md->fieldNum))) {
-    ds_log_error(md->modName, "malloc failed!\n");
+  if (!(md->fields = (Field*) vs_malloc(sizeof(Field) * md->fieldNum))) {
+    vs_log_error(md->modName, "malloc failed!\n");
     return 0;
   } else {
     int i, j;
@@ -222,8 +222,8 @@ int initFields(MotionDetect* md) {
     // have to be away from the image boundary
     // (stepsize is added in case shift is increased through stepsize)
     int border = size / 2 + md->maxShift + md->stepSize;
-    int step_x = (md->fi.width - 2 * border) / DS_MAX(cols-1,1);
-    int step_y = (md->fi.height - 2 * border) / DS_MAX(rows-1,1);
+    int step_x = (md->fi.width - 2 * border) / VS_MAX(cols-1,1);
+    int step_y = (md->fi.height - 2 * border) / VS_MAX(rows-1,1);
     for (j = 0; j < rows; j++) {
       for (i = 0; i < cols; i++) {
         int idx = j * cols + i;
@@ -356,7 +356,7 @@ double contrastSubImg(unsigned char* const I, const Field* field, int width,
 */
 LocalMotions calcShiftRGBSimple(MotionDetect* md) {
   LocalMotions localmotions;
-  ds_vector_init(&localmotions,1);
+  vs_vector_init(&localmotions,1);
   LocalMotion lm;
   int i, j;
   int minerror =  INT_MAX;
@@ -378,7 +378,7 @@ LocalMotions calcShiftRGBSimple(MotionDetect* md) {
   lm.f.y=0;
   lm.match=minerror;
   lm.contrast=1;
-  ds_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
+  vs_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
   return localmotions;
 }
 
@@ -390,13 +390,13 @@ LocalMotions calcShiftRGBSimple(MotionDetect* md) {
 */
 LocalMotions calcShiftYUVSimple(MotionDetect* md) {
   LocalMotions localmotions;
-  ds_vector_init(&localmotions,1);
+  vs_vector_init(&localmotions,1);
   LocalMotion lm;
   int i, j;
 #ifdef STABVERBOSE
   FILE *f = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "f%04i.dat", md->frameNum);
+  vs_snprintf(buffer, sizeof(buffer), "f%04i.dat", md->frameNum);
   f = fopen(buffer, "w");
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
@@ -422,13 +422,13 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
   }
 #ifdef STABVERBOSE
   fclose(f);
-  ds_log_msg(md->modName, "Minerror: %f\n", minerror);
+  vs_log_msg(md->modName, "Minerror: %f\n", minerror);
 #endif
   lm.f.x=0;
   lm.f.y=0;
   lm.match=minerror;
   lm.contrast=1;
-  ds_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
+  vs_vector_append_dup(&localmotions,&lm,sizeof(LocalMotion));
   return localmotions;
 }
 
@@ -448,7 +448,7 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
   // printf("%i %i %f\n", md->frameNum, fieldnum, contr);
   FILE *f = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "f%04i_%02i.dat", md->frameNum, fieldnum);
+  vs_snprintf(buffer, sizeof(buffer), "f%04i_%02i.dat", md->frameNum, fieldnum);
   f = fopen(buffer, "w");
   fprintf(f, "# splot \"%s\"\n", buffer);
 #endif
@@ -557,18 +557,18 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
   }
 #ifdef STABVERBOSE
   fclose(f);
-  ds_log_msg(md->modName, "Minerror: %f\n", minerror);
+  vs_log_msg(md->modName, "Minerror: %f\n", minerror);
 #endif
 
   if (!md->allowMax && fabs(tx) >= md->maxShift + md->stepSize) {
 #ifdef STABVERBOSE
-    ds_log_msg(md->modName, "maximal x shift ");
+    vs_log_msg(md->modName, "maximal x shift ");
 #endif
     tx = 0;
   }
   if (!md->allowMax && fabs(ty) == md->maxShift + md->stepSize) {
 #ifdef STABVERBOSE
-    ds_log_msg(md->modName, "maximal y shift ");
+    vs_log_msg(md->modName, "maximal y shift ");
 #endif
     ty = 0;
   }
@@ -632,13 +632,13 @@ LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
 
   if (!md->allowMax && fabs(tx) >= md->maxShift + md->stepSize) {
 #ifdef STABVERBOSE
-    ds_log_msg(md->modName, "maximal x shift ");
+    vs_log_msg(md->modName, "maximal x shift ");
 #endif
     tx = 0;
   }
   if (!md->allowMax && fabs(ty) == md->maxShift + md->stepSize) {
 #ifdef STABVERBOSE
-    ds_log_msg(md->modName, "maximal y shift ");
+    vs_log_msg(md->modName, "maximal y shift ");
 #endif
     ty = 0;
   }
@@ -663,12 +663,12 @@ int cmp_contrast_idx(const void *ci1, const void* ci2) {
    first calc contrasts then select from each part of the
    frame a some fields
 */
-DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
+VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
   int i, j;
-  DSVector goodflds;
+  VSVector goodflds;
   contrast_idx *ci =
-    (contrast_idx*) ds_malloc(sizeof(contrast_idx) * md->fieldNum);
-  ds_vector_init(&goodflds, md->fieldNum);
+    (contrast_idx*) vs_malloc(sizeof(contrast_idx) * md->fieldNum);
+  vs_vector_init(&goodflds, md->fieldNum);
 
   // we split all fields into row+1 segments and take from each segment
   // the best fields
@@ -676,7 +676,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
   int segmlen = md->fieldNum / (md->fieldRows + 1) + 1;
   // split the frame list into rows+1 segments
   contrast_idx *ci_segms =
-    (contrast_idx*) ds_malloc(sizeof(contrast_idx) * md->fieldNum);
+    (contrast_idx*) vs_malloc(sizeof(contrast_idx) * md->fieldNum);
   int remaining = 0;
   // calculate contrast for each field
   // #pragma omp parallel for shared(ci,md) no speedup because to short
@@ -706,7 +706,7 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
       // printf("%i %lf\n", ci_segms[startindex+j].index,
       //                    ci_segms[startindex+j].contrast);
       if (ci_segms[startindex + j].contrast > 0) {
-        ds_vector_append_dup(&goodflds, &ci[ci_segms[startindex+j].index],
+        vs_vector_append_dup(&goodflds, &ci[ci_segms[startindex+j].index],
                              sizeof(contrast_idx));
         // don't consider them in the later selection process
         ci_segms[startindex + j].contrast = 0;
@@ -714,20 +714,20 @@ DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
     }
   }
   // check whether enough fields are selected
-  // printf("Phase2: %i\n", ds_list_size(goodflds));
-  remaining = md->maxFields - ds_vector_size(&goodflds);
+  // printf("Phase2: %i\n", vs_list_size(goodflds));
+  remaining = md->maxFields - vs_vector_size(&goodflds);
   if (remaining > 0) {
     // take the remaining from the leftovers
     qsort(ci_segms, md->fieldNum, sizeof(contrast_idx), cmp_contrast_idx);
     for (j = 0; j < remaining; j++) {
       if (ci_segms[j].contrast > 0) {
-        ds_vector_append_dup(&goodflds, &ci_segms[j], sizeof(contrast_idx));
+        vs_vector_append_dup(&goodflds, &ci_segms[j], sizeof(contrast_idx));
       }
     }
   }
-  // printf("Ende: %i\n", ds_list_size(goodflds));
-  ds_free(ci);
-  ds_free(ci_segms);
+  // printf("Ende: %i\n", vs_list_size(goodflds));
+  vs_free(ci);
+  vs_free(ci_segms);
   return goodflds;
 }
 
@@ -747,40 +747,40 @@ LocalMotions calcTransFields(MotionDetect* md,
                              calcFieldTransFunc fieldfunc,
                              contrastSubImgFunc contrastfunc) {
   LocalMotions localmotions;
-  ds_vector_init(&localmotions,md->maxFields);
+  vs_vector_init(&localmotions,md->maxFields);
 
   int i, index = 0, num_motions;
 #ifdef STABVERBOSE
   FILE *file = NULL;
   char buffer[32];
-  ds_snprintf(buffer, sizeof(buffer), "k%04i.dat", md->frameNum);
+  vs_snprintf(buffer, sizeof(buffer), "k%04i.dat", md->frameNum);
   file = fopen(buffer, "w");
   fprintf(file, "# plot \"%s\" w l, \"\" every 2:1:0\n", buffer);
 #endif
 
-  DSVector goodflds = selectfields(md, contrastfunc);
+  VSVector goodflds = selectfields(md, contrastfunc);
   // use all "good" fields and calculate optimal match to previous frame
 #ifdef USE_OMP
 #pragma omp parallel for shared(goodflds, md, localmotions, fs) // does not bring speedup
 #endif
-  for(index=0; index < ds_vector_size(&goodflds); index++){
-    int i = ((contrast_idx*)ds_vector_get(&goodflds,index))->index;
+  for(index=0; index < vs_vector_size(&goodflds); index++){
+    int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;
     LocalMotion m;
     m = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransYUV
-    m.contrast = ((contrast_idx*)ds_vector_get(&goodflds,index))->contrast;
+    m.contrast = ((contrast_idx*)vs_vector_get(&goodflds,index))->contrast;
 #ifdef STABVERBOSE
     fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
             m.f.x + m.v.x, m.f.y + m.v.y, m.match, m.contrast);
 #endif
     //if (t.match > somethreshold) { // ignore if too bad
-    ds_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
+    vs_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
       //}
   }
 
-  num_motions = ds_vector_size(&localmotions); // amount of transforms we actually have
-  ds_vector_del(&goodflds);
+  num_motions = vs_vector_size(&localmotions); // amount of transforms we actually have
+  vs_vector_del(&goodflds);
   if (num_motions < 1) {
-    ds_log_warn(md->modName, "too low contrast! No field remains.\n \
+    vs_log_warn(md->modName, "too low contrast! No field remains.\n \
                     (no translations are detected in frame %i)", md->frameNum);
   }
 
@@ -852,9 +852,9 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
 
 // void addTrans(MotionDetect* md, Transform sl) {
 //   if (!md->transs) {
-//     md->transs = ds_list_new(0);
+//     md->transs = vs_list_new(0);
 //   }
-//   ds_list_append_dup(md->transs, &sl, sizeof(sl));
+//   vs_list_append_dup(md->transs, &sl, sizeof(sl));
 // }
 
 // Transform getLastTransform(MotionDetect* md){

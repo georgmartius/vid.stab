@@ -299,7 +299,7 @@ int transformRGB(TransformData* td, Transform t)
 			}
 		}
 	}
-	return DS_OK;
+	return VS_OK;
 }
 
 /**
@@ -324,10 +324,10 @@ int transformYUV(TransformData* td, Transform t)
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
     if(equalFrames(&td->src,&td->destbuf))
-      return DS_OK; // noop
+      return VS_OK; // noop
     else {
       copyFrame(&td->destbuf, &td->src, &td->fiSrc);
-      return DS_OK;
+      return VS_OK;
     }
   }
 
@@ -378,7 +378,7 @@ int transformYUV(TransformData* td, Transform t)
 		}
 	}
 
-	return DS_OK;
+	return VS_OK;
 }
 
 
@@ -403,7 +403,7 @@ int transformYUV(TransformData* td, Transform t)
 /*     int32_t x = 0, y = 0; */
 /*     unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */
 
-/*     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return DS_OK; // noop */
+/*     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return VS_OK; // noop */
 
 /*     Y_1  = td->src;   */
 /*     Y_2  = td->destbuf;   */
@@ -484,7 +484,7 @@ int transformYUV(TransformData* td, Transform t)
 /*       } */
 /*     } */
 
-/*     return DS_OK; */
+/*     return VS_OK; */
 /* } */
 
 /*

@@ -27,10 +27,10 @@
  *  all parameters are optional
  */
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 #define MOD_NAME    "filter_deshake.so"
-#define MOD_VERSION LIBDESHAKE_VERSION
+#define MOD_VERSION LIBVIDSTAB_VERSION
 #define MOD_CAP     "deshakes a video clip by extracting relative transformations\n\
     of subsequent frames and transforms the high-frequency away\n\
     This is a single pass verion of stabilize and transform plugin"
@@ -182,7 +182,7 @@ static int deshake_configure(TCModuleInstance *self,
   initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
+  if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
     tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
     return TC_ERROR;
   }
@@ -203,7 +203,7 @@ static int deshake_configure(TCModuleInstance *self,
   initFrameInfo(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  if(initTransformData(td, &fi, &fi_dest, MOD_NAME) != DS_OK){
+  if(initTransformData(td, &fi, &fi_dest, MOD_NAME) != VS_OK){
     tc_log_error(MOD_NAME, "initialization of TransformData failed");
     return TC_ERROR;
   }
@@ -238,11 +238,11 @@ static int deshake_configure(TCModuleInstance *self,
     td->invert=0;
   }
 
-  if(configureMotionDetect(md)!= DS_OK){
+  if(configureMotionDetect(md)!= VS_OK){
     tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
     return TC_ERROR;
   }
-  if(configureTransformData(td)!= DS_OK){
+  if(configureTransformData(td)!= VS_OK){
     tc_log_error(MOD_NAME, "configuration of Tranform failed");
     return TC_ERROR;
   }
@@ -303,14 +303,14 @@ static int deshake_filter_video(TCModuleInstance *self,
   DSFrame dsFrame;
   fillFrameFromBuffer(&dsFrame,frame->video_buf, &td->fiSrc);
 
-  if(motionDetection(md, &localmotions, &dsFrame)!= DS_OK){
+  if(motionDetection(md, &localmotions, &dsFrame)!= VS_OK){
     tc_log_error(MOD_NAME, "motion detection failed");
     return TC_ERROR;
   }
 
-  if(writeToFile(md, sd->f, &localmotions) != DS_OK)
+  if(writeToFile(md, sd->f, &localmotions) != VS_OK)
   motion = simpleMotionsToTransform(td, &localmotions);
-  ds_vector_del(&localmotions);
+  vs_vector_del(&localmotions);
 
   transformPrepare(td, &dsFrame, &dsFrame);
 

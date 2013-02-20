@@ -32,12 +32,8 @@
   TODO: check AVERROR  codes
 */
 
-#define CHROMA_WIDTH(link)  -((-link->w) >> av_pix_fmt_descriptors[link->format].log2_chroma_w)
-#define CHROMA_HEIGHT(link) -((-link->h) >> av_pix_fmt_descriptors[link->format].log2_chroma_h)
-
-
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
-#define DS_INPUT_MAXLEN 1024
+#define VS_INPUT_MAXLEN 1024
 
 #include <math.h> //?
 #include <libgen.h> //?
@@ -56,7 +52,7 @@
 
 
 #include "optstr.h"
-#include "vid.stab/libdeshake.h"
+#include "vid.stab/libvidstab.h"
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
@@ -107,7 +103,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
         return AVERROR(EINVAL);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Stabilize: init\n");
+    av_log(ctx, AV_LOG_INFO, "Stabilize: init %s\n", LIBVIDSTAB_VERSION);
     if(args)
         sd->options=av_strdup(args);
     else
@@ -142,13 +138,11 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    // TODO: check formats and add RGB
     static const enum AVPixelFormat pix_fmts[] = {
-        /*AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,*/  AV_PIX_FMT_YUV420P,
-        /*AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,  AV_PIX_FMT_YUVA420P,
+        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
+        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
         AV_PIX_FMT_YUV440P,  AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ440P,*/
+        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_NONE
     };
 
@@ -178,21 +172,21 @@ static int config_input(AVFilterLink *inlink)
     if(fi.log2ChromaH != desc->log2_chroma_h)
         av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_h");
 
-    if(initMotionDetect(md, &fi, "stabilize") != DS_OK){
+    if(initMotionDetect(md, &fi, "stabilize") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed");
         return AVERROR(EINVAL);
     }
 
     /// TODO: find out input name
-    sd->result = av_malloc(DS_INPUT_MAXLEN);
+    sd->result = av_malloc(VS_INPUT_MAXLEN);
 //    filenamecopy = strndup(sd->vob->video_in_file);
 //    filebasename = basename(filenamecopy);
-//    if (strlen(filebasename) < DS_INPUT_MAXLEN - 4) {
-//        snprintf(sd->result, DS_INPUT_MAXLEN, "%s.trf", filebasename);
+//    if (strlen(filebasename) < VS_INPUT_MAXLEN - 4) {
+//        snprintf(sd->result, VS_INPUT_MAXLEN, "%s.trf", filebasename);
 //} else {
 //    av_log(ctx, AV_LOG_WARN, "input name too long, using default `%s'",
 //                    DEFAULT_TRANS_FILE_NAME);
-    snprintf(sd->result, DS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
+    snprintf(sd->result, VS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
 //    }
 
     if (sd->options != NULL) {
@@ -210,7 +204,7 @@ static int config_input(AVFilterLink *inlink)
         optstr_get(sd->options, "show",       "%d", &md->show);
     }
 
-    if(configureMotionDetect(md)!= DS_OK){
+    if(configureMotionDetect(md)!= VS_OK){
     	av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed\n");
         return AVERROR(EINVAL);
     }
@@ -229,7 +223,7 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_ERROR, "cannot open transform file %s!\n", sd->result);
         return AVERROR(EINVAL);
     }else{
-        if(prepareFile(md, sd->f) != DS_OK){
+        if(prepareFile(md, sd->f) != VS_OK){
             av_log(ctx, AV_LOG_ERROR, "cannot write to transform file %s!\n", sd->result);
             return AVERROR(EINVAL);
         }
@@ -271,15 +265,15 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
         frame.data[plane] = in->data[plane];
         frame.linesize[plane] = in->linesize[plane];
     }
-    if(motionDetection(md, &localmotions, &frame) !=  DS_OK){
+    if(motionDetection(md, &localmotions, &frame) !=  VS_OK){
         av_log(ctx, AV_LOG_ERROR, "motion detection failed");
         return AVERROR(AVERROR_EXTERNAL);
     } else {
-        if(writeToFile(md, sd->f, &localmotions) != DS_OK){
+        if(writeToFile(md, sd->f, &localmotions) != VS_OK){
             av_log(ctx, AV_LOG_ERROR, "cannot write to transform file!");
             return AVERROR(EPERM);
         }
-        ds_vector_del(&localmotions);
+        vs_vector_del(&localmotions);
     }
     if(md->show>0 && !direct){
         // copy

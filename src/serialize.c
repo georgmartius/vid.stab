@@ -42,19 +42,19 @@ LocalMotion restoreLocalmotion(FILE* f){
   char c;
   if(fscanf(f,"(LM %i %i %i %i %i %lf %lf", &lm.v.x,&lm.v.y,&lm.f.x,&lm.f.y,&lm.f.size,
             &lm.contrast, &lm.match) != 7) {
-    ds_log_error(modname, "Cannot parse localmotion!\n");
+    vs_log_error(modname, "Cannot parse localmotion!\n");
     return null_localmotion();
   }
   while((c=fgetc(f)) && c!=')' && c!=EOF);
   if(c==EOF){
-    ds_log_error(modname, "Cannot parse localmotion missing ')'!\n");
+    vs_log_error(modname, "Cannot parse localmotion missing ')'!\n");
     return null_localmotion();
   }
   return lm;
 }
 
 int storeLocalmotions(FILE* f, const LocalMotions* lms){
-  int len = ds_vector_size(lms);
+  int len = vs_vector_size(lms);
   int i;
   fprintf(f,"List %i [",len);
   for (i=0; i<len; i++){
@@ -71,33 +71,33 @@ LocalMotions restoreLocalmotions(FILE* f){
   int i;
   char c;
   int len;
-  ds_vector_init(&lms,0);
+  vs_vector_init(&lms,0);
   if(fscanf(f,"List %i [", &len) != 1) {
-    ds_log_error(modname, "Cannot parse localmotions list expect 'List len ['!\n");
+    vs_log_error(modname, "Cannot parse localmotions list expect 'List len ['!\n");
     return lms;
   }
   if (len>0){
-    ds_vector_init(&lms,len);
+    vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
       if(i>0) while((c=fgetc(f)) && c!=',' && c!=EOF);
       LocalMotion lm = restoreLocalmotion(f);
-      ds_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
+      vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
-  if(len != ds_vector_size(&lms)){
-    ds_log_error(modname, "Cannot parse the given number of localmotions!\n");
+  if(len != vs_vector_size(&lms)){
+    vs_log_error(modname, "Cannot parse the given number of localmotions!\n");
     return lms;
   }
   while((c=fgetc(f)) && c!=']' && c!=EOF);
   if(c==EOF){
-    ds_log_error(modname, "Cannot parse localmotions list missing ']'!\n");
+    vs_log_error(modname, "Cannot parse localmotions list missing ']'!\n");
     return lms;
   }
   return lms;
 }
 
 int prepareFile(const MotionDetect* md, FILE* f){
-    if(!f) return DS_ERROR;
+    if(!f) return VS_ERROR;
     fprintf(f, "VID.STAB 1\n");
 		//    fprintf(f, "#      accuracy = %d\n", md->accuracy);
     fprintf(f, "#      accuracy = %d\n", md->accuracy);
@@ -105,25 +105,25 @@ int prepareFile(const MotionDetect* md, FILE* f){
     fprintf(f, "#      stepsize = %d\n", md->stepSize);
     fprintf(f, "#          algo = %d\n", md->algo);
     fprintf(f, "#   mincontrast = %f\n", md->contrastThreshold);
-    return DS_OK;
+    return VS_OK;
 }
 
 int writeToFile(const MotionDetect* md, FILE* f, const LocalMotions* lms){
-	if(!f || !lms) return DS_ERROR;
+	if(!f || !lms) return VS_ERROR;
 
 	if(fprintf(f, "Frame %i (", md->frameNum)>0
 		 && storeLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
-		return DS_OK;
+		return VS_OK;
 	else
-		return DS_ERROR;
+		return VS_ERROR;
 }
 
 /// reads the header of the file and return the version number
 int readFileVersion(FILE* f){
-	if(!f) return DS_ERROR;
+	if(!f) return VS_ERROR;
 	int version;
 	if(fscanf(f, "VID.STAB %i\n", &version)!=1)
-		return DS_ERROR;
+		return VS_ERROR;
 	else return version;
 }
 
@@ -132,58 +132,58 @@ int readFromFile(FILE* f, LocalMotions* lms){
 	if(c=='F') {
 		int num;
 		if(fscanf(f,"rame %i (", &num)!=1) {
-			ds_log_error(modname,"cannot read file, expect 'Frame num (...'");
-			return DS_ERROR;
+			vs_log_error(modname,"cannot read file, expect 'Frame num (...'");
+			return VS_ERROR;
 		}
 		*lms = restoreLocalmotions(f);
 		if(fscanf(f,")\n")<0) {
-			ds_log_error(modname,"cannot read file, expect '...)'");
-			return DS_ERROR;
+			vs_log_error(modname,"cannot read file, expect '...)'");
+			return VS_ERROR;
 		}
 		return num;
 	} else if(c=='#') {
 		char l[1024];
-    if(fgets(l, sizeof(l), f)==0) return DS_ERROR;
+    if(fgets(l, sizeof(l), f)==0) return VS_ERROR;
 		return readFromFile(f,lms);
 	} else if(c=='\n' || c==' ') {
 		return readFromFile(f,lms);
 	} else if(c==EOF) {
-		return DS_ERROR;
+		return VS_ERROR;
 	} else {
-		ds_log_error(modname,"cannot read frame local motions from file, got %c (%i)",
+		vs_log_error(modname,"cannot read frame local motions from file, got %c (%i)",
 								 c, (int) c);
-		return DS_ERROR;
+		return VS_ERROR;
 	}
 }
 
 int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
 	int version = readFileVersion(f);
 	if(version<1) // old format or unknown
-		return DS_ERROR;
+		return VS_ERROR;
 	if(version>1){
-		ds_log_error(modname,"Version of VID.STAB file too large: got %i, expect <= 1",
+		vs_log_error(modname,"Version of VID.STAB file too large: got %i, expect <= 1",
 								 version);
-		return DS_ERROR;
+		return VS_ERROR;
 	}
 	assert(mlms);
 	// initial number of frames, but it will automatically be increaseed
-	ds_vector_init(mlms,1024);
+	vs_vector_init(mlms,1024);
 	int index;
 	int oldindex = 0;
 	LocalMotions lms;
-	while((index = readFromFile(f,&lms)) != DS_ERROR){
+	while((index = readFromFile(f,&lms)) != VS_ERROR){
 		if(index > oldindex+1){
-			ds_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
+			vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
 									oldindex, index);
 		}
 		if(index<1){
-			ds_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
+			vs_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
 		} else {
-			ds_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
+			vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
 		}
 		oldindex=index;
 	}
-	return DS_OK;
+	return VS_OK;
 }
 
 
@@ -221,7 +221,7 @@ int readOldTransforms(const TransformData* td, FILE* f , Transformations* trans)
                    &t.zoom, &t.extra) != 6) {
             if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
                        &t.extra) != 5) {
-                ds_log_error(td->modName, "Cannot parse line: %s", l);
+                vs_log_error(td->modName, "Cannot parse line: %s", l);
                 return 0;
             }
             t.zoom=0;
@@ -232,10 +232,10 @@ int readOldTransforms(const TransformData* td, FILE* f , Transformations* trans)
                 s = 256;
             else
                 s*=2;
-            /* ds_log_info(td->modName, "resize: %i\n", s); */
-            trans->ts = ds_realloc(trans->ts, sizeof(Transform)* s);
+            /* vs_log_info(td->modName, "resize: %i\n", s); */
+            trans->ts = vs_realloc(trans->ts, sizeof(Transform)* s);
             if (!trans->ts) {
-                ds_log_error(td->modName, "Cannot allocate memory"
+                vs_log_error(td->modName, "Cannot allocate memory"
                                        " for transformations: %i\n", s);
                 return 0;
             }

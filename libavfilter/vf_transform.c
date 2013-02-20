@@ -45,9 +45,9 @@
 
 #include "optstr.h"
 
-#include "vid.stab/libdeshake.h"
+#include "vid.stab/libvidstab.h"
 
-#define DS_INPUT_MAXLEN 1024
+#define VS_INPUT_MAXLEN 1024
 
 /* private date structure of this filter*/
 typedef struct {
@@ -55,7 +55,7 @@ typedef struct {
 
     Transformations trans; // transformations
     char* options;
-    char input[DS_INPUT_MAXLEN];
+    char input[VS_INPUT_MAXLEN];
 } FilterData;
 
 
@@ -94,7 +94,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
         return AVERROR(EINVAL);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Transform filter: init\n");
+    av_log(ctx, AV_LOG_INFO, "Transform filter: init %s\n", LIBVIDSTAB_VERSION);
 
     if(args)
         fd->options=av_strdup(args);
@@ -164,7 +164,7 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    if(initTransformData(td, &fi_src, &fi_dest, "transform") != DS_OK){
+    if(initTransformData(td, &fi_src, &fi_dest, "transform") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
         return AVERROR(EINVAL);
     }
@@ -172,16 +172,16 @@ static int config_input(AVFilterLink *inlink)
 
 
     /// TODO: find out input name
-//    fd->input = (char*)av_malloc(DS_INPUT_MAXLEN);
+//    fd->input = (char*)av_malloc(VS_INPUT_MAXLEN);
 
 //    filenamecopy = strndup(fd->vob->video_in_file);
 //    filebasename = basename(filenamecopy);
-//    if (strlen(filebasename) < DS_INPUT_MAXLEN - 4) {
-//        snprintf(fd->result, DS_INPUT_MAXLEN, "%s.trf", filebasename);
+//    if (strlen(filebasename) < VS_INPUT_MAXLEN - 4) {
+//        snprintf(fd->result, VS_INPUT_MAXLEN, "%s.trf", filebasename);
 //} else {
 //    av_log(ctx, AV_LOG_WARN, "input name too long, using default `%s'",
 //                    DEFAULT_TRANS_FILE_NAME);
-    snprintf(fd->input, DS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
+    snprintf(fd->input, VS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
 //    }
 
     if (fd->options != NULL) {
@@ -208,7 +208,7 @@ static int config_input(AVFilterLink *inlink)
         }
     }
 
-    if(configureTransformData(td)!= DS_OK){
+    if(configureTransformData(td)!= VS_OK){
     	av_log(ctx, AV_LOG_ERROR, "configuration of Tranform failed\n");
         return AVERROR(EINVAL);
     }
@@ -231,9 +231,9 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_ERROR, "cannot open input file %s!\n", fd->input);
     } else {
         ManyLocalMotions mlms;
-        if(readLocalMotionsFile(f,&mlms)==DS_OK){
+        if(readLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=DS_OK)
+            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=VS_OK)
                 av_log(ctx, AV_LOG_ERROR, "calculating transformations failed!\n");
         }else{ // try to read old format
             if (!readOldTransforms(td, f, &fd->trans)) { /* read input file */
@@ -243,7 +243,7 @@ static int config_input(AVFilterLink *inlink)
     }
     fclose(f);
 
-    if (preprocessTransforms(td, &fd->trans)!= DS_OK ) {
+    if (preprocessTransforms(td, &fd->trans)!= VS_OK ) {
         av_log(ctx, AV_LOG_ERROR, "error while preprocessing transforms\n");
         return AVERROR(EINVAL);
     }

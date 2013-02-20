@@ -76,7 +76,7 @@ int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
     td->sharpen = 0.8;
 
     td->verbose = 0;
-    return DS_OK;
+    return VS_OK;
 }
 
 int configureTransformData(TransformData* td){
@@ -85,7 +85,7 @@ int configureTransformData(TransformData* td){
     if (td->maxShift > td->fiDest.height/2)
         td->maxShift = td->fiDest.height/2;
 
-    td->interpolType = DS_MAX(DS_MIN(td->interpolType,BiCubic),Zero);
+    td->interpolType = VS_MAX(VS_MIN(td->interpolType,BiCubic),Zero);
 
     switch(td->interpolType){
       case Zero:     td->interpolate = &interpolateZero; break;
@@ -104,7 +104,7 @@ int configureTransformData(TransformData* td){
     }
 
 #endif
-    return DS_OK;
+    return VS_OK;
 }
 
 void cleanupTransformData(TransformData* td){
@@ -126,8 +126,8 @@ int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest){
             td->srcMalloced = 1;
         }
         if (isNullFrame(&td->src)) {
-            ds_log_error(td->modName, "ds_malloc failed\n");
-            return DS_ERROR;
+            vs_log_error(td->modName, "vs_malloc failed\n");
+            return VS_ERROR;
         }
         copyFrame(&td->src, src, &td->fiSrc);
     }else{ // otherwise no copy needed
@@ -139,8 +139,8 @@ int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest){
         //  the previous stabilized frame, so we use destbuf
         allocateFrame(&td->destbuf,&td->fiDest);
         if (isNullFrame(&td->destbuf)) {
-          ds_log_error(td->modName, "ds_malloc failed\n");
-          return DS_ERROR;
+          vs_log_error(td->modName, "vs_malloc failed\n");
+          return VS_ERROR;
         }
         // if we keep borders, save first frame into the background buffer (destbuf)
         copyFrame(&td->destbuf, src, &td->fiSrc);
@@ -148,7 +148,7 @@ int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest){
     }else{ // otherwise we directly operate on the destination
         td->destbuf = *dest;
     }
-    return DS_OK;
+    return VS_OK;
 }
 
 int transformFinish(TransformData* td){
@@ -157,7 +157,7 @@ int transformFinish(TransformData* td){
     // note: destbuf stores stabilized frame to be the default for next frame
     copyFrame(&td->dest, &td->destbuf, &td->fiSrc);
   }
-  return DS_OK;
+  return VS_OK;
 }
 
 
@@ -166,7 +166,7 @@ Transform getNextTransform(const TransformData* td, Transformations* trans){
     if (trans->current >= trans->len) {
         trans->current = trans->len;
         if(!trans->warned_end)
-            ds_log_warn(td->modName, "not enough transforms found, use last transformation!\n");
+            vs_log_warn(td->modName, "not enough transforms found, use last transformation!\n");
         trans->warned_end = 1;
     }else{
         trans->current++;
@@ -183,7 +183,7 @@ void initTransformations(Transformations* trans){
 
 void cleanupTransformations(Transformations* trans){
     if (trans->ts) {
-        ds_free(trans->ts);
+        vs_free(trans->ts);
         trans->ts = NULL;
     }
     trans->len=0;
@@ -214,12 +214,12 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
 
     if (trans->len < 1)
         return 0;
-    if (td->verbose & DS_DEBUG) {
-        ds_log_msg(td->modName, "Preprocess transforms:");
+    if (td->verbose & VS_DEBUG) {
+        vs_log_msg(td->modName, "Preprocess transforms:");
     }
     if (td->smoothing>0) {
         /* smoothing */
-        Transform* ts2 = ds_malloc(sizeof(Transform) * trans->len);
+        Transform* ts2 = vs_malloc(sizeof(Transform) * trans->len);
         memcpy(ts2, ts, sizeof(Transform) * trans->len);
 
         /*  we will do a sliding average with minimal update
@@ -266,18 +266,18 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
                                    mult_transform(&ts[i], tau));
             ts[i] = sub_transforms(&ts[i], &avg2);
 
-            if (td->verbose & DS_DEBUG) {
-                ds_log_msg(td->modName,
+            if (td->verbose & VS_DEBUG) {
+                vs_log_msg(td->modName,
                            "s_sum: %5lf %5lf %5lf, ts: %5lf, %5lf, %5lf\n",
                            s_sum.x, s_sum.y, s_sum.alpha,
                            ts[i].x, ts[i].y, ts[i].alpha);
-                ds_log_msg(td->modName,
+                vs_log_msg(td->modName,
                            "  avg: %5lf, %5lf, %5lf avg2: %5lf, %5lf, %5lf",
                            avg.x, avg.y, avg.alpha,
                            avg2.x, avg2.y, avg2.alpha);
             }
         }
-        ds_free(ts2);
+        vs_free(ts2);
     }
 
 
@@ -292,8 +292,8 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
     if (td->relative) {
         Transform t = ts[0];
         for (i = 1; i < trans->len; i++) {
-            if (td->verbose  & DS_DEBUG) {
-                ds_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n",
+            if (td->verbose  & VS_DEBUG) {
+                vs_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n",
                            t.x, t.y, t.alpha *180/M_PI);
             }
             ts[i] = add_transforms(&ts[i], &t);
@@ -303,12 +303,12 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
     /* crop at maximal shift */
     if (td->maxShift != -1)
         for (i = 0; i < trans->len; i++) {
-            ts[i].x     = DS_CLAMP(ts[i].x, -td->maxShift, td->maxShift);
-            ts[i].y     = DS_CLAMP(ts[i].y, -td->maxShift, td->maxShift);
+            ts[i].x     = VS_CLAMP(ts[i].x, -td->maxShift, td->maxShift);
+            ts[i].y     = VS_CLAMP(ts[i].y, -td->maxShift, td->maxShift);
         }
     if (td->maxAngle != - 1.0)
         for (i = 0; i < trans->len; i++)
-            ts[i].alpha = DS_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
+            ts[i].alpha = VS_CLAMP(ts[i].alpha, -td->maxAngle, td->maxAngle);
 
     /* Calc optimal zoom
      *  cheap algo is to only consider translations
@@ -321,11 +321,11 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
         Transform min_t, max_t;
         cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t);
         // the zoom value only for x
-        double zx = 2*DS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
+        double zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
         // the zoom value only for y
-        double zy = 2*DS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
-        td->zoom += 100* DS_MAX(zx,zy); // use maximum
-        ds_log_info(td->modName, "Final zoom: %lf\n", td->zoom);
+        double zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
+        td->zoom += 100* VS_MAX(zx,zy); // use maximum
+        vs_log_info(td->modName, "Final zoom: %lf\n", td->zoom);
     }
 
     /* apply global zoom */
@@ -334,7 +334,7 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
             ts[i].zoom += td->zoom;
     }
 
-    return DS_OK;
+    return VS_OK;
 }
 
 
@@ -391,11 +391,11 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
 
     /* crop at maximal shift */
     if (td->maxShift != -1){
-      newtrans.x     = DS_CLAMP(newtrans.x, -td->maxShift, td->maxShift);
-      newtrans.y     = DS_CLAMP(newtrans.y, -td->maxShift, td->maxShift);
+      newtrans.x     = VS_CLAMP(newtrans.x, -td->maxShift, td->maxShift);
+      newtrans.y     = VS_CLAMP(newtrans.y, -td->maxShift, td->maxShift);
     }
     if (td->maxAngle != - 1.0)
-      newtrans.alpha = DS_CLAMP(newtrans.alpha, -td->maxAngle, td->maxAngle);
+      newtrans.alpha = VS_CLAMP(newtrans.alpha, -td->maxAngle, td->maxAngle);
 
     /* Calc sliding optimal zoom
      *  cheap algo is to only consider translations and to sliding avg
@@ -405,7 +405,7 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
       double zx = 2*newtrans.x/td->fiSrc.width;
       // the zoom value only for y
       double zy = 2*newtrans.y/td->fiSrc.height;
-      double reqzoom = 100* DS_MAX(fabs(zx),fabs(zy)); // maximum is requried zoom
+      double reqzoom = 100* VS_MAX(fabs(zx),fabs(zy)); // maximum is requried zoom
       mem->zoomavg = (mem->zoomavg*(1-s) + reqzoom*s);
       // since we only use past it is good to aniticipate
       //  and zoom a little in any case (so set td->zoom to 2 or so)

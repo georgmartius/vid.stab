@@ -40,8 +40,8 @@
 #include <stdlib.h>
 
 #include "transformtype.h"
-#include "deshakedefines.h"
-#include "dsvector.h"
+#include "vidstabdefines.h"
+#include "vsvector.h"
 #include "frameinfo.h"
 
 #define USE_SPIRAL_FIELD_CALC
@@ -121,12 +121,12 @@ static const char motiondetect_help[] = ""
 
 /** initialized the MotionDetect structure and allocates memory
  *  for the frames and stuff
- *  @return DS_OK on success otherwise DS_ERROR
+ *  @return VS_OK on success otherwise VS_ERROR
  */
 int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi, const char* modName);
 
 /** configures MotionDetect structure and checks ranges, initializes fields and so on.
- *  @return DS_OK on success otherwise DS_ERROR
+ *  @return VS_OK on success otherwise VS_ERROR
  */
 int configureMotionDetect(MotionDetect* md);
 
@@ -155,7 +155,7 @@ double contrastSubImg(unsigned char* const I, const Field* field,
 
 
 int cmp_contrast_idx(const void *ci1, const void* ci2);
-DSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
+VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
 
 LocalMotions calcShiftRGBSimple(MotionDetect* md);
 LocalMotions calcShiftYUVSimple(MotionDetect* md);

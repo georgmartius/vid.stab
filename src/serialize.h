@@ -31,10 +31,10 @@
 
 
 /// Vector of LocalMotions
-typedef DSVector ManyLocalMotions;
-/// helper macro to access a localmotions vector in the DSVector of all Frames
+typedef VSVector ManyLocalMotions;
+/// helper macro to access a localmotions vector in the VSVector of all Frames
 #define MLMGet(manylocalmotions,index) \
-    ((LocalMotions*)ds_vector_get(manylocalmotions,index))
+    ((LocalMotions*)vs_vector_get(manylocalmotions,index))
 
 
 /// stores local motions to file
@@ -54,13 +54,13 @@ int writeToFile(const MotionDetect* td, FILE* f, const LocalMotions* lms);
 int readFileVersion(FILE* f);
 
 /*
- * reads the next set of localmotions from the file, return DS_ERROR on error or
+ * reads the next set of localmotions from the file, return VS_ERROR on error or
  * if nothing is read (used by readLocalmotionsFile)
  */
 int readFromFile(FILE* f, LocalMotions* lms);
 
 /*
- * reads the entire file of localmotions, return DS_ERROR on error or if nothing is read
+ * reads the entire file of localmotions, return VS_ERROR on error or if nothing is read
  *
  *  The format is as follows:
  *   The file must begin with 'VID.STAB version\n'

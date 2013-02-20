@@ -29,85 +29,85 @@
  *
  */
 
-#include "dsvector.h"
-#include "deshakedefines.h"
+#include "vsvector.h"
+#include "vidstabdefines.h"
 #include <assert.h>
 
 
 /*************************************************************************/
-int ds_vector_resize(DSVector *V, int newsize);
+int vs_vector_resize(VSVector *V, int newsize);
 
 /*************************************************************************/
 
-int ds_vector_init(DSVector *V, int buffersize){
+int vs_vector_init(VSVector *V, int buffersize){
   assert(V);
   if(buffersize>0){
-    V->data=(void**)ds_zalloc(sizeof(void*)*buffersize);
-    if(!V->data) return DS_ERROR;
+    V->data=(void**)vs_zalloc(sizeof(void*)*buffersize);
+    if(!V->data) return VS_ERROR;
   }else{
     V->data = 0;
     buffersize = 0;
   }
   V->buffersize=buffersize;
   V->nelems=0;
-  return DS_OK;
+  return VS_OK;
 }
 
-int ds_vector_fini(DSVector *V){
+int vs_vector_fini(VSVector *V){
   assert(V);
-  if(V->data) ds_free(V->data);
+  if(V->data) vs_free(V->data);
   V->data = 0;
   V->buffersize=0;
   V->nelems=0;
-  return DS_OK;
+  return VS_OK;
 }
 
-int ds_vector_del(DSVector *V){
-  ds_vector_zero(V);
-  return ds_vector_fini(V);
+int vs_vector_del(VSVector *V){
+  vs_vector_zero(V);
+  return vs_vector_fini(V);
 }
 
-int ds_vector_zero(DSVector *V){
+int vs_vector_zero(VSVector *V){
   assert(V);
   assert(V->nelems < 1 || V->data);
   int i;
   for(i=0; i < V->nelems; i++){
     if(V->data[i])
-      ds_free(V->data[i]);
+      vs_free(V->data[i]);
   }
   V->nelems=0;
-  return DS_OK;
+  return VS_OK;
 
 }
 
-int ds_vector_size(const DSVector *V){
+int vs_vector_size(const VSVector *V){
   assert(V);
   return V->nelems;
 }
 
 
-int ds_vector_append(DSVector *V, void *data){
+int vs_vector_append(VSVector *V, void *data){
   assert(V && data);
-  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
+  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
   if(V->nelems >= V->buffersize){
-    if(ds_vector_resize(V, V->buffersize*2)!=DS_OK) return DS_ERROR;
+    if(vs_vector_resize(V, V->buffersize*2)!=VS_OK) return VS_ERROR;
   }
   V->data[V->nelems]=data;
   V->nelems++;
-  return DS_OK;
+  return VS_OK;
 }
 
-int ds_vector_append_dup(DSVector *V, void *data, int data_size){
+int vs_vector_append_dup(VSVector *V, void *data, int data_size){
   assert(V && data);
-  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
-  void* d = ds_malloc(data_size);
-  if(!d) return DS_ERROR;
+  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
+  void* d = vs_malloc(data_size);
+  if(!d) return VS_ERROR;
   memcpy(d, data, data_size);
-  return ds_vector_append(V, d);
+  return vs_vector_append(V, d);
 }
 
 
-void *ds_vector_get(const DSVector *V, int pos){
+void *vs_vector_get(const VSVector *V, int pos){
   assert(V && V->data);
   if(pos<0 || pos >= V->nelems)
     return 0;
@@ -115,13 +115,13 @@ void *ds_vector_get(const DSVector *V, int pos){
     return V->data[pos];
 }
 
-void* ds_vector_set(DSVector *V, int pos, void *data){
+void* vs_vector_set(VSVector *V, int pos, void *data){
   assert(V && data && pos>=0);
-  if(!V->data || V->buffersize < 1) ds_vector_init(V,4);
+  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
   if(V->buffersize <= pos) {
     int nsize = V->buffersize;
     while(nsize <= pos) nsize *=2;
-    if(ds_vector_resize(V, nsize)!=DS_OK) return 0; // insuficient error handling here! DS_ERROR
+    if(vs_vector_resize(V, nsize)!=VS_OK) return 0; // insuficient error handling here! VS_ERROR
   }
   if(pos >= V->nelems){ // insert after end of vector
     int i;
@@ -135,27 +135,27 @@ void* ds_vector_set(DSVector *V, int pos, void *data){
   return old;
 }
 
-void* ds_vector_set_dup(DSVector *V, int pos, void *data, int data_size){
-  void* d = ds_malloc(data_size);
-  if(!d) return 0; // insuficient error handling here! DS_ERROR
+void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size){
+  void* d = vs_malloc(data_size);
+  if(!d) return 0; // insuficient error handling here! VS_ERROR
   memcpy(d, data, data_size);
-  return ds_vector_set(V, pos, d);
+  return vs_vector_set(V, pos, d);
 }
 
 
-int ds_vector_resize(DSVector *V, int newsize){
+int vs_vector_resize(VSVector *V, int newsize){
   assert(V && V->data);
   if(newsize<1) newsize=1;
-  V->data = (void**)ds_realloc(V->data, newsize * sizeof(void*));
+  V->data = (void**)vs_realloc(V->data, newsize * sizeof(void*));
   V->buffersize=newsize;
   if(V->nelems>V->buffersize){
     V->nelems=V->buffersize;
   }
   if (!V->data){
-    ds_log_error("DS_Vector","out of memory!");
-    return DS_ERROR;
+    vs_log_error("VS_Vector","out of memory!");
+    return VS_ERROR;
   } else
-    return DS_OK;
+    return VS_OK;
 }
 
 

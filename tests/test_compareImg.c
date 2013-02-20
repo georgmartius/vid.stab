@@ -23,11 +23,11 @@ int checkCompareImg(MotionDetect* md, unsigned char* frame){
 void test_checkCompareImg(const TestData* testdata){
 	MotionDetect md;
 
-  test_bool(initMotionDetect(&md, &testdata->fi, "test") == DS_OK);
+  test_bool(initMotionDetect(&md, &testdata->fi, "test") == VS_OK);
   md.shakiness=6;
   md.accuracy=12;
   fflush(stdout);
-	test_bool(configureMotionDetect(&md)== DS_OK);
+	test_bool(configureMotionDetect(&md)== VS_OK);
 	test_bool(checkCompareImg(&md,testdata->frames[0]));
 	cleanupMotionDetection(&md);
 }

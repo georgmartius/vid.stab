@@ -23,9 +23,9 @@ void generateFrames(TestData* testdata, int num){
   }
 
   TransformData td;
-  test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "generate") == DS_OK);
+  test_bool(initTransformData(&td, &testdata->fi, &testdata->fi, "generate") == VS_OK);
   td.interpolType=Zero;
-  test_bool(configureTransformData(&td)== DS_OK);
+  test_bool(configureTransformData(&td)== VS_OK);
 
 
   fprintf(stderr, "testframe transforms\n");
@@ -35,9 +35,9 @@ void generateFrames(TestData* testdata, int num){
     fprintf(stderr, "%i, %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
 						i, t.x, t.y, t.alpha, t.zoom, t.extra);
 
-    test_bool(transformPrepare(&td,&testdata->frames[i-1],&testdata->frames[i])== DS_OK);
-    test_bool(transformYUV_float(&td, t)== DS_OK);
-    test_bool(transformFinish(&td)== DS_OK);
+    test_bool(transformPrepare(&td,&testdata->frames[i-1],&testdata->frames[i])== VS_OK);
+    test_bool(transformYUV_float(&td, t)== VS_OK);
+    test_bool(transformFinish(&td)== VS_OK);
   }
   cleanupTransformData(&td);
 }

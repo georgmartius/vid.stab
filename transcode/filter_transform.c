@@ -24,10 +24,10 @@
  * transcode -J transform -i inp.mpeg -y xdiv,tcaud inp_stab.avi
 */
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 #define MOD_NAME    "filter_transform.so"
-#define MOD_VERSION LIBDESHAKE_VERSION
+#define MOD_VERSION LIBVIDSTAB_VERSION
 #define MOD_CAP     "transforms each frame according to transformations\n\
  given in an input file (e.g. translation, rotate) see also filter stabilize"
 #define MOD_AUTHOR  "Georg Martius"
@@ -111,7 +111,7 @@ static int transform_configure(TCModuleInstance *self,
     initFrameInfo(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
 
-    if(initTransformData(td, &fi_src, &fi_dest, MOD_NAME) != DS_OK){
+    if(initTransformData(td, &fi_src, &fi_dest, MOD_NAME) != VS_OK){
         tc_log_error(MOD_NAME, "initialization of TransformData failed");
         return TC_ERROR;
     }
@@ -156,7 +156,7 @@ static int transform_configure(TCModuleInstance *self,
         }
     }
 
-    if(configureTransformData(td)!= DS_OK){
+    if(configureTransformData(td)!= VS_OK){
         tc_log_error(MOD_NAME, "configuration of TransformData failed");
         return TC_ERROR;
     }
@@ -187,9 +187,9 @@ static int transform_configure(TCModuleInstance *self,
         /* return (-1); when called using tcmodinfo this will fail */
     } else {
         ManyLocalMotions mlms;
-        if(readLocalMotionsFile(f,&mlms)==DS_OK){
+        if(readLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=DS_OK)
+            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=VS_OK)
                 tc_log_error(MOD_NAME, "calculating transformations failed!\n");
         }else{ // try to read old format
             if (!readOldTransforms(td, f, &fd->trans)) { /* read input file */
@@ -199,7 +199,7 @@ static int transform_configure(TCModuleInstance *self,
     }
     fclose(f);
 
-    if (preprocessTransforms(td, &fd->trans)!= DS_OK ) {
+    if (preprocessTransforms(td, &fd->trans)!= VS_OK ) {
         tc_log_error(MOD_NAME, "error while preprocessing transforms!");
         return TC_ERROR;
     }

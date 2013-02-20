@@ -1,5 +1,5 @@
 /*
- * dsvector.h -- an dynamic array
+ * vsvector.h -- an dynamic array
  * (C) 2011 - Georg Martius
  *   georg dot martius at web dot de
  *
@@ -28,23 +28,23 @@
  *  This EXCLUDES COMMERCIAL USAGE
  *
  */
-#ifndef DSVECTOR_H
-#define DSVECTOR_H
+#ifndef VSVECTOR_H
+#define VSVECTOR_H
 
 #include <stddef.h>
 
 /**
    A vector for arbrary elements that resizes
 */
-typedef struct dsvector_ DSVector;
-struct dsvector_ {
+typedef struct vsvector_ VSVector;
+struct vsvector_ {
   void**	data;
   int		buffersize;
   int		nelems;
 };
 
 /**
- * ds_vector_init:
+ * vs_vector_init:
  *     intializes a vector data structure.
  *     A vector will grow but not shrink if elements are added.
  *
@@ -52,45 +52,45 @@ struct dsvector_ {
  *              V: pointer to list to be initialized.
  *     buffersize: size of buffer (if known, then # of resizes are reduced)
  * Return Value:
- *     DS_OK on success,
- *     DS_ERROR on error.
+ *     VS_OK on success,
+ *     VS_ERROR on error.
  */
-int ds_vector_init(DSVector *V, int buffersize);
+int vs_vector_init(VSVector *V, int buffersize);
 
 /**
- * ds_vector_fini:
+ * vs_vector_fini:
  *     finalizes a vector data structure. Frees all resources aquired,
  *     but *NOT* the data pointed by vector elements.
  *
  * Parameters:
  *     V: pointer to list to be finalized
  * Return Value:
- *     DS_OK on success,
- *     DS_ERROR on error.
+ *     VS_OK on success,
+ *     VS_ERROR on error.
  */
-int ds_vector_fini(DSVector *V);
+int vs_vector_fini(VSVector *V);
 
 /**
- * ds_vector_del:
- *     like ds_vector_fini, but also deletes the data pointed by vector elements.
+ * vs_vector_del:
+ *     like vs_vector_fini, but also deletes the data pointed by vector elements.
  *
  * Parameters:
  *     V: pointer to list to be finalized
  * Return Value:
- *     DS_OK on success,
- *     DS_ERROR on error.
+ *     VS_OK on success,
+ *     VS_ERROR on error.
  */
-int ds_vector_del(DSVector *V);
+int vs_vector_del(VSVector *V);
 
 /**
- * ds_vector_zero:
+ * vs_vector_zero:
  *    deletes all data pointed to by the vector elements.
  *    sets the number of elements to 0 but does not delete buffer
 */
-int ds_vector_zero(DSVector *V);
+int vs_vector_zero(VSVector *V);
 
 /**
- * ds_vector_size:
+ * vs_vector_size:
  *     gives the number of elements present in the vector
  *     (not the internal buffer size).
  *
@@ -100,11 +100,11 @@ int ds_vector_zero(DSVector *V);
  *    -1 on error,
  *    the number of elements otherwise
  */
-int ds_vector_size(const DSVector *V);
+int vs_vector_size(const VSVector *V);
 
 
 /**
- * ds_vector_append:
+ * vs_vector_append:
  *     append an element to the vector.
  *     The element is added to the end of the vector.
  *
@@ -116,41 +116,41 @@ int ds_vector_size(const DSVector *V);
  *           The caller has to allocate memory by itself if it want to
  *           add a copy of the data.
  * Return Value:
- *     DS_OK on success,
- *     DS_ERROR on error.
+ *     VS_OK on success,
+ *     VS_ERROR on error.
  */
-int ds_vector_append(DSVector *V, void *data);
+int vs_vector_append(VSVector *V, void *data);
 
 /**
- * ds_vector_append_dup:
- *  like ds_vector_append but copies data
+ * vs_vector_append_dup:
+ *  like vs_vector_append but copies data
  */
-int ds_vector_append_dup(DSVector *V, void *data, int data_size);
+int vs_vector_append_dup(VSVector *V, void *data, int data_size);
 
 
-/* ds_vector_set:
+/* vs_vector_set:
  *      the newly inserted element BECOMES the position `pos' in the vector.
  *      and the old item is returned
  */
-void* ds_vector_set(DSVector *V, int pos, void *data);
+void* vs_vector_set(VSVector *V, int pos, void *data);
 
-/* ds_vector_set_dup:
+/* vs_vector_set_dup:
  *      the newly inserted element is copied and BECOMES the position `pos' in the vector
  *      and the old item is returned
  */
-void* ds_vector_set_dup(DSVector *V, int pos, void *data, int data_size);
+void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
 
 
 /* (to be implemented)
- * ds_vector_insert:
+ * vs_vector_insert:
  *      the newly-inserted elements BECOMES the position `pos' on the vector.
  *      Position after the last -> the last.
  *      Position before the first -> the first.
  */
-//int ds_vector_insert(DSVector *V, int pos, void *data);
+//int vs_vector_insert(VSVector *V, int pos, void *data);
 
 /*
- * ds_vector_get:
+ * vs_vector_get:
  *     gives access to the data pointed by the element in the given position.
  *
  * Parameters:
@@ -160,10 +160,10 @@ void* ds_vector_set_dup(DSVector *V, int pos, void *data, int data_size);
  *     NULL on error (requested element doesn't exist)
  *     a pointer to the data belonging to the requested vector item.
  */
-void *ds_vector_get(const DSVector *V, int pos);
+void *vs_vector_get(const VSVector *V, int pos);
 
 /* to be implemented
- * ds_vector_pop:
+ * vs_vector_pop:
  *     removes the element in the given position.
  *
  * Parameters:
@@ -173,10 +173,10 @@ void *ds_vector_get(const DSVector *V, int pos);
  *     NULL on error (requested element doesn't exist)
  *     a pointer to the data assigned to the requested vector item.
  */
-//void *ds_vector_pop(DSVector *V, int pos);
+//void *vs_vector_pop(VSVector *V, int pos);
 
 
-#endif /* DSVECTOR_H */
+#endif /* VSVECTOR_H */
 
 /*
  * Local variables:

@@ -7,7 +7,7 @@
 #include <omp.h>
 #endif
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 // load optimized functions
 #include "motiondetect_opt.h"
 

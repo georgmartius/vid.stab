@@ -178,7 +178,7 @@ static int deshake_configure(TCModuleInstance *self,
   TransformData* td = &(sd->td);
 
   // init MotionDetect part
-  DSFrameInfo fi;
+  VSFrameInfo fi;
   initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
@@ -199,7 +199,7 @@ static int deshake_configure(TCModuleInstance *self,
   }
 
   // init trasform part
-  DSFrameInfo fi_dest;
+  VSFrameInfo fi_dest;
   initFrameInfo(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
@@ -300,10 +300,10 @@ static int deshake_filter_video(TCModuleInstance *self,
   TransformData* td = &(sd->td);
   LocalMotions localmotions;
   Transform motion;
-  DSFrame dsFrame;
-  fillFrameFromBuffer(&dsFrame,frame->video_buf, &td->fiSrc);
+  VSFrame vsFrame;
+  fillFrameFromBuffer(&vsFrame,frame->video_buf, &td->fiSrc);
 
-  if(motionDetection(md, &localmotions, &dsFrame)!= VS_OK){
+  if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
     tc_log_error(MOD_NAME, "motion detection failed");
     return TC_ERROR;
   }
@@ -312,7 +312,7 @@ static int deshake_filter_video(TCModuleInstance *self,
   motion = simpleMotionsToTransform(td, &localmotions);
   vs_vector_del(&localmotions);
 
-  transformPrepare(td, &dsFrame, &dsFrame);
+  transformPrepare(td, &vsFrame, &vsFrame);
 
   Transform t = lowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */

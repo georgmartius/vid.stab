@@ -104,8 +104,8 @@ static int transform_configure(TCModuleInstance *self,
 
     /**** Initialise private data structure */
 
-    DSFrameInfo fi_src;
-    DSFrameInfo fi_dest;
+    VSFrameInfo fi_src;
+    VSFrameInfo fi_dest;
     initFrameInfo(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
     initFrameInfo(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
@@ -234,10 +234,10 @@ static int transform_filter_video(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(frame, "filter_video");
 
     fd = self->userdata;
-    DSFrame dsFrame;
-    fillFrameFromBuffer(&dsFrame,frame->video_buf, &fd->td.fiSrc);
+    VSFrame vsFrame;
+    fillFrameFromBuffer(&vsFrame,frame->video_buf, &fd->td.fiSrc);
 
-    transformPrepare(&fd->td, &dsFrame,  &dsFrame);
+    transformPrepare(&fd->td, &vsFrame,  &vsFrame);
 
     Transform t = getNextTransform(&fd->td, &fd->trans);
     if (fd->vob->im_v_codec == CODEC_RGB) {

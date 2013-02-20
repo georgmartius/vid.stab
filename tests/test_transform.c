@@ -1,5 +1,5 @@
 
-void testImageStripeYUV(int size, DSFrameInfo* fi, DSFrame* img){
+void testImageStripeYUV(int size, VSFrameInfo* fi, VSFrame* img){
   int i,j;
 	initFrameInfo(fi, size, 4, PF_YUV420P);
   allocateFrame(img,fi);
@@ -22,12 +22,12 @@ void testImageStripeYUV(int size, DSFrameInfo* fi, DSFrame* img){
 
 void test_transform_implementation(const TestData* testdata){
 
-  DSFrameInfo fi;
-  DSFrame src;
+  VSFrameInfo fi;
+  VSFrame src;
   testImageStripeYUV(128,&fi,&src);
-	DSFrame dest;
+	VSFrame dest;
 	allocateFrame(&dest,&fi);
-  DSFrame cfinal;
+  VSFrame cfinal;
 	allocateFrame(&cfinal,&fi);
   TransformData td;
   fprintf(stderr,"--- Validate Interpolations ----\n");
@@ -81,8 +81,8 @@ void test_transform_performance(const TestData* testdata){
 
 
 	fprintf(stderr,"--- Performance of Transforms ----\n");
-	DSFrame dest;
-	DSFrame cfinal;
+	VSFrame dest;
+	VSFrame cfinal;
 	int it;
 	int start, numruns;
 	int timeC, timeCFP; //, timeOrc;

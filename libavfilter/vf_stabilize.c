@@ -160,7 +160,7 @@ static int config_input(AVFilterLink *inlink)
 //    char* filenamecopy, *filebasename;
 
     MotionDetect* md = &(sd->md);
-    DSFrameInfo fi;
+    VSFrameInfo fi;
     const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
 
     initFrameInfo(&fi,inlink->w, inlink->h, AV2OurPixelFormat(ctx, inlink->format));
@@ -246,7 +246,7 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
     //int vsub0 = desc->log2_chroma_h;
     int direct = 0;
     AVFilterBufferRef *out;
-    DSFrame frame;
+    VSFrame frame;
     int plane;
 
     if (in->perms & AV_PERM_WRITE) {

@@ -3,7 +3,7 @@
 #include "testutils.h"
 #include "libvidstab.h"
 
-void paintRectangle(unsigned char* buffer, const DSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
+void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
   if(x>=0 && x+sizex < fi->width && y>=0 && y+sizey < fi->height){
     int i,j;
     for(j=y; j < y+sizey; j++){
@@ -77,7 +77,7 @@ static void skipWhiteSpace (const char* filename, FILE *f)
   }
 }
 
-int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
+int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi)
 {
   FILE *f = fopen (filename,"rb");
   if (!f) {
@@ -127,7 +127,7 @@ int loadPGMImage(const char* filename, DSFrame* frame, DSFrameInfo* fi)
 }
 
 
-int storePGMImage(const char* filename, const uint8_t* data, DSFrameInfo fi ) {
+int storePGMImage(const char* filename, const uint8_t* data, VSFrameInfo fi ) {
   FILE *f = fopen (filename,"wb");
   if (!f) {
     vs_log_error("TEST", "Can't open image file '%s'",  filename);

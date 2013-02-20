@@ -8,7 +8,6 @@
  *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
  *  as published by the Free Software Foundation; either version 2, or
  *  (at your option) any later version.
  *
@@ -20,13 +19,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *  This work is licensed under the Creative Commons
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
- *  San Francisco, California, 94105, USA.
- *  This EXCLUDES COMMERCIAL USAGE
  *
  */
 
@@ -44,8 +36,8 @@ const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                 "Bi-Cubic (3)"};
 
 
-int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
-                      const DSFrameInfo* fi_dest , const char* modName){
+int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
+                      const VSFrameInfo* fi_dest , const char* modName){
     td->modName = modName;
 
     td->fiSrc = *fi_src;
@@ -116,7 +108,7 @@ void cleanupTransformData(TransformData* td){
     }
 }
 
-int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest){
+int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest){
     // we first copy the frame to td->src and then overwrite the destination
     // with the transformed version
     td->dest = *dest;

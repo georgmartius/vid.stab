@@ -48,63 +48,63 @@ typedef enum {PF_NONE = -1,
 /** frame information for deshaking lib
     This only works for planar image formats
  */
-typedef struct dsframeinfo {
+typedef struct vsframeinfo {
   int width, height;
   int planes;        // number of planes (1 luma, 2,3 chroma, 4 alpha)
   int log2ChromaW; // subsampling of width in chroma planes
   int log2ChromaH; // subsampling of height in chroma planes
   PixelFormat pFormat;
   int bytesPerPixel; // number of bytes per pixel (for packed formats)
-} DSFrameInfo;
+} VSFrameInfo;
 
 /** frame data according to frameinfo
  */
-typedef struct dsframe {
+typedef struct vsframe {
   uint8_t* data[4]; // data in planes. For packed data everthing is in plane 0
   int linesize[4]; // line size of each line in a the planes
-} DSFrame;
+} VSFrame;
 
 // use it to calculate the CHROMA sizes (rounding is correct)
 #define CHROMA_SIZE(width,log2sub)  (-(-(width) >> (log2sub)))
 
 /// initializes the frameinfo for the given format
-int initFrameInfo(DSFrameInfo* fi, int width, int height, PixelFormat pFormat);
+int initFrameInfo(VSFrameInfo* fi, int width, int height, PixelFormat pFormat);
 
 
 /// returns the subsampling shift amount, horizonatally for the given plane
-int getPlaneWidthSubS(const DSFrameInfo* fi, int plane);
+int getPlaneWidthSubS(const VSFrameInfo* fi, int plane);
 
 /// returns the subsampling shift amount, vertically for the given plane
-int getPlaneHeightSubS(const DSFrameInfo* fi, int plane);
+int getPlaneHeightSubS(const VSFrameInfo* fi, int plane);
 
 /// zero initialization
-void nullFrame(DSFrame* frame);
+void nullFrame(VSFrame* frame);
 
 /// returns true if frame is null (data[0]==0)
-int isNullFrame(const DSFrame* frame);
+int isNullFrame(const VSFrame* frame);
 
 /// compares two frames for identity (based in data[0])
-int equalFrames(const DSFrame* frame1,const DSFrame* frame2);
+int equalFrames(const VSFrame* frame1,const VSFrame* frame2);
 
 /// allocates memory for a frame
-void allocateFrame(DSFrame* frame, const DSFrameInfo* fi);
+void allocateFrame(VSFrame* frame, const VSFrameInfo* fi);
 
 
 /// copies the given plane number from src to dest
-void copyFramePlane(DSFrame* dest, const DSFrame* src,
-										const DSFrameInfo* fi, int plane);
+void copyFramePlane(VSFrame* dest, const VSFrame* src,
+										const VSFrameInfo* fi, int plane);
 
 /// copies src to dest
-void copyFrame(DSFrame* dest, const DSFrame* src, const DSFrameInfo* fi);
+void copyFrame(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi);
 
 /** fills the data pointer so that it corresponds to the img saved in the linear buffer.
     No copying is performed.
     Do not call freeFrame() on it.
  */
-void fillFrameFromBuffer(DSFrame* frame, uint8_t* img, const DSFrameInfo* fi);
+void fillFrameFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi);
 
 /// frees memory
-void freeFrame(DSFrame* frame);
+void freeFrame(VSFrame* frame);
 
 #endif  /* FRAMEINFO_H */
 

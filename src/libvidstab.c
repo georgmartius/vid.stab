@@ -1,5 +1,5 @@
 /*
- * libdeshake.c
+ * libvidstab.c
  *
  *  Created on: Feb 21, 2011
  *  Copyright (C) Georg Martius - February 2011
@@ -22,7 +22,7 @@
  *
  */
 
-#include "libdeshake.h"
+#include "libvidstab.h"
 
 
 /*

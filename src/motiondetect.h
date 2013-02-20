@@ -11,7 +11,6 @@
  *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
  *  as published by the Free Software Foundation; either version 2, or
  *  (at your option) any later version.
  *
@@ -23,13 +22,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *  This work is licensed under the Creative Commons
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
- *  San Francisco, California, 94105, USA.
- *  This EXCLUDES COMMERCIAL USAGE
  *
  */
 
@@ -49,12 +41,12 @@
 
 /** data structure for motion detection part of deshaking*/
 typedef struct motiondetect {
-  DSFrameInfo fi;
+  VSFrameInfo fi;
 
-  DSFrame curr;     // blurred version of current frame buffer
-  DSFrame currorig; // current frame buffer (original) (only pointer)
-  DSFrame currtmp;  // temporary buffer for blurring
-  DSFrame prev;     // frame buffer for last frame (copied)
+  VSFrame curr;     // blurred version of current frame buffer
+  VSFrame currorig; // current frame buffer (original) (only pointer)
+  VSFrame currtmp;  // temporary buffer for blurring
+  VSFrame prev;     // frame buffer for last frame (copied)
   short hasSeenOneFrame;   // true if we have a valid previous frame
 
   const char* modName;
@@ -123,7 +115,7 @@ static const char motiondetect_help[] = ""
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initMotionDetect(MotionDetect* md, const DSFrameInfo* fi, const char* modName);
+int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi, const char* modName);
 
 /** configures MotionDetect structure and checks ranges, initializes fields and so on.
  *  @return VS_OK on success otherwise VS_ERROR
@@ -136,7 +128,7 @@ int configureMotionDetect(MotionDetect* md);
  *  is stored internally
  *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int motionDetection(MotionDetect* md, LocalMotions* motions, DSFrame *frame);
+int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame);
 
 /** Deletes internal data structures.
  * In order to use the MotionDetect again, you have to call initMotionDetect

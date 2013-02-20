@@ -8,7 +8,6 @@
  *
  *  vid.stab is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License,
- *   WITH THE RESTRICTION for NONCOMMERICIAL USAGE see below,
  *  as published by the Free Software Foundation; either version 2, or
  *  (at your option) any later version.
  *
@@ -20,13 +19,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *  This work is licensed under the Creative Commons
- *  Attribution-NonCommercial-ShareAlike 2.5 License. To view a copy of
- *  this license, visit http://creativecommons.org/licenses/by-nc-sa/2.5/
- *  or send a letter to Creative Commons, 543 Howard Street, 5th Floor,
- *  San Francisco, California, 94105, USA.
- *  This EXCLUDES COMMERCIAL USAGE
  *
  */
 #ifndef __TRANSFORM_H
@@ -65,13 +57,13 @@ extern const char* interpolTypes[5];
 typedef enum { KeepBorder = 0, CropBorder } BorderType;
 
 typedef struct _TransformData {
-    DSFrameInfo fiSrc;
-    DSFrameInfo fiDest;
+    VSFrameInfo fiSrc;
+    VSFrameInfo fiDest;
 
-    DSFrame src;         // copy of the current frame buffer
-    DSFrame destbuf;     // pointer to an additional buffer or
+    VSFrame src;         // copy of the current frame buffer
+    VSFrame destbuf;     // pointer to an additional buffer or
                          // to the destination buffer (depending on crop)
-    DSFrame dest;        // pointer to the destination buffer
+    VSFrame dest;        // pointer to the destination buffer
 
     short srcMalloced;   // 1 if the source buffer was internally malloced
     const char* modName;
@@ -143,8 +135,8 @@ static const char transform_help[] = ""
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initTransformData(TransformData* td, const DSFrameInfo* fi_src,
-                      const DSFrameInfo* fi_dest , const char* modName);
+int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
+                      const VSFrameInfo* fi_dest , const char* modName);
 
 /** configures TransformData structure and checks ranges, initializes fields and so on.
  *  @return VS_OK on success otherwise VS_ERROR
@@ -179,7 +171,7 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
-int transformPrepare(TransformData* td, const DSFrame* src, DSFrame* dest);
+int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest);
 
 /** call this function to finish the transformation of a frame (transformRGB/transformYUV)
  */

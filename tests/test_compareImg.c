@@ -42,7 +42,7 @@ typedef unsigned int (*cmpSubImgFunc)(unsigned char* const I1, unsigned char* co
 //  if diffsRef is given than the results are validated
 int runcompare( cmpSubImgFunc cmpsubfunc,
 								unsigned char* frame1, unsigned char* frame2, Field f,
-								DSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
+								VSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
   int start = timeOfDayinMS();
   int i;
   for(i=0; i<numruns; i++){

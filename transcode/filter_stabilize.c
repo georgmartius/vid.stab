@@ -146,7 +146,7 @@ static int stabilize_configure(TCModuleInstance *self,
           sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
     MotionDetect* md = &(sd->md);
-    DSFrameInfo fi;
+    VSFrameInfo fi;
     initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                   transcode2ourPF(vob->im_v_codec));
 
@@ -242,10 +242,10 @@ static int stabilize_filter_video(TCModuleInstance *self,
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
     LocalMotions localmotions;
-    DSFrame dsFrame;
-    fillFrameFromBuffer(&dsFrame,frame->video_buf, &md->fi);
+    VSFrame vsFrame;
+    fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
-    if(motionDetection(md, &localmotions, &dsFrame)!= VS_OK){
+    if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     }

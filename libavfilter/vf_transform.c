@@ -141,8 +141,8 @@ static int config_input(AVFilterLink *inlink)
 
     TransformData* td = &(fd->td);
 
-    DSFrameInfo fi_src;
-    DSFrameInfo fi_dest;
+    VSFrameInfo fi_src;
+    VSFrameInfo fi_dest;
     if(!initFrameInfo(&fi_src, inlink->w, inlink->h,
                       AV2OurPixelFormat(ctx,inlink->format)) ||
        !initFrameInfo(&fi_dest, inlink->w, inlink->h,
@@ -265,8 +265,8 @@ static int filter_frame(AVFilterLink *inlink,  AVFilterBufferRef *in)
     //int vsub0 = desc->log2_chroma_h;
     int direct = 0;
     AVFilterBufferRef *out;
-    DSFrame inframe;
-    DSFrame outframe;
+    VSFrame inframe;
+    VSFrame outframe;
     int plane;
 
     if (in->perms & AV_PERM_WRITE) {

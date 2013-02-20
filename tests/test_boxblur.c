@@ -1,6 +1,6 @@
 // runs the boxblur routine and returns the time
-int runboxblur( DSFrame frame1, DSFrame dest,
-								DSFrameInfo fi, int numruns){
+int runboxblur( VSFrame frame1, VSFrame dest,
+								VSFrameInfo fi, int numruns){
   int start = timeOfDayinMS();
   int i;
   boxblurYUV(&dest, &frame1, 0, &fi, 15, BoxBlurColor);
@@ -15,7 +15,7 @@ int runboxblur( DSFrame frame1, DSFrame dest,
 void test_boxblur(const TestData* testdata){
 	int time; //, timeref;
 	int numruns=2;
-	DSFrame dest;
+	VSFrame dest;
 	allocateFrame(&dest,&testdata->fi);
 	//    omp_set_dynamic( 0 );
 	//    omp_set_num_threads( 1 );

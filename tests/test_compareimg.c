@@ -1,6 +1,6 @@
 #define NUMCMP 2000
 
-int checkCompareImg(MotionDetect* md, const DSFrame* frame){
+int checkCompareImg(MotionDetect* md, const VSFrame* frame){
   int i;
   int error;
   uint8_t *Y_c;
@@ -43,8 +43,8 @@ typedef unsigned int (*cmpSubImgFunc)(unsigned char* const I1, unsigned char* co
 // runs the compareSubImg routine and returns the time and stores the difference.
 //  if diffsRef is given than the results are validated
 int runcompare( cmpSubImgFunc cmpsubfunc,
-								DSFrame frame1, DSFrame frame2, Field f,
-								DSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
+								VSFrame frame1, VSFrame frame2, Field f,
+								VSFrameInfo fi, int* diffs, int* diffsRef, int numruns){
   int start = timeOfDayinMS();
   int i;
   for(i=0; i<numruns; i++){

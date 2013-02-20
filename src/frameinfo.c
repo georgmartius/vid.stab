@@ -26,7 +26,7 @@
 #include "vidstabdefines.h"
 #include <assert.h>
 
-int initFrameInfo(DSFrameInfo* fi, int width, int height, PixelFormat pFormat){
+int initFrameInfo(VSFrameInfo* fi, int width, int height, PixelFormat pFormat){
   fi->pFormat=pFormat;
   fi->width = width;
   fi->height = height;
@@ -82,29 +82,29 @@ int initFrameInfo(DSFrameInfo* fi, int width, int height, PixelFormat pFormat){
   return 1;
 }
 
-int getPlaneWidthSubS(const DSFrameInfo* fi, int plane){
+int getPlaneWidthSubS(const VSFrameInfo* fi, int plane){
 	return plane == 1 || plane == 2 ? fi->log2ChromaW : 0;
 }
 
-int getPlaneHeightSubS(const DSFrameInfo* fi, int plane){
+int getPlaneHeightSubS(const VSFrameInfo* fi, int plane){
 	return  plane == 1 || plane == 2 ? fi->log2ChromaH : 0;
 }
 
-int isNullFrame(const DSFrame* frame) {
+int isNullFrame(const VSFrame* frame) {
 	return frame==0 || frame->data[0]==0;
 }
 
 
-int equalFrames(const DSFrame* frame1,const DSFrame* frame2){
+int equalFrames(const VSFrame* frame1,const VSFrame* frame2){
 	return frame1 && frame2 && (frame1==frame2 || frame1->data[0] == frame2->data[0]);
 }
 
-void nullFrame(DSFrame* frame){
+void nullFrame(VSFrame* frame){
 	memset(frame->data,0,sizeof(uint8_t*)*4);
 	memset(frame->linesize,0,sizeof(int)*4);
 }
 
-void allocateFrame(DSFrame* frame, const DSFrameInfo* fi){
+void allocateFrame(VSFrame* frame, const VSFrameInfo* fi){
 	nullFrame(frame);
   if(fi->pFormat<PF_PACKED){
     int i;
@@ -128,8 +128,8 @@ void allocateFrame(DSFrame* frame, const DSFrameInfo* fi){
   }
 }
 
-void copyFramePlane(DSFrame* dest, const DSFrame* src,
-										const DSFrameInfo* fi, int plane){
+void copyFramePlane(VSFrame* dest, const VSFrame* src,
+										const VSFrameInfo* fi, int plane){
 	assert(src->data[plane]);
 	int h = fi->height >> getPlaneHeightSubS(fi, plane);
 	if(src->linesize[plane] == dest->linesize[plane])
@@ -146,7 +146,7 @@ void copyFramePlane(DSFrame* dest, const DSFrame* src,
 	}
 }
 
-void copyFrame(DSFrame* dest, const DSFrame* src, const DSFrameInfo* fi){
+void copyFrame(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi){
 	int plane;
 	assert(fi->planes > 0 && fi->planes <= 4);
 	for (plane=0; plane< fi->planes; plane++){
@@ -154,7 +154,7 @@ void copyFrame(DSFrame* dest, const DSFrame* src, const DSFrameInfo* fi){
 	}
 }
 
-void fillFrameFromBuffer(DSFrame* frame, uint8_t* img, const DSFrameInfo* fi){
+void fillFrameFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi){
   assert(fi->planes > 0 && fi->planes <= 4);
   nullFrame(frame);
   long int offset = 0;
@@ -168,7 +168,7 @@ void fillFrameFromBuffer(DSFrame* frame, uint8_t* img, const DSFrameInfo* fi){
   }
 }
 
-void freeFrame(DSFrame* frame){
+void freeFrame(VSFrame* frame){
 	int plane;
 	for (plane=0; plane< 4; plane++){
 		if(frame->data[plane]) vs_free(frame->data[plane]);

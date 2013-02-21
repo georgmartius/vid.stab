@@ -138,7 +138,7 @@ void copyFramePlane(VSFrame* dest, const VSFrame* src,
 		uint8_t* d = dest->data[plane];
 		const uint8_t* s = src->data[plane];
 		int w = fi->width  >> getPlaneWidthSubS(fi, plane);
-		for (; h>0; h++) {
+		for (; h>0; h--) {
 			memcpy(d,s,sizeof(uint8_t) * w);
 			d += dest->linesize[plane];
 			s += src ->linesize[plane];

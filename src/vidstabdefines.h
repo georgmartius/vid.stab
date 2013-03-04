@@ -130,5 +130,4 @@ extern void* pctx;
 #endif // frameworks
 #endif // frameworks
 
-
 #endif /* VIDSTABDEFINES_H_ */

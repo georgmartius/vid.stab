@@ -376,8 +376,8 @@ Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
       newtrans = add_transforms(&newtrans, &mem->accum);
       mem->accum = newtrans;
       if(td->smoothing>0){
-	// kill accumulating effects
-	mem->accum = mult_transform(&mem->accum, 1.0 - tau);
+        // kill accumulating effects
+        mem->accum = mult_transform(&mem->accum, 1.0 - tau);
       }
     }
 

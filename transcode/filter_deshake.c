@@ -301,23 +301,26 @@ static int deshake_filter_video(TCModuleInstance *self,
   LocalMotions localmotions;
   Transform motion;
   VSFrame vsFrame;
-  fillFrameFromBuffer(&vsFrame,frame->video_buf, &td->fiSrc);
+  fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
   if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
-    tc_log_error(MOD_NAME, "motion detection failed");
-    return TC_ERROR;
+      tc_log_error(MOD_NAME, "motion detection failed");
+      return TC_ERROR;
   }
 
-  if(writeToFile(md, sd->f, &localmotions) != VS_OK)
+  if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+      tc_log_error(MOD_NAME, "cannot write to file!");
+      return TC_ERROR;
+  }
   motion = simpleMotionsToTransform(td, &localmotions);
   vs_vector_del(&localmotions);
 
   transformPrepare(td, &vsFrame, &vsFrame);
 
   Transform t = lowPassTransforms(td, &sd->avg, &motion);
-  /* tc_log_error(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f",  */
-  /* 	       motion.x, motion.y, motion.alpha, */
-  /* 	       t.x, t.y, t.alpha, t.zoom); */
+  /* tc_log_info(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f", */
+  /*             motion.x, motion.y, motion.alpha, */
+  /*             t.x, t.y, t.alpha, t.zoom); */
 
   if (sd->vob->im_v_codec == CODEC_RGB) {
     transformRGB(td, t);
@@ -459,7 +462,8 @@ TC_FILTER_OLDINTERFACE(deshake)
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

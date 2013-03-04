@@ -384,7 +384,8 @@ TC_FILTER_OLDINTERFACE(transform)
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

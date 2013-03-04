@@ -41,6 +41,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/imgutils.h"
@@ -51,17 +52,16 @@
 #include "video.h"
 
 
-#include "optstr.h"
 #include "vid.stab/libvidstab.h"
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
-    AVClass av_class;
+    AVClass* class;
 
     MotionDetect md;
     AVFilterBufferRef *ref;    ///< Previous frame
-    char* options;
 
+    char* args;
     char* result;
     FILE* f;
 
@@ -86,6 +86,27 @@ static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf
 	}
 }
 
+#define OFFSET(x) offsetof(StabData, x)
+#define OFFSETMD(x) (offsetof(StabData, md)+offsetof(MotionDetect, x))
+#define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
+
+static const AVOption stabilize_options[]= {
+    {"result",    "path to the file used to write the transforms (def:inputfile.stab)",
+     OFFSET(result),    AV_OPT_TYPE_STRING },
+    {"shakiness",  "how shaky is the video and how quick is the camera? 1: little (fast) 10: very strong/quick (slow) (def: 5)",
+     OFFSETMD(shakiness),    AV_OPT_TYPE_INT, {.i64 = 5}, 1, 10, FLAGS},
+    {"accuracy",    "accuracy of detection process (>=shakiness) 1: low (fast) 15: high (slow) (def: 9)",
+     OFFSETMD(accuracy),    AV_OPT_TYPE_INT, {.i64 = 9 }, 1, 15, FLAGS},
+    {"stepsize",    "stepsize of search process, region around minimum is scanned with 1 pixel resolution (def: 6)",
+     OFFSETMD(stepSize),    AV_OPT_TYPE_INT, {.i64 = 6}, 1, 32, FLAGS},
+    {"mincontrast", "below this contrast a field is discarded (0-1) (def: 0.3)",
+     OFFSETMD(contrastThreshold), AV_OPT_TYPE_DOUBLE, {.dbl =  0.25}, 0.0, 1.0, FLAGS},
+    {"show",    "0: draw nothing (def); 1,2: show fields and transforms in the resulting frames",
+     OFFSETMD(show), AV_OPT_TYPE_INT, {.i64 =  0}, 0, 2, FLAGS},
+    {NULL},
+};
+
+AVFILTER_DEFINE_CLASS(stabilize);
 
 /*************************************************************************/
 
@@ -95,7 +116,6 @@ static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
-
     StabData* sd = ctx->priv;
 
     if (!sd) {
@@ -103,24 +123,26 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
         return AVERROR(EINVAL);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Stabilize: init %s\n", LIBVIDSTAB_VERSION);
-    if(args)
-        sd->options=av_strdup(args);
-    else
-        sd->options=0;
+    sd->class = &stabilize_class;
+    av_opt_set_defaults(sd); // the default values are overwritten by initMotiondetect later
 
+    av_log(ctx, AV_LOG_INFO, "Stabilize: init %s\n", LIBVIDSTAB_VERSION);
+
+    // save args for later
+    if(args)
+        sd->args=av_strdup(args);
+    else
+        sd->args=0;
 
     return 0;
 }
 
-///1
 static av_cold void uninit(AVFilterContext *ctx)
 {
     StabData *sd = ctx->priv;
-
-    //  avfilter_unref_buffer(sd->ref);
-
     MotionDetect* md = &(sd->md);
+
+    av_opt_free(sd);
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;
@@ -131,13 +153,14 @@ static av_cold void uninit(AVFilterContext *ctx)
         av_free(sd->result);
         sd->result = NULL;
     }
-    if(sd->options) av_free(sd->options);
+    if(sd->args) av_free(sd->args);
 }
 
 // AVFILTER_DEFINE_CLASS(stabilize);
 
 static int query_formats(AVFilterContext *ctx)
 {
+    // If you add something here also add it to the above mapping function
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
@@ -189,20 +212,17 @@ static int config_input(AVFilterLink *inlink)
     snprintf(sd->result, VS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
 //    }
 
-    if (sd->options != NULL) {
-        if(optstr_lookup(sd->options, "help")) {
-            av_log(ctx, AV_LOG_INFO, motiondetect_help);
-            return AVERROR(EINVAL);
-        }
-
-        optstr_get(sd->options, "result",     "%[^:]", sd->result);
-        optstr_get(sd->options, "shakiness",  "%d", &md->shakiness);
-        optstr_get(sd->options, "accuracy",   "%d", &md->accuracy);
-        optstr_get(sd->options, "stepsize",   "%d", &md->stepSize);
-        optstr_get(sd->options, "algo",       "%d", &md->algo);
-        optstr_get(sd->options, "mincontrast","%lf",&md->contrastThreshold);
-        optstr_get(sd->options, "show",       "%d", &md->show);
+    {
+        int ret;
+        if ((ret = (av_set_options_string(sd, sd->args, "=", ":"))) < 0)
+            return ret;
     }
+
+    // display help
+    /* if(optstr_lookup(sd->options, "help")) { */
+    /*     av_log(ctx, AV_LOG_INFO, motiondetect_help); */
+    /*     return AVERROR(EINVAL); */
+    /* } */
 
     if(configureMotionDetect(md)!= VS_OK){
     	av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed\n");

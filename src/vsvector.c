@@ -23,6 +23,7 @@
 #include "vsvector.h"
 #include "vidstabdefines.h"
 #include <assert.h>
+#include <string.h>
 
 
 /*************************************************************************/

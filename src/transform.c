@@ -31,6 +31,7 @@
 
 #include <math.h>
 #include <libgen.h>
+#include <string.h>
 
 const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                 "Bi-Cubic (3)"};

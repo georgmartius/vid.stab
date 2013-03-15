@@ -24,6 +24,50 @@
 
 #include "libvidstab.h"
 
+#include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+/**** default values for memory and logging ****/
+
+/// memory allocation with zero initialization
+void* _zalloc(size_t size){
+    return memset(malloc(size),0,size);
+}
+
+/// logging function
+int _vs_log(int type, const char* tag, const char* format, ...){
+    fprintf(stderr,"%s (%s):",
+            type == VS_ERROR_TYPE ? "Error: " :
+            type == VS_WARN_TYPE  ? "Warn:  " :
+            type == VS_INFO_TYPE  ? "Info:  " :
+            type == VS_MSG_TYPE   ? "Msg:   " : "Unknown",
+            tag);
+    va_list ap;
+    va_start (ap, format);
+    vfprintf (stderr, format, ap);
+    va_end (ap);
+	  fprintf(stderr,"\n");
+    return 0;
+}
+
+
+vs_malloc_t vs_malloc   = malloc;
+vs_realloc_t vs_realloc = realloc;
+vs_free_t vs_free       = free;
+vs_zalloc_t vs_zalloc   = _zalloc;
+
+vs_strdup_t vs_strdup   = strdup;
+vs_strndup_t vs_strndup = strndup;
+
+vs_log_t vs_log         = _vs_log;
+int VS_ERROR_TYPE = 0;
+int VS_WARN_TYPE  = 1;
+int VS_INFO_TYPE  = 2;
+int VS_MSG_TYPE   = 3;
+
+int VS_ERROR     = -1;
+int VS_OK        = 0;
 
 /*
  * Local variables:

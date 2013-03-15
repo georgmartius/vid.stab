@@ -44,7 +44,7 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 
-#include "pix_formats.h"
+#include "transcode_specifics.h"
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
@@ -64,10 +64,11 @@ typedef struct {
  */
 static int transform_init(TCModuleInstance *self, uint32_t features)
 {
-
     FilterData* fd = NULL;
     TC_MODULE_SELF_CHECK(self, "init");
     TC_MODULE_INIT_CHECK(self, MOD_FEATURES, features);
+
+    setLogFunctions();
 
     fd = tc_zalloc(sizeof(FilterData));
     if (fd == NULL) {

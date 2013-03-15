@@ -23,6 +23,7 @@
  */
 
 #include <assert.h>
+#include <string.h>
 
 #include "serialize.h"
 #include "transformtype.h"

@@ -22,35 +22,21 @@
  *
  */
 
-/* Typical call:
+/* Typical call: (This will visualize some internals in the video)
  *  ffmpeg -i input -vf stabilize=shakiness=5:show=1 dummy.avi
  *  all parameters are optional
  */
 
 
-/*
-  TODO: check AVERROR  codes
-*/
-
-#define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
+#define DEFAULT_TRANS_FILE_NAME     "transforms.trf"
 #define VS_INPUT_MAXLEN 1024
 
-#include <math.h> //?
-#include <libgen.h> //?
-
-#include "libavutil/avstring.h"
 #include "libavutil/common.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/pixfmt.h"
 #include "libavutil/imgutils.h"
-#include "libavcodec/dsputil.h"
+// #include "libavcodec/dsputil.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
-#include "video.h"
-
 
 #include "vid.stab/libvidstab.h"
 
@@ -67,6 +53,10 @@ typedef struct _stab_data {
 
 } StabData;
 
+
+/*** some conversions from avlib to vid.stab constants and functions ****/
+
+/** convert AV's pixelformat to vid.stab pixelformat */
 static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
 	switch(pf){
     case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
@@ -86,12 +76,45 @@ static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf
 	}
 }
 
+/// pointer to context for logging
+void *_stab_ctx = 0;
+/** wrapper to log vs_log into av_log */
+static int av_log_wrapper(int type, const char* tag, const char* format, ...){
+    va_list ap;
+    av_log(_stab_ctx, type, "%s: ", tag);
+    va_start (ap, format);
+    av_vlog(_stab_ctx, type, format, ap);
+    va_end (ap);
+    return VS_OK;
+}
+
+/** sets the memory allocation function and logging constants to av versions */
+static void setMemAndLogFunctions(void){
+    vs_malloc  = av_malloc;
+    vs_zalloc  = av_mallocz;
+    vs_realloc = av_realloc;
+    vs_free    = av_free;
+
+    VS_ERROR_TYPE = AV_LOG_ERROR;
+    VS_WARN_TYPE  = AV_LOG_WARNING;
+    VS_INFO_TYPE  = AV_LOG_INFO;
+    VS_MSG_TYPE   = AV_LOG_VERBOSE;
+
+    vs_log   = av_log_wrapper;
+
+    VS_ERROR = 0;
+    VS_OK    = 1;
+}
+
+/*** Commandline options ****/
+
+
 #define OFFSET(x) offsetof(StabData, x)
 #define OFFSETMD(x) (offsetof(StabData, md)+offsetof(MotionDetect, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption stabilize_options[]= {
-    {"result",    "path to the file used to write the transforms (def:inputfile.stab)",
+    {"result",    "path to the file used to write the transforms (def:transforms.trf)",
      OFFSET(result),    AV_OPT_TYPE_STRING },
     {"shakiness",  "how shaky is the video and how quick is the camera? 1: little (fast) 10: very strong/quick (slow) (def: 5)",
      OFFSETMD(shakiness),    AV_OPT_TYPE_INT, {.i64 = 5}, 1, 10, FLAGS},
@@ -117,16 +140,17 @@ AVFILTER_DEFINE_CLASS(stabilize);
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
     StabData* sd = ctx->priv;
-
+    _stab_ctx = ctx;
+    setMemAndLogFunctions();
     if (!sd) {
         av_log(ctx, AV_LOG_INFO, "init: out of memory!\n");
         return AVERROR(EINVAL);
     }
 
-    sd->class = &stabilize_class;
+    sd->class = (AVClass*)&stabilize_class;
     av_opt_set_defaults(sd); // the default values are overwritten by initMotiondetect later
 
-    av_log(ctx, AV_LOG_INFO, "Stabilize: init %s\n", LIBVIDSTAB_VERSION);
+    av_log(ctx, AV_LOG_INFO, "stabilize filter: init %s\n", LIBVIDSTAB_VERSION);
 
     // save args for later
     if(args)
@@ -141,6 +165,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     StabData *sd = ctx->priv;
     MotionDetect* md = &(sd->md);
+    _stab_ctx = ctx;
 
     av_opt_free(sd);
     if (sd->f) {
@@ -155,8 +180,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     }
     if(sd->args) av_free(sd->args);
 }
-
-// AVFILTER_DEFINE_CLASS(stabilize);
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -186,6 +209,8 @@ static int config_input(AVFilterLink *inlink)
     VSFrameInfo fi;
     const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
 
+    _stab_ctx = ctx; // save context for logging
+
     initFrameInfo(&fi,inlink->w, inlink->h, AV2OurPixelFormat(ctx, inlink->format));
     // check
     if(fi.bytesPerPixel != av_get_bits_per_pixel(desc)/8)
@@ -200,17 +225,8 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    /// TODO: find out input name
     sd->result = av_malloc(VS_INPUT_MAXLEN);
-//    filenamecopy = strndup(sd->vob->video_in_file);
-//    filebasename = basename(filenamecopy);
-//    if (strlen(filebasename) < VS_INPUT_MAXLEN - 4) {
-//        snprintf(sd->result, VS_INPUT_MAXLEN, "%s.trf", filebasename);
-//} else {
-//    av_log(ctx, AV_LOG_WARN, "input name too long, using default `%s'",
-//                    DEFAULT_TRANS_FILE_NAME);
     snprintf(sd->result, VS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
-//    }
 
     {
         int ret;
@@ -259,7 +275,6 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
     MotionDetect* md = &(sd->md);
     LocalMotions localmotions;
 
-
     AVFilterLink *outlink = inlink->dst->outputs[0];
     //const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     //int hsub0 = desc->log2_chroma_w;
@@ -268,6 +283,8 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
     AVFilterBufferRef *out;
     VSFrame frame;
     int plane;
+
+    _stab_ctx = ctx; // save context for logging
 
     if (in->perms & AV_PERM_WRITE) {
         direct = 1;

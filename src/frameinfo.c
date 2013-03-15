@@ -25,6 +25,7 @@
 #include "frameinfo.h"
 #include "vidstabdefines.h"
 #include <assert.h>
+#include <string.h>
 
 int initFrameInfo(VSFrameInfo* fi, int width, int height, PixelFormat pFormat){
   fi->pFormat=pFormat;

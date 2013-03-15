@@ -22,6 +22,7 @@
  */
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include "transformtype.h"
 #include "vidstabdefines.h"
 

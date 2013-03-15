@@ -55,7 +55,7 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 
-#include "pix_formats.h"
+#include "transcode_specifics.h"
 
 /* private date structure of this filter*/
 typedef struct _deshake_data {
@@ -120,6 +120,8 @@ static int deshake_init(TCModuleInstance *self, uint32_t features)
   DeshakeData* sd = NULL;
   TC_MODULE_SELF_CHECK(self, "init");
   TC_MODULE_INIT_CHECK(self, MOD_FEATURES, features);
+
+  setLogFunctions();
 
   sd = tc_zalloc(sizeof(DeshakeData)); // allocation with zero values
   if (!sd) {

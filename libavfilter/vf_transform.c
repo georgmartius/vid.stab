@@ -23,42 +23,38 @@
  */
 
 /* Typical call:
- *  ffmpeg -i inp.mpeg ffmpeg -vf transform inp_s.mpeg
+ *  ffmpeg -i inp.mpeg -vf transform inp_s.mpeg
  *  all parameters are optional
  */
 
-/*
-  TODO: check AVERROR  codes
-*/
-
-#define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
+#define DEFAULT_TRANS_FILE_NAME     "transforms.trf"
+#define VS_INPUT_MAXLEN 1024
 
 #include "libavutil/common.h"
-#include "libavutil/mem.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/pixfmt.h"
-#include "libavcodec/dsputil.h"
+#include "libavutil/opt.h"
+#include "libavutil/imgutils.h"
+// #include "libavcodec/dsputil.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
-#include "video.h"
 
 #include "optstr.h"
 
 #include "vid.stab/libvidstab.h"
 
-#define VS_INPUT_MAXLEN 1024
-
 /* private date structure of this filter*/
-typedef struct {
+typedef struct _filter_data {
+    AVClass* class;
+
     TransformData td;
 
     Transformations trans; // transformations
-    char* options;
-    char input[VS_INPUT_MAXLEN];
+    char* args;
+    char* input;           // name of transform file
 } FilterData;
 
+/*** some conversions from avlib to vid.stab constants and functions ****/
 
+/** convert AV's pixelformat to vid.stab pixelformat */
 static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
 	switch(pf){
     case AV_PIX_FMT_YUV420P: return PF_YUV420P;
@@ -77,6 +73,76 @@ static PixelFormat AV2OurPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf
 	}
 }
 
+/// pointer to context for logging
+void *_trf_ctx = 0;
+/** wrapper to log vs_log into av_log */
+static int av_log_wrapper(int type, const char* tag, const char* format, ...){
+    va_list ap;
+    av_log(_trf_ctx, type, "%s: ", tag);
+    va_start (ap, format);
+    av_vlog(_trf_ctx, type, format, ap);
+    va_end (ap);
+    return VS_OK;
+}
+
+/** sets the memory allocation function and logging constants to av versions */
+static void setMemAndLogFunctions(void){
+    vs_malloc  = av_malloc;
+    vs_zalloc  = av_mallocz;
+    vs_realloc = av_realloc;
+    vs_free    = av_free;
+
+    VS_ERROR_TYPE = AV_LOG_ERROR;
+    VS_WARN_TYPE  = AV_LOG_WARNING;
+    VS_INFO_TYPE  = AV_LOG_INFO;
+    VS_MSG_TYPE   = AV_LOG_VERBOSE;
+
+    vs_log   = av_log_wrapper;
+
+    VS_ERROR = 0;
+    VS_OK    = 1;
+}
+
+/*** Commandline options ****/
+
+#define OFFSET(x) offsetof(FilterData, x)
+#define OFFSETTD(x) (offsetof(FilterData, td)+offsetof(TransformData, x))
+#define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
+
+static const AVOption transform_options[]= {
+    {"input",     "path to the file storing the transforms (def:transforms.trf)",
+     OFFSET(input),    AV_OPT_TYPE_STRING },
+    {"smoothing", "number of frames*2 + 1 used for lowpass filtering \n"
+    "                used for stabilizing (def: 10)",
+     OFFSETTD(smoothing),    AV_OPT_TYPE_INT, {.i64 = 10}, 1, 1000, FLAGS},
+    {"maxshift",    "maximal number of pixels to translate image\n"
+    "                (def: -1 no limit)",
+     OFFSETTD(maxShift),     AV_OPT_TYPE_INT, {.i64 = -1}, -1, 500, FLAGS},
+    {"maxangle", "maximal angle in rad to rotate image (def: -1 no limit)",
+     OFFSETTD(maxAngle),  AV_OPT_TYPE_DOUBLE, {.dbl = -1.0}, -1.0, 3.14, FLAGS},
+    {"crop",    "0: keep border (def), 1: black background",
+     OFFSETTD(crop),         AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, FLAGS},
+    {"invert",    " 1: invert transforms(def: 0)",
+     OFFSETTD(invert),       AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, FLAGS},
+    {"relative",    "consider transforms as 0: absolute, 1: relative (def)",
+     OFFSETTD(relative),     AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, FLAGS},
+    {"zoom", "percentage to zoom >0: zoom in, <0 zoom out (def: 0)",
+     OFFSETTD(zoom),  AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, 100, FLAGS},
+    {"optzoom",    "0: nothing, 1: determine optimal zoom (def)\n"
+    "                i.e. no (or only little) border should be visible.\n"
+    "                Note that the value given at 'zoom' is added to the \n"
+    "                here calculated one",
+     OFFSETTD(optZoom),     AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, FLAGS},
+    {"interpol",    "type of interpolation: 0: no interpolation, \n"
+    "                1: linear (horizontal), 2: bi-linear (def), \n"
+    "                3: bi-cubic",
+     OFFSETTD(interpolType),     AV_OPT_TYPE_INT, {.i64 = 2}, 0, 3, FLAGS},
+    // add virtual-tripod  virtual tripod mode
+    {NULL},
+};
+
+AVFILTER_DEFINE_CLASS(transform);
+
 
 /*************************************************************************/
 
@@ -88,16 +154,24 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
 {
 
     FilterData* fd = ctx->priv;
+    _trf_ctx = ctx;
+
+    setMemAndLogFunctions();
 
     if (!fd) {
         av_log(ctx, AV_LOG_INFO, "init: out of memory!\n");
         return AVERROR(EINVAL);
     }
+    fd->class = (AVClass*)&transform_class;
+    av_opt_set_defaults(fd); // the default values are overwritten by initMotiondetect later
 
     av_log(ctx, AV_LOG_INFO, "Transform filter: init %s\n", LIBVIDSTAB_VERSION);
 
+    // save args for later
     if(args)
-        fd->options=av_strdup(args);
+        fd->args=av_strdup(args);
+    else
+        fd->args=0;
 
     return 0;
 }
@@ -105,13 +179,14 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
 static av_cold void uninit(AVFilterContext *ctx)
 {
     FilterData *fd = ctx->priv;
+    _trf_ctx = ctx;
 
     //  avfilter_unref_buffer(fd->ref);
 
     cleanupTransformData(&fd->td);
     cleanupTransformations(&fd->trans);
 
-    if(fd->options) av_free(fd->options);
+    if(fd->args) av_free(fd->args);
 }
 
 
@@ -143,6 +218,8 @@ static int config_input(AVFilterLink *inlink)
 
     VSFrameInfo fi_src;
     VSFrameInfo fi_dest;
+    _trf_ctx = ctx;
+
     if(!initFrameInfo(&fi_src, inlink->w, inlink->h,
                       AV2OurPixelFormat(ctx,inlink->format)) ||
        !initFrameInfo(&fi_dest, inlink->w, inlink->h,
@@ -172,7 +249,7 @@ static int config_input(AVFilterLink *inlink)
 
 
     /// TODO: find out input name
-//    fd->input = (char*)av_malloc(VS_INPUT_MAXLEN);
+    fd->input = (char*)av_malloc(VS_INPUT_MAXLEN);
 
 //    filenamecopy = strndup(fd->vob->video_in_file);
 //    filebasename = basename(filenamecopy);
@@ -184,29 +261,35 @@ static int config_input(AVFilterLink *inlink)
     snprintf(fd->input, VS_INPUT_MAXLEN, DEFAULT_TRANS_FILE_NAME);
 //    }
 
-    if (fd->options != NULL) {
-        if(optstr_lookup(fd->options, "help")) {
-            av_log(ctx, AV_LOG_INFO, transform_help);
-            return AVERROR(EINVAL);
-        }
-
-        optstr_get(fd->options, "input",     "%[^:]", fd->input);
-        optstr_get(fd->options, "maxshift",  "%d", &td->maxShift);
-        optstr_get(fd->options, "maxangle",  "%lf", &td->maxAngle);
-        optstr_get(fd->options, "smoothing", "%d", &td->smoothing);
-        optstr_get(fd->options, "crop"     , "%d", &td->crop);
-        optstr_get(fd->options, "invert"   , "%d", &td->invert);
-        optstr_get(fd->options, "relative" , "%d", &td->relative);
-        optstr_get(fd->options, "zoom"     , "%lf",&td->zoom);
-        optstr_get(fd->options, "optzoom"  , "%d", &td->optZoom);
-        optstr_get(fd->options, "interpol" , "%d", (int*)(&td->interpolType));
-        optstr_get(fd->options, "sharpen"  , "%lf",&td->sharpen);
-        if(optstr_lookup(fd->options, "tripod")){
-            av_log(ctx,AV_LOG_INFO, "Virtual tripod mode: relative=False, smoothing=0");
-            td->relative=0;
-            td->smoothing=0;
-        }
+    {
+        int ret;
+        if ((ret = (av_set_options_string(fd, fd->args, "=", ":"))) < 0)
+            return ret;
     }
+
+    /* if (fd->args != NULL) { */
+    /*     if(optstr_lookup(fd->options, "help")) { */
+    /*         av_log(ctx, AV_LOG_INFO, transform_help); */
+    /*         return AVERROR(EINVAL); */
+    /*     } */
+
+    /*     optstr_get(fd->options, "input",     "%[^:]", fd->input); */
+    /*     optstr_get(fd->options, "maxshift",  "%d", &td->maxShift); */
+    /*     optstr_get(fd->options, "maxangle",  "%lf", &td->maxAngle); */
+    /*     optstr_get(fd->options, "smoothing", "%d", &td->smoothing); */
+    /*     optstr_get(fd->options, "crop"     , "%d", &td->crop); */
+    /*     optstr_get(fd->options, "invert"   , "%d", &td->invert); */
+    /*     optstr_get(fd->options, "relative" , "%d", &td->relative); */
+    /*     optstr_get(fd->options, "zoom"     , "%lf",&td->zoom); */
+    /*     optstr_get(fd->options, "optzoom"  , "%d", &td->optZoom); */
+    /*     optstr_get(fd->options, "interpol" , "%d", (int*)(&td->interpolType)); */
+    /*     optstr_get(fd->options, "sharpen"  , "%lf",&td->sharpen); */
+    /*     if(optstr_lookup(fd->options, "tripod")){ */
+    /*         av_log(ctx,AV_LOG_INFO, "Virtual tripod mode: relative=False, smoothing=0"); */
+    /*         td->relative=0; */
+    /*         td->smoothing=0; */
+    /*     } */
+    /* } */
 
     if(configureTransformData(td)!= VS_OK){
     	av_log(ctx, AV_LOG_ERROR, "configuration of Tranform failed\n");
@@ -268,6 +351,8 @@ static int filter_frame(AVFilterLink *inlink,  AVFilterBufferRef *in)
     VSFrame inframe;
     VSFrame outframe;
     int plane;
+
+    _trf_ctx = ctx; // save context for logging
 
     if (in->perms & AV_PERM_WRITE) {
         direct = 1;

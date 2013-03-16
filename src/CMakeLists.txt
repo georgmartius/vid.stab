@@ -5,12 +5,15 @@ SET(CMAKE_BUILTTYPE None)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-#add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
-add_definitions( -Wall -O3 -g -Wno-pointer-sign)
+include (FindSSE)
+
+add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC )
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+
+### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)
-# find_package(Orc)  // it actually not used by any active code
+# find_package(Orc)
 if(ORC_FOUND)
 add_definitions( -DUSE_ORC ${ORC_DEFINITIONS} )
 include_directories( ${ORC_INCLUDE_DIRS} )
@@ -20,15 +23,17 @@ endif()
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
-add_definitions( -fPIC -DUSE_SSE2 -msse2 -ffast-math )
+if(SSE2_FOUND)
+add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+endif()
+
+set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedpoint.c
+  motiondetect.c motiondetect_opt.c serialize.c
+	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
 
 # Create the vidstab library
-add_library (vidstab STATIC
-  frameinfo.c transformtype.c libvidstab.c transform.c transformfixedpoint.c
-  motiondetect.c motiondetect_opt.c serialize.c
-	localmotion2transform.c
-	boxblur.c vsvector.c orc/motiondetectorc.c)
-#  orc/transformorc.c
+add_library (vidstab STATIC ${SOURCES})
+add_library (vidstab-0.9 SHARED ${SOURCES})
 
 target_link_libraries(vidstab m)
 if(ORC_FOUND)

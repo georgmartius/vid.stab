@@ -50,7 +50,6 @@ typedef struct _stab_data {
     char* args;
     char* result;
     FILE* f;
-
 } StabData;
 
 
@@ -126,6 +125,9 @@ static const AVOption stabilize_options[]= {
      OFFSETMD(contrastThreshold), AV_OPT_TYPE_DOUBLE, {.dbl =  0.25}, 0.0, 1.0, FLAGS},
     {"show",    "0: draw nothing (def); 1,2: show fields and transforms in the resulting frames",
      OFFSETMD(show), AV_OPT_TYPE_INT, {.i64 =  0}, 0, 2, FLAGS},
+    {"tripod",         "virtual tripod mode (if >0): motion is compared to a \n"
+    "                  reference frame (frame # is the value) (def: 0)\n",
+     OFFSETMD(virtualTripod), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, FLAGS},
     {NULL},
 };
 

@@ -19,8 +19,6 @@ allfilters.c
 
 Makefile
 
-to OBJS = .... optstr.o
-
 and further down
 OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_stabilize.o
 OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_transform.o

@@ -31,6 +31,9 @@ set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedp
   motiondetect.c motiondetect_opt.c serialize.c
 	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
 
+set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h transformfixedpoint.h
+  motiondetect.h serialize.h localmotion2transform.h boxblur.h vsvector.h )
+
 # Create the vidstab library
 add_library (vidstab STATIC ${SOURCES})
 add_library (vidstab-0.9 SHARED ${SOURCES})
@@ -42,3 +45,14 @@ endif()
 if(USE_OMP)
 target_link_libraries(vidstab gomp)
 endif()
+
+#if(!NOHEADERS)
+FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+INSTALL(FILES ${HEADERS} DESTINATION include/vid.stab)
+#endif()
+
+INSTALL(TARGETS vidstab vidstab-0.9
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+)

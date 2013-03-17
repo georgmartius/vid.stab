@@ -38,7 +38,7 @@
 #include "avfilter.h"
 #include "internal.h"
 
-#include "vid.stab/libvidstab.h"
+#include <vid.stab/libvidstab.h>
 
 /* private date structure of this filter*/
 typedef struct _stab_data {

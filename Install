@@ -1,0 +1,19 @@
+***  LIBRARY ***
+To compile the library do:
+
+cd src/cmake
+
+cmake ../
+make
+sudo make install
+
+To customize the installation prefix use
+cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local
+
+
+*** TRANSCODE plugins ***
+
+cd transcode/cmake
+make
+. install.sh
+

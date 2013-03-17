@@ -19,7 +19,7 @@ allfilters.c
 
 Makefile
 
-and further down
+and
 OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_stabilize.o
 OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_transform.o
 

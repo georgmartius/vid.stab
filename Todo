@@ -6,7 +6,3 @@ Some things that could be done
 
 - make transform stage work with fifo file for transforms, such that streaming is also possible with 2-stage version.
 
-- write full motion detection to file and delegate final transformation detection to snd-phase
-
-
-- frei0r plugin

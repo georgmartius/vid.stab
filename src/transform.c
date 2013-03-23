@@ -23,6 +23,8 @@
  */
 
 #include "transform.h"
+#include "transform_internal.h"
+#include "transformtype_operations.h"
 
 #include "transformfixedpoint.h"
 #ifdef TESTING
@@ -36,6 +38,12 @@
 const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                 "Bi-Cubic (3)"};
 
+const char* getInterpolationTypeName(InterpolType type){
+  if (type >= Zero && type < NBInterPolTypes)
+    return interpolTypes[(int) type];
+  else
+    return "unknown";
+}
 
 int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
                       const VSFrameInfo* fi_dest , const char* modName){

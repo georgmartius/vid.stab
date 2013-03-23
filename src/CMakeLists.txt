@@ -31,7 +31,7 @@ set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedp
   motiondetect.c motiondetect_opt.c serialize.c
 	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
 
-set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h transformfixedpoint.h
+set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h 
   motiondetect.h serialize.h localmotion2transform.h boxblur.h vsvector.h )
 
 # Create the vidstab library

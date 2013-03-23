@@ -35,7 +35,7 @@
 #include <stdint.h>
 
 typedef int32_t fp8;
-typedef int32_t fp16;
+typedef int32_t fp16; // also not definition of interpolFun in transform.h
 
 struct _TransformData;
 
@@ -48,23 +48,6 @@ int transformYUV(struct _TransformData* td, Transform t);
 /// does the actual transformation in YUV space
 int transformYUV_orc(struct _TransformData* td, Transform t);
 
-
-/**
- * interpolate: general interpolation function pointer for one channel image data
- *
- * Parameters:
- *             rv: destination pixel (call by reference)
- *            x,y: the source coordinates in the image img. Note this
- *                 are real-value coordinates (in fixed point format 24.8),
- *                 that's why we interpolate
- *            img: source image
- *   width,height: dimension of image
- *            def: default value if coordinates are out of range
- * Return value:  None
- */
-typedef void (*interpolateFun)(unsigned char *rv, fp16 x, fp16 y,
-                               unsigned char* img, int width, int height,
-                               unsigned char def);
 
 /* forward deklarations, please see .c file for documentation*/
 void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y,

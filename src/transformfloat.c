@@ -25,6 +25,7 @@
  */
 #include "transformfloat.h"
 #include "transform.h"
+#include "transformtype_operations.h"
 
 
 /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.

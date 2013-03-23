@@ -26,6 +26,8 @@
  */
 #include "transformfixedpoint.h"
 #include "transform.h"
+#include "transformtype_operations.h"
+
 
 // the orc code does not work at the moment (BUG in ORC?)
 // #include "orc/transformorc.h"

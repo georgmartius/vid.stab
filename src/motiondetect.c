@@ -25,6 +25,7 @@
  *
  */
 #include "motiondetect.h"
+#include "motiondetect_internal.h"
 #include "motiondetect_opt.h"
 #include <math.h>
 #include <limits.h>
@@ -39,6 +40,8 @@
 #include "boxblur.h"
 #include "vidstabdefines.h"
 #include "localmotion2transform.h"
+#include "transformtype_operations.h"
+
 
 /* internal data structures */
 
@@ -113,7 +116,7 @@ int configureMotionDetect(MotionDetect* md) {
   md->fieldSize = (md->fieldSize / 16 + 1) * 16;
 #endif
 
-  vs_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel",
+  vs_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel\n",
 	      md->fieldSize, md->maxShift);
   if (md->algo == 1) {
     // initialize measurement fields. field_num is set here.
@@ -121,7 +124,7 @@ int configureMotionDetect(MotionDetect* md) {
       return VS_ERROR;
     }
     md->maxFields = (md->accuracy) * md->fieldNum / 15;
-    vs_log_info(md->modName, "Number of used measurement fields: %i out of %i",
+    vs_log_info(md->modName, "Number of used measurement fields: %i out of %i\n",
 		md->maxFields, md->fieldNum);
   }
   //  if (md->show)

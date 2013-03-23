@@ -1,4 +1,5 @@
 
+#include <string.h>
 #include <stdio.h>
 #include <limits.h>
 #include <features.h>
@@ -9,7 +10,12 @@
 
 #include "libvidstab.h"
 // load optimized functions
+#include "motiondetect_internal.h"
 #include "motiondetect_opt.h"
+#include "boxblur.h"
+#include "transformfixedpoint.h"
+#include "transformfloat.h"
+#include "transformtype_operations.h"
 
 #ifndef TESTING
 #error TESTING must be defined

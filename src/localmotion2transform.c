@@ -23,6 +23,7 @@
  */
 
 #include "localmotion2transform.h"
+#include "transformtype_operations.h"
 #include <assert.h>
 
 int localmotions2TransformsSimple(TransformData* td,

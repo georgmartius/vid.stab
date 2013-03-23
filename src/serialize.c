@@ -27,6 +27,7 @@
 
 #include "serialize.h"
 #include "transformtype.h"
+#include "transformtype_operations.h"
 #include "motiondetect.h"
 
 const char* modname = "vid.stab - serialization";

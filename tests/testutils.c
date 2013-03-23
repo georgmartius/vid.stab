@@ -2,6 +2,7 @@
 
 #include "testutils.h"
 #include "libvidstab.h"
+#include "transformtype_operations.h"
 
 void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
   if(x>=0 && x+sizex < fi->width && y>=0 && y+sizey < fi->height){

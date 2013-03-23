@@ -29,10 +29,10 @@
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "vidstabdefines.h"
-#include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
+
 
 typedef struct transformations {
     Transform* ts; // array of transformations
@@ -50,11 +50,28 @@ typedef struct slidingavgtrans {
 
 
 /// interpolation types
-typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
+typedef enum { Zero, Linear, BiLinear, BiCubic, NBInterPolTypes} InterpolType;
 /// name of the interpolation type
 extern const char* interpolTypes[5];
 
 typedef enum { KeepBorder = 0, CropBorder } BorderType;
+
+/**
+ * interpolate: general interpolation function pointer for one channel image data
+ *              for fixed point numbers/calculations
+ * Parameters:
+ *             rv: destination pixel (call by reference)
+ *            x,y: the source coordinates in the image img. Note this
+ *                 are real-value coordinates (in fixed point format 24.8),
+ *                 that's why we interpolate
+ *            img: source image
+ *   width,height: dimension of image
+ *            def: default value if coordinates are out of range
+ * Return value:  None
+ */
+typedef void (*interpolateFun)(unsigned char *rv, int32_t x, int32_t y,
+                               unsigned char* img, int width, int height,
+                               unsigned char def);
 
 typedef struct _TransformData {
     VSFrameInfo fiSrc;

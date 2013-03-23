@@ -24,6 +24,7 @@
 #include <math.h>
 #include <string.h>
 #include "transformtype.h"
+#include "transformtype_operations.h"
 #include "vidstabdefines.h"
 
 /***********************************************************************

@@ -78,14 +78,6 @@ typedef struct motiondetect {
   int frameNum;
 } MotionDetect;
 
-/* type for a function that calculates the transformation of a certain field
- */
-typedef LocalMotion (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
-
-/* type for a function that calculates the contrast of a certain field
- */
-typedef double (*contrastSubImgFunc)(MotionDetect*, const Field*);
-
 
 static const char motiondetect_help[] = ""
     "Overview:\n"
@@ -136,42 +128,6 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame);
 void cleanupMotionDetection(MotionDetect* md);
 
 
-int initFields(MotionDetect* md);
-unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
-                        int bytesPerPixel, int strive1, int strive2, int d_x, int d_y);
-
-double contrastSubImgYUV(MotionDetect* md, const Field* field);
-double contrastSubImgRGB(MotionDetect* md, const Field* field);
-double contrastSubImg(unsigned char* const I, const Field* field,
-                      int width, int height, int bytesPerPixel);
-
-
-int cmp_contrast_idx(const void *ci1, const void* ci2);
-VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
-
-LocalMotions calcShiftRGBSimple(MotionDetect* md);
-LocalMotions calcShiftYUVSimple(MotionDetect* md);
-
-LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field,
-                            int fieldnum);
-LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
-                            int fieldnum);
-LocalMotions calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
-                             contrastSubImgFunc contrastfunc);
-
-
-void drawFieldScanArea(MotionDetect* md, const LocalMotion* motion);
-void drawField(MotionDetect* md, const LocalMotion* motion);
-void drawFieldTrans(MotionDetect* md, const LocalMotion* motion);
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
-             int x, int y, int sizex, int sizey, unsigned char color);
-
-
-unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width1, int width2, int height,
-                               int bytesPerPixel,
-                               int d_x, int d_y, unsigned int threshold);
-
 #endif  /* MOTIONDETECT_H */
 
 /*
@@ -179,7 +135,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

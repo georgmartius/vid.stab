@@ -66,7 +66,7 @@
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
-    MotionDetect md;
+    VSMotionDetect md;
     vob_t* vob;  // pointer to information structure
 
     char* result;
@@ -147,12 +147,12 @@ static int stabilize_configure(TCModuleInstance *self,
     /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
           sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     VSFrameInfo fi;
-    initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+    vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                   transcode2ourPF(vob->im_v_codec));
 
-    if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
+    if(vsMotionDetectInit(md, &fi, MOD_NAME) != VS_OK){
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
@@ -172,7 +172,7 @@ static int stabilize_configure(TCModuleInstance *self,
         // for some reason this plugin is called in the old fashion
         //  (not with inspect). Anyway we support both ways of getting help.
         if(optstr_lookup(options, "help")) {
-            tc_log_info(MOD_NAME,motiondetect_help);
+            tc_log_info(MOD_NAME,vs_motiondetect_help);
             return(TC_IMPORT_ERROR);
         }
 
@@ -186,7 +186,7 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "show",       "%d", &md->show);
     }
 
-    if(configureMotionDetect(md)!= VS_OK){
+    if(vsMotionDetectConfigure(md)!= VS_OK){
     	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
         return TC_ERROR;
     }
@@ -208,7 +208,7 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        if(prepareFile(md, sd->f) != VS_OK){
+        if(vsPrepareFile(md, sd->f) != VS_OK){
             tc_log_error(MOD_NAME, "cannot write to result file %s", sd->result);
             return TC_ERROR;
         }
@@ -242,16 +242,16 @@ static int stabilize_filter_video(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(frame, "filter_video");
 
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     LocalMotions localmotions;
     VSFrame vsFrame;
-    fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
+    vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
-    if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
+    if(vsMotionDetection(md, &localmotions, &vsFrame)!= VS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
     }
-    if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+    if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
         vs_vector_del(&localmotions);
         return TC_ERROR;
     } else {
@@ -270,13 +270,13 @@ static int stabilize_stop(TCModuleInstance *self)
     StabData *sd = NULL;
     TC_MODULE_SELF_CHECK(self, "stop");
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;
     }
 
-    cleanupMotionDetection(md);
+    vsMotionDetectionCleanup(md);
     if (sd->result) {
         tc_free(sd->result);
         sd->result = NULL;
@@ -306,9 +306,9 @@ static int stabilize_inspect(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(param, "inspect");
     TC_MODULE_SELF_CHECK(value, "inspect");
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     if (optstr_lookup(param, "help")) {
-        *value = motiondetect_help;
+        *value = vs_motiondetect_help;
     }
     CHECKPARAM("shakiness","shakiness=%d", md->shakiness);
     CHECKPARAM("accuracy", "accuracy=%d",  md->accuracy);

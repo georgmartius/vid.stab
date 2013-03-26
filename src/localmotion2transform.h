@@ -33,21 +33,21 @@
 
 /** converts for each frame the localmotions into a transform
  */
-int localmotions2TransformsSimple(TransformData* td,
-																	const ManyLocalMotions* motions,
-																	Transformations* trans );
+int vsLocalmotions2TransformsSimple(VSTransformData* td,
+																	const VSManyLocalMotions* motions,
+																	VSTransformations* trans );
 
 
 /** calculates rotation angle for the given transform and
  * field with respect to the given center-point
  */
-double calcAngle(const LocalMotion* lm, int center_x, int center_y);
+double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
 
 /** calculates the transformation that caused the observed motions.
     Using a simple cleaned-means approach to eliminate outliers.
     translation and rotation is calculated.
 */
-Transform simpleMotionsToTransform(TransformData* td,
+Transform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions);
 
 #endif

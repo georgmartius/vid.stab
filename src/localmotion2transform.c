@@ -26,16 +26,16 @@
 #include "transformtype_operations.h"
 #include <assert.h>
 
-int localmotions2TransformsSimple(TransformData* td,
-																	const ManyLocalMotions* motions,
-																	Transformations* trans ){
+int vsLocalmotions2TransformsSimple(VSTransformData* td,
+																	const VSManyLocalMotions* motions,
+																	VSTransformations* trans ){
 	int i;
 	int len = vs_vector_size(motions);
 	assert(trans->len==0 && trans->ts == 0);
 	trans->ts = vs_malloc(sizeof(Transform)*len );
 	for(i=0; i< vs_vector_size(motions); i++) {
-		trans->ts[i]=simpleMotionsToTransform(td,MLMGet(motions,i));
-		//    storeLocalmotions(stderr,MLMGet(motions,i));
+		trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+		//    vsStoreLocalmotions(stderr,VSMLMGet(motions,i));
 		//		storeTransform(stderr,&trans->ts[i]);
 	}
 	trans->len=len;
@@ -46,7 +46,7 @@ int localmotions2TransformsSimple(TransformData* td,
 /* calculates rotation angle for the given transform and
  * field with respect to the given center-point
  */
-double calcAngle(const LocalMotion* lm, int center_x, int center_y){
+double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y){
   // we better ignore fields that are to close to the rotation center
   if (abs(lm->f.x - center_x) + abs(lm->f.y - center_y) < lm->f.size*2) {
     return 0;
@@ -62,7 +62,7 @@ double calcAngle(const LocalMotion* lm, int center_x, int center_y){
 }
 
 
-Transform simpleMotionsToTransform(TransformData* td,
+Transform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions){
   int center_x = 0;
   int center_y = 0;
@@ -94,7 +94,7 @@ Transform simpleMotionsToTransform(TransformData* td,
     for (i = 0; i < num_motions; i++) {
       // substract avg and calc angle
       LocalMotion m = sub_localmotion(LMGet(motions,i),&meanmotion);
-      angles[i] = calcAngle(&m, center_x, center_y);
+      angles[i] = vsCalcAngle(&m, center_x, center_y);
     }
     double min, max;
     t.alpha = -cleanmean(angles, num_motions, &min, &max);

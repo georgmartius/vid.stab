@@ -191,7 +191,7 @@ void _FLT(interpolateN)(unsigned char *rv, float x, float y,
  /// TODO Add zoom!
  /// Add bytes per pixel usage
  */
-int _FLT(transformRGB)(TransformData* td, Transform t)
+int _FLT(transformRGB)(VSTransformData* td, Transform t)
 {
   int x = 0, y = 0, z = 0;
   unsigned char *D_1, *D_2;
@@ -264,16 +264,16 @@ int _FLT(transformRGB)(TransformData* td, Transform t)
  * Preconditions:
  *  The frame must be in YUV format
  */
-int _FLT(transformYUV)(TransformData* td, Transform t)
+int _FLT(transformYUV)(VSTransformData* td, Transform t)
 {
   int x = 0, y = 0;
   uint8_t *dat_1, *dat_2;
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
-    if(equalFrames(&td->src,&td->destbuf))
+    if(vsFramesEqual(&td->src,&td->destbuf))
       return VS_OK; // noop
     else {
-      copyFrame(&td->destbuf, &td->src, &td->fiSrc);
+      vsFrameCopy(&td->destbuf, &td->src, &td->fiSrc);
       return VS_OK;
     }
   }
@@ -282,8 +282,8 @@ int _FLT(transformYUV)(TransformData* td, Transform t)
     dat_1  = td->src.data[plane];
     dat_2  = td->destbuf.data[plane];
 
-    int wsub = getPlaneWidthSubS(&td->fiSrc,plane);
-    int hsub = getPlaneHeightSubS(&td->fiSrc,plane);
+    int wsub = vsGetPlaneWidthSubS(&td->fiSrc,plane);
+    int hsub = vsGetPlaneHeightSubS(&td->fiSrc,plane);
     float c_s_x = (td->fiSrc.width  >> wsub)/2.0;
     float c_s_y = (td->fiSrc.height >> hsub)/2.0;
     float c_d_x = (td->fiDest.width >> wsub)/2.0;

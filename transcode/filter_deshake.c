@@ -59,9 +59,9 @@
 
 /* private date structure of this filter*/
 typedef struct _deshake_data {
-  MotionDetect md;
-  TransformData td;
-  SlidingAvgTrans avg;
+  VSMotionDetect md;
+  VSTransformData td;
+  VSSlidingAvgTrans avg;
 
   vob_t* vob;  // pointer to information structure
   char* result;
@@ -176,15 +176,15 @@ static int deshake_configure(TCModuleInstance *self,
   /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
 	sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
-  MotionDetect* md = &(sd->md);
-  TransformData* td = &(sd->td);
+  VSMotionDetect* md = &(sd->md);
+  VSTransformData* td = &(sd->td);
 
-  // init MotionDetect part
+  // init VSMotionDetect part
   VSFrameInfo fi;
-  initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+  vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
+  if(vsMotionDetectInit(md, &fi, MOD_NAME) != VS_OK){
     tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
     return TC_ERROR;
   }
@@ -202,10 +202,10 @@ static int deshake_configure(TCModuleInstance *self,
 
   // init trasform part
   VSFrameInfo fi_dest;
-  initFrameInfo(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
+  vsFrameInfoInit(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  if(initTransformData(td, &fi, &fi_dest, MOD_NAME) != VS_OK){
+  if(vsTransformDataInit(td, &fi, &fi_dest, MOD_NAME) != VS_OK){
     tc_log_error(MOD_NAME, "initialization of TransformData failed");
     return TC_ERROR;
   }
@@ -240,11 +240,11 @@ static int deshake_configure(TCModuleInstance *self,
     td->invert=0;
   }
 
-  if(configureMotionDetect(md)!= VS_OK){
+  if(vsMotionDetectConfigure(md)!= VS_OK){
     tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
     return TC_ERROR;
   }
-  if(configureTransformData(td)!= VS_OK){
+  if(vsTransformDataConfigure(td)!= VS_OK){
     tc_log_error(MOD_NAME, "configuration of Tranform failed");
     return TC_ERROR;
   }
@@ -267,7 +267,7 @@ static int deshake_configure(TCModuleInstance *self,
     tc_log_info(MOD_NAME, "      optzoom = %s",
 		td->optZoom ? "On" : "Off");
     tc_log_info(MOD_NAME, "     interpol = %s",
-		interpolTypes[td->interpolType]);
+                getInterpolationTypeName(td->interpolType));
     tc_log_info(MOD_NAME, "      sharpen = %f", td->sharpen);
 
   }
@@ -298,41 +298,35 @@ static int deshake_filter_video(TCModuleInstance *self,
   TC_MODULE_SELF_CHECK(frame, "filter_video");
 
   sd = self->userdata;
-  MotionDetect* md = &(sd->md);
-  TransformData* td = &(sd->td);
+  VSMotionDetect* md = &(sd->md);
+  VSTransformData* td = &(sd->td);
   LocalMotions localmotions;
   Transform motion;
   VSFrame vsFrame;
-  fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
+  vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
-  if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
+  if(vsMotionDetection(md, &localmotions, &vsFrame)!= VS_OK){
       tc_log_error(MOD_NAME, "motion detection failed");
       return TC_ERROR;
   }
 
-  if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+  if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
       tc_log_error(MOD_NAME, "cannot write to file!");
       return TC_ERROR;
   }
-  motion = simpleMotionsToTransform(td, &localmotions);
+  motion = vsSimpleMotionsToTransform(td, &localmotions);
   vs_vector_del(&localmotions);
 
-  transformPrepare(td, &vsFrame, &vsFrame);
+  vsTransformPrepare(td, &vsFrame, &vsFrame);
 
-  Transform t = lowPassTransforms(td, &sd->avg, &motion);
+  Transform t = vsLowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_info(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f", */
   /*             motion.x, motion.y, motion.alpha, */
   /*             t.x, t.y, t.alpha, t.zoom); */
 
-  if (sd->vob->im_v_codec == CODEC_RGB) {
-    transformRGB(td, t);
-  } else if (sd->vob->im_v_codec == CODEC_YUV) {
-    transformYUV(td, t);
-  } else {
-    tc_log_error(MOD_NAME, "unsupported Codec: %i\n", sd->vob->im_v_codec);
-    return TC_ERROR;
-  }
-  transformFinish(td);
+  vsDoTransform(td, t);
+
+  vsTransformFinish(td);
   return TC_OK;
 }
 
@@ -352,13 +346,13 @@ static int deshake_stop(TCModuleInstance *self)
     sd->f = NULL;
   }
 
-  cleanupMotionDetection(&sd->md);
+  vsMotionDetectionCleanup(&sd->md);
   if (sd->result) {
     tc_free(sd->result);
     sd->result = NULL;
   }
 
-  cleanupTransformData(&sd->td);
+  vsTransformDataCleanup(&sd->td);
 
   return TC_OK;
 }
@@ -385,7 +379,7 @@ static int deshake_inspect(TCModuleInstance *self,
   TC_MODULE_SELF_CHECK(param, "inspect");
   TC_MODULE_SELF_CHECK(value, "inspect");
   sd = self->userdata;
-  MotionDetect* md = &(sd->md);
+  VSMotionDetect* md = &(sd->md);
   if (optstr_lookup(param, "help")) {
     *value = deshake_help;
   }

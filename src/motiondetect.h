@@ -36,11 +36,8 @@
 #include "vsvector.h"
 #include "frameinfo.h"
 
-#define USE_SPIRAL_FIELD_CALC
-
-
 /** data structure for motion detection part of deshaking*/
-typedef struct motiondetect {
+typedef struct _vsmotiondetect {
   VSFrameInfo fi;
 
   VSFrame curr;     // blurred version of current frame buffer
@@ -76,10 +73,10 @@ typedef struct motiondetect {
   int initialized; // 1 if initialized and 2 if configured
 
   int frameNum;
-} MotionDetect;
+} VSMotionDetect;
 
 
-static const char motiondetect_help[] = ""
+static const char vs_motiondetect_help[] = ""
     "Overview:\n"
     "    Generates a file with relative transform information\n"
     "     (translation, rotation) about subsequent frames."
@@ -103,16 +100,16 @@ static const char motiondetect_help[] = ""
     "    'help'        print this help message\n";
 
 
-/** initialized the MotionDetect structure and allocates memory
+/** initialized the VSMotionDetect structure and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi, const char* modName);
+int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi, const char* modName);
 
-/** configures MotionDetect structure and checks ranges, initializes fields and so on.
+/** configures VSMotionDetect structure and checks ranges, initializes fields and so on.
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int configureMotionDetect(MotionDetect* md);
+int vsMotionDetectConfigure(VSMotionDetect* md);
 
 /**
  *  Performs a motion detection step
@@ -120,12 +117,12 @@ int configureMotionDetect(MotionDetect* md);
  *  is stored internally
  *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame);
+int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame);
 
 /** Deletes internal data structures.
- * In order to use the MotionDetect again, you have to call initMotionDetect
+ * In order to use the VSMotionDetect again, you have to call vsMotionDetectInit
  */
-void cleanupMotionDetection(MotionDetect* md);
+void vsMotionDetectionCleanup(VSMotionDetect* md);
 
 
 #endif  /* MOTIONDETECT_H */

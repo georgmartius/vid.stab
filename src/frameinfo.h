@@ -43,7 +43,7 @@ typedef enum {PF_NONE = -1,
               PF_BGR24,     ///< packed RGB 8:8:8, 24bpp, BGRBGR...
               PF_RGBA,      ///< packed RGBA 8:8:8:8, 32bpp, RGBARGBA...
               PF_NUMBER     ///< number of pixel formats
-} PixelFormat;
+} VSPixelFormat;
 
 /** frame information for deshaking lib
     This only works for planar image formats
@@ -53,7 +53,7 @@ typedef struct vsframeinfo {
   int planes;        // number of planes (1 luma, 2,3 chroma, 4 alpha)
   int log2ChromaW; // subsampling of width in chroma planes
   int log2ChromaH; // subsampling of height in chroma planes
-  PixelFormat pFormat;
+  VSPixelFormat pFormat;
   int bytesPerPixel; // number of bytes per pixel (for packed formats)
 } VSFrameInfo;
 
@@ -68,43 +68,43 @@ typedef struct vsframe {
 #define CHROMA_SIZE(width,log2sub)  (-(-(width) >> (log2sub)))
 
 /// initializes the frameinfo for the given format
-int initFrameInfo(VSFrameInfo* fi, int width, int height, PixelFormat pFormat);
+int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pFormat);
 
 
 /// returns the subsampling shift amount, horizonatally for the given plane
-int getPlaneWidthSubS(const VSFrameInfo* fi, int plane);
+int vsGetPlaneWidthSubS(const VSFrameInfo* fi, int plane);
 
 /// returns the subsampling shift amount, vertically for the given plane
-int getPlaneHeightSubS(const VSFrameInfo* fi, int plane);
+int vsGetPlaneHeightSubS(const VSFrameInfo* fi, int plane);
 
 /// zero initialization
-void nullFrame(VSFrame* frame);
+void vsFrameNull(VSFrame* frame);
 
 /// returns true if frame is null (data[0]==0)
-int isNullFrame(const VSFrame* frame);
+int vsFrameIsNull(const VSFrame* frame);
 
 /// compares two frames for identity (based in data[0])
-int equalFrames(const VSFrame* frame1,const VSFrame* frame2);
+int vsFramesEqual(const VSFrame* frame1,const VSFrame* frame2);
 
 /// allocates memory for a frame
-void allocateFrame(VSFrame* frame, const VSFrameInfo* fi);
+void vsFrameAllocate(VSFrame* frame, const VSFrameInfo* fi);
 
 
 /// copies the given plane number from src to dest
-void copyFramePlane(VSFrame* dest, const VSFrame* src,
+void vsFrameCopyPlane(VSFrame* dest, const VSFrame* src,
 										const VSFrameInfo* fi, int plane);
 
 /// copies src to dest
-void copyFrame(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi);
+void vsFrameCopy(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi);
 
 /** fills the data pointer so that it corresponds to the img saved in the linear buffer.
     No copying is performed.
-    Do not call freeFrame() on it.
+    Do not call vsFrameFree() on it.
  */
-void fillFrameFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi);
+void vsFrameFillFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi);
 
 /// frees memory
-void freeFrame(VSFrame* frame);
+void vsFrameFree(VSFrame* frame);
 
 #endif  /* FRAMEINFO_H */
 

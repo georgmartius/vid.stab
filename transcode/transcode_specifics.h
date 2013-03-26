@@ -29,7 +29,7 @@
 #include "frameinfo.h"
 #include <transcode.h>
 
-static PixelFormat transcode2ourPF(int tc_img_codec){
+static VSPixelFormat transcode2ourPF(int tc_img_codec){
 	switch(tc_img_codec){
 	case CODEC_RGB:
 		return PF_RGB24;

@@ -34,27 +34,28 @@
 #endif
 
 
-typedef struct transformations {
+typedef struct _vstransformations {
     Transform* ts; // array of transformations
     int current;   // index to current transformation
     int len;       // length of trans array
     short warned_end; // whether we warned that there is no transform left
-} Transformations;
+} VSTransformations;
 
-typedef struct slidingavgtrans {
+typedef struct _vsslidingavgtrans {
     Transform avg; // average transformation
     Transform accum; // accumulator for relative to absolute conversion
     double zoomavg;     // average zoom value
     short initialized; // whether it was initialized or not
-} SlidingAvgTrans;
+} VSSlidingAvgTrans;
 
 
 /// interpolation types
-typedef enum { Zero, Linear, BiLinear, BiCubic, NBInterPolTypes} InterpolType;
-/// name of the interpolation type
-extern const char* interpolTypes[5];
+typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} VSInterpolType;
 
-typedef enum { KeepBorder = 0, CropBorder } BorderType;
+/// returns a name for the interpolation type
+const char* getInterpolationTypeName(VSInterpolType type);
+
+typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
 
 /**
  * interpolate: general interpolation function pointer for one channel image data
@@ -69,11 +70,11 @@ typedef enum { KeepBorder = 0, CropBorder } BorderType;
  *            def: default value if coordinates are out of range
  * Return value:  None
  */
-typedef void (*interpolateFun)(unsigned char *rv, int32_t x, int32_t y,
+typedef void (*vsInterpolateFun)(unsigned char *rv, int32_t x, int32_t y,
                                unsigned char* img, int width, int height,
                                unsigned char def);
 
-typedef struct _TransformData {
+typedef struct _VSTransformData {
     VSFrameInfo fiSrc;
     VSFrameInfo fiDest;
 
@@ -85,9 +86,9 @@ typedef struct _TransformData {
     short srcMalloced;   // 1 if the source buffer was internally malloced
     const char* modName;
 
-    interpolateFun interpolate; // pointer to interpolation function
+    vsInterpolateFun interpolate; // pointer to interpolation function
 #ifdef TESTING
-    _FLT(interpolateFun) _FLT(interpolate);
+    _FLT(vsInterpolateFun) _FLT(interpolate);
 #endif
 
     /* Options */
@@ -104,23 +105,23 @@ typedef struct _TransformData {
     /* number of frames (forward and backward)
      * to use for smoothing transforms */
     int smoothing;
-    BorderType crop;  // 1: black bg, 0: keep border from last frame(s)
+    VSBorderType crop;  // 1: black bg, 0: keep border from last frame(s)
     int invert;       // 1: invert transforms, 0: nothing
     /* constants */
     /* threshhold below which no rotation is performed */
     double rotationThreshhold;
     double zoom;      // percentage to zoom: 0->no zooming 10:zoom in 10%
     int optZoom;      // 1: determine optimal zoom, 0: nothing
-    InterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
+    VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
     double sharpen;   // amount of sharpening
 
     int verbose;     // level of logging
 
     int initialized; // 1 if initialized and 2 if configured
-} TransformData;
+} VSTransformData;
 
 
-static const char transform_help[] = ""
+static const char vs_transform_help[] = ""
     "Overview\n"
     "    Reads a file with transform information for each frame\n"
     "     and applies them. See also filter stabilize.\n"
@@ -148,51 +149,55 @@ static const char transform_help[] = ""
     "    'tripod'    virtual tripod mode (=relative=0:smoothing=0)\n"
     "    'help'      print this help message\n";
 
-/** initialized the TransformData structure and allocates memory
+/** initialized the VSTransformData structure and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
+int vsTransformDataInit(VSTransformData* td, const VSFrameInfo* fi_src,
                       const VSFrameInfo* fi_dest , const char* modName);
 
-/** configures TransformData structure and checks ranges, initializes fields and so on.
+/** configures VSTransformData structure and checks ranges, initializes fields and so on.
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int configureTransformData(TransformData* td);
+int vsTransformDataConfigure(VSTransformData* td);
 
 /** Deletes internal data structures.
- * In order to use the TransformData again, you have to call initTransformData
+ * In order to use the VSTransformData again, you have to call vsTransformDataInit
  */
-void cleanupTransformData(TransformData* td);
+void vsTransformDataCleanup(VSTransformData* td);
 
 
-/// initializes Transformations structure
-void initTransformations(Transformations* trans);
-/// deletes Transformations internal memory
-void cleanupTransformations(Transformations* trans);
+/// initializes VSTransformations structure
+void vsTransformationsInit(VSTransformations* trans);
+/// deletes VSTransformations internal memory
+void vsTransformationsCleanup(VSTransformations* trans);
 
 /// return next Transform and increases internal counter
-Transform getNextTransform(const TransformData* td, Transformations* trans);
+Transform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
 
 /** preprocesses the list of transforms all at once. Here the deshaking is calculated!
  */
-int preprocessTransforms(TransformData* td, Transformations* trans);
+int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
 
 /**
- * lowPassTransforms: single step smoothing of transforms, using only the past.
- *  see also preprocessTransforms. */
-Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
+ * vsLowPassTransforms: single step smoothing of transforms, using only the past.
+ *  see also vsPreprocessTransforms. */
+Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
                             const Transform* trans);
 
 /** call this function to prepare for a next transformation (transformRGB/transformYUV)
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
-int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest);
+int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest);
+
+/// does the actual transformation
+int vsDoTransform(VSTransformData* td, Transform t);
+
 
 /** call this function to finish the transformation of a frame (transformRGB/transformYUV)
  */
-int transformFinish(TransformData* td);
+int vsTransformFinish(VSTransformData* td);
 
 
 #endif

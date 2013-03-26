@@ -50,12 +50,12 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
   int size2;
   if(size<2){
     if(dest!=src)
-      copyFrame(dest,src,fi);
+      vsFrameCopy(dest,src,fi);
     return;
   }
 	VSFrame buf;
   if(buffer==0){
-		allocateFrame(&buf,fi);
+		vsFrameAllocate(&buf,fi);
 		localbuffer=1;
   }else{
 		buf = *buffer;
@@ -78,12 +78,12 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
 		if(size2>1){
 			for(plane=1; plane<fi->planes; plane++){
 				boxblur_hori_C(buf.data[plane], src->data[plane],
-											 fi->width  >> getPlaneWidthSubS(fi,plane),
-											 fi->height >> getPlaneHeightSubS(fi,plane),
+											 fi->width  >> vsGetPlaneWidthSubS(fi,plane),
+											 fi->height >> vsGetPlaneHeightSubS(fi,plane),
 											 buf.linesize[plane], src->linesize[plane], size2);
 				boxblur_vert_C(dest->data[plane], buf.data[plane],
-											 fi->width  >> getPlaneWidthSubS(fi,plane),
-											 fi->height >> getPlaneHeightSubS(fi,plane),
+											 fi->width  >> vsGetPlaneWidthSubS(fi,plane),
+											 fi->height >> vsGetPlaneHeightSubS(fi,plane),
 											 dest->linesize[plane], buf.linesize[plane], size2);
 			}
 		}
@@ -91,7 +91,7 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
 	case BoxBlurKeepColor:
 		// copy both color channels
 		for(plane=1; plane<fi->planes; plane++){
-			copyFramePlane(dest, src, fi, plane);
+			vsFrameCopyPlane(dest, src, fi, plane);
 		}
 	case BoxBlurNoColor: // do nothing
 	default:
@@ -99,7 +99,7 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
 	}
 
   if(localbuffer)
-    freeFrame(&buf);
+    vsFrameFree(&buf);
 }
 
 /* /\* */

@@ -16,7 +16,7 @@ void test_boxblur(const TestData* testdata){
 	int time; //, timeref;
 	int numruns=2;
 	VSFrame dest;
-	allocateFrame(&dest,&testdata->fi);
+	vsFrameAllocate(&dest,&testdata->fi);
 	//    omp_set_dynamic( 0 );
 	//    omp_set_num_threads( 1 );
 	fprintf(stderr,"********** boxblur speedtest:\n");
@@ -31,5 +31,5 @@ void test_boxblur(const TestData* testdata){
 	/* fprintf(stderr,"***C (2)time for %i runs: %i ms, Speedup %f\n", numruns, time, */
 	/* 	    (double)timeref/time); */
 	/* omp_set_dynamic( 1 ); */
-	freeFrame(&dest);
+	vsFrameFree(&dest);
 }

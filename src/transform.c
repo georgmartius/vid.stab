@@ -35,28 +35,28 @@
 #include <libgen.h>
 #include <string.h>
 
-const char* interpolTypes[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
-                                "Bi-Cubic (3)"};
+const char* interpol_type_names[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
+                                      "Bi-Cubic (3)"};
 
-const char* getInterpolationTypeName(InterpolType type){
-  if (type >= Zero && type < NBInterPolTypes)
-    return interpolTypes[(int) type];
+const char* getInterpolationTypeName(VSInterpolType type){
+  if (type >= VS_Zero && type < VS_NBInterPolTypes)
+    return interpol_type_names[(int) type];
   else
     return "unknown";
 }
 
-int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
+int vsTransformDataInit(VSTransformData* td, const VSFrameInfo* fi_src,
                       const VSFrameInfo* fi_dest , const char* modName){
     td->modName = modName;
 
     td->fiSrc = *fi_src;
     td->fiDest = *fi_dest;
 
-    nullFrame(&td->src);
+    vsFrameNull(&td->src);
     td->srcMalloced = 0;
 
-    nullFrame(&td->destbuf);
-    nullFrame(&td->dest);
+    vsFrameNull(&td->destbuf);
+    vsFrameNull(&td->dest);
 
     /* Options */
     td->maxShift = -1;
@@ -64,7 +64,7 @@ int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
     td->maxAngleVariation = 1;
 
 
-    td->crop = KeepBorder;
+    td->crop = VSKeepBorder;
     td->relative = 1;
     td->invert = 0;
     td->smoothing = 10;
@@ -73,34 +73,34 @@ int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
 
     td->zoom    = 0;
     td->optZoom = 1;
-    td->interpolType = BiLinear;
+    td->interpolType = VS_BiLinear;
     td->sharpen = 0.8;
 
     td->verbose = 0;
     return VS_OK;
 }
 
-int configureTransformData(TransformData* td){
+int vsTransformDataConfigure(VSTransformData* td){
     if (td->maxShift > td->fiDest.width/2)
         td->maxShift = td->fiDest.width/2;
     if (td->maxShift > td->fiDest.height/2)
         td->maxShift = td->fiDest.height/2;
 
-    td->interpolType = VS_MAX(VS_MIN(td->interpolType,BiCubic),Zero);
+    td->interpolType = VS_MAX(VS_MIN(td->interpolType,VS_BiCubic),VS_Zero);
 
     switch(td->interpolType){
-      case Zero:     td->interpolate = &interpolateZero; break;
-      case Linear:   td->interpolate = &interpolateLin; break;
-      case BiLinear: td->interpolate = &interpolateBiLin; break;
-      case BiCubic:  td->interpolate = &interpolateBiCub; break;
+      case VS_Zero:     td->interpolate = &interpolateZero; break;
+      case VS_Linear:   td->interpolate = &interpolateLin; break;
+      case VS_BiLinear: td->interpolate = &interpolateBiLin; break;
+      case VS_BiCubic:  td->interpolate = &interpolateBiCub; break;
       default: td->interpolate = &interpolateBiLin;
     }
 #ifdef TESTING
     switch(td->interpolType){
-      case Zero:     td->_FLT(interpolate) = &_FLT(interpolateZero); break;
-      case Linear:   td->_FLT(interpolate) = &_FLT(interpolateLin); break;
-      case BiLinear: td->_FLT(interpolate) = &_FLT(interpolateBiLin); break;
-      case BiCubic:  td->_FLT(interpolate) = &_FLT(interpolateBiCub); break;
+      case VS_Zero:     td->_FLT(interpolate) = &_FLT(interpolateZero); break;
+      case VS_Linear:   td->_FLT(interpolate) = &_FLT(interpolateLin); break;
+      case VS_BiLinear: td->_FLT(interpolate) = &_FLT(interpolateBiLin); break;
+      case VS_BiCubic:  td->_FLT(interpolate) = &_FLT(interpolateBiCub); break;
       default: td->_FLT(interpolate)	   = &_FLT(interpolateBiLin);
     }
 
@@ -108,43 +108,43 @@ int configureTransformData(TransformData* td){
     return VS_OK;
 }
 
-void cleanupTransformData(TransformData* td){
-    if (td->srcMalloced && !isNullFrame(&td->src)) {
-        freeFrame(&td->src);
+void vsTransformDataCleanup(VSTransformData* td){
+    if (td->srcMalloced && !vsFrameIsNull(&td->src)) {
+        vsFrameFree(&td->src);
     }
-    if (td->crop == KeepBorder && !isNullFrame(&td->destbuf)) {
-        freeFrame(&td->destbuf);
+    if (td->crop == VSKeepBorder && !vsFrameIsNull(&td->destbuf)) {
+        vsFrameFree(&td->destbuf);
     }
 }
 
-int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest){
+int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){
     // we first copy the frame to td->src and then overwrite the destination
     // with the transformed version
     td->dest = *dest;
     if(src==dest || td->srcMalloced){ // in place operation: we have to copy the src first
-        if(isNullFrame(&td->src)) {
-            allocateFrame(&td->src,&td->fiSrc);
+        if(vsFrameIsNull(&td->src)) {
+            vsFrameAllocate(&td->src,&td->fiSrc);
             td->srcMalloced = 1;
         }
-        if (isNullFrame(&td->src)) {
+        if (vsFrameIsNull(&td->src)) {
             vs_log_error(td->modName, "vs_malloc failed\n");
             return VS_ERROR;
         }
-        copyFrame(&td->src, src, &td->fiSrc);
+        vsFrameCopy(&td->src, src, &td->fiSrc);
     }else{ // otherwise no copy needed
         td->src=*src;
     }
-    if (td->crop == KeepBorder) {
-      if(isNullFrame(&td->destbuf)) {
+    if (td->crop == VSKeepBorder) {
+      if(vsFrameIsNull(&td->destbuf)) {
         // if we keep the borders, we need a second buffer to store
         //  the previous stabilized frame, so we use destbuf
-        allocateFrame(&td->destbuf,&td->fiDest);
-        if (isNullFrame(&td->destbuf)) {
+        vsFrameAllocate(&td->destbuf,&td->fiDest);
+        if (vsFrameIsNull(&td->destbuf)) {
           vs_log_error(td->modName, "vs_malloc failed\n");
           return VS_ERROR;
         }
         // if we keep borders, save first frame into the background buffer (destbuf)
-        copyFrame(&td->destbuf, src, &td->fiSrc);
+        vsFrameCopy(&td->destbuf, src, &td->fiSrc);
       }
     }else{ // otherwise we directly operate on the destination
         td->destbuf = *dest;
@@ -152,17 +152,25 @@ int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest){
     return VS_OK;
 }
 
-int transformFinish(TransformData* td){
-  if(td->crop == KeepBorder){
+int vsDoTransform(VSTransformData* td, Transform t){
+  if (td->fiSrc.pFormat < PF_PACKED)
+    return transformYUV(td, t);
+  else
+    return transformRGB(td, t);
+}
+
+
+int vsTransformFinish(VSTransformData* td){
+  if(td->crop == VSKeepBorder){
     // we have to store our result to video buffer
     // note: destbuf stores stabilized frame to be the default for next frame
-    copyFrame(&td->dest, &td->destbuf, &td->fiSrc);
+    vsFrameCopy(&td->dest, &td->destbuf, &td->fiSrc);
   }
   return VS_OK;
 }
 
 
-Transform getNextTransform(const TransformData* td, Transformations* trans){
+Transform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans){
     if(trans->len <=0 ) return null_transform();
     if (trans->current >= trans->len) {
         trans->current = trans->len;
@@ -175,14 +183,14 @@ Transform getNextTransform(const TransformData* td, Transformations* trans){
     return trans->ts[trans->current-1];
 }
 
-void initTransformations(Transformations* trans){
+void vsTransformationsInit(VSTransformations* trans){
     trans->ts = 0;
     trans->len = 0;
     trans->current = 0;
     trans->warned_end = 0;
 }
 
-void cleanupTransformations(Transformations* trans){
+void vsTransformationsCleanup(VSTransformations* trans){
     if (trans->ts) {
         vs_free(trans->ts);
         trans->ts = NULL;
@@ -192,7 +200,7 @@ void cleanupTransformations(Transformations* trans){
 
 
 /**
- * preprocessTransforms: does smoothing, relative to absolute conversion,
+ * vsPreprocessTransforms: does smoothing, relative to absolute conversion,
  *  and cropping of too large transforms.
  *  This is actually the core algorithm for canceling the jiggle in the
  *  movie. We perform a low-pass filter in terms of transformation size.
@@ -208,7 +216,7 @@ void cleanupTransformations(Transformations* trans){
  * Side effects:
  *     td->trans will be modified
  */
-int preprocessTransforms(TransformData* td, Transformations* trans)
+int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
 {
     Transform* ts = trans->ts;
     int i;
@@ -340,8 +348,8 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
 
 
 /**
- * lowPassTransforms: single step smoothing of transforms, using only the past.
- *  see also preprocessTransforms. Here only relative transformations are
+ * vsLowPassTransforms: single step smoothing of transforms, using only the past.
+ *  see also vsPreprocessTransforms. Here only relative transformations are
  *  considered (produced by motiondetection). Also cropping of too large transforms.
  *
  * Parameters:
@@ -353,7 +361,7 @@ int preprocessTransforms(TransformData* td, Transformations* trans)
  * Preconditions:
  *     None
  */
-Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
+Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
                             const Transform* trans)
 {
 

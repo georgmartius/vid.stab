@@ -1,6 +1,6 @@
 #define NUMCMP 2000
 
-int checkCompareImg(MotionDetect* md, unsigned char* frame){
+int checkCompareImg(VSMotionDetect* md, unsigned char* frame){
   int i;
   int error;
   uint8_t *Y_c;
@@ -21,15 +21,15 @@ int checkCompareImg(MotionDetect* md, unsigned char* frame){
 }
 
 void test_checkCompareImg(const TestData* testdata){
-	MotionDetect md;
+	VSMotionDetect md;
 
-  test_bool(initMotionDetect(&md, &testdata->fi, "test") == VS_OK);
+  test_bool(vsMotionDetectInit(&md, &testdata->fi, "test") == VS_OK);
   md.shakiness=6;
   md.accuracy=12;
   fflush(stdout);
-	test_bool(configureMotionDetect(&md)== VS_OK);
+	test_bool(vsMotionDetectConfigure(&md)== VS_OK);
 	test_bool(checkCompareImg(&md,testdata->frames[0]));
-	cleanupMotionDetection(&md);
+	vsMotionDetectionCleanup(&md);
 }
 
 

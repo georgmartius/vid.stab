@@ -32,7 +32,7 @@
 #endif
 
 /// name of the interpolation type
-const char* getInterpolationTypeName(InterpolType type);
+const char* getInterpolationTypeName(VSInterpolType type);
 
 #endif
 

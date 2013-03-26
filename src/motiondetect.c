@@ -42,6 +42,8 @@
 #include "localmotion2transform.h"
 #include "transformtype_operations.h"
 
+#define USE_SPIRAL_FIELD_CALC
+
 
 /* internal data structures */
 
@@ -51,7 +53,7 @@ typedef struct _contrast_idx {
   int index;
 } contrast_idx;
 
-int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi,
+int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi,
 		     const char* modName) {
   assert(md && fi);
   md->fi = *fi;
@@ -63,15 +65,15 @@ int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi,
     return VS_ERROR;
   }
 
-  allocateFrame(&md->prev, &md->fi);
-  if (isNullFrame(&md->prev)) {
+  vsFrameAllocate(&md->prev, &md->fi);
+  if (vsFrameIsNull(&md->prev)) {
     vs_log_error(md->modName, "malloc failed");
     return VS_ERROR;
   }
 
-  nullFrame(&md->curr);
-  nullFrame(&md->currorig);
-  nullFrame(&md->currtmp);
+  vsFrameNull(&md->curr);
+  vsFrameNull(&md->currorig);
+  vsFrameNull(&md->currtmp);
   md->hasSeenOneFrame = 0;
   md->frameNum = 0;
 
@@ -89,7 +91,7 @@ int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi,
   return VS_OK;
 }
 
-int configureMotionDetect(MotionDetect* md) {
+int vsMotionDetectConfigure(VSMotionDetect* md) {
   if (md->initialized != 1)
     return VS_ERROR;
 
@@ -128,27 +130,27 @@ int configureMotionDetect(MotionDetect* md) {
 		md->maxFields, md->fieldNum);
   }
   //  if (md->show)
-  allocateFrame(&md->curr,&md->fi);
-  allocateFrame(&md->currtmp, &md->fi);
+  vsFrameAllocate(&md->curr,&md->fi);
+  vsFrameAllocate(&md->currtmp, &md->fi);
 
   md->initialized = 2;
   return VS_OK;
 }
 
-void cleanupMotionDetection(MotionDetect* md) {
+void vsMotionDetectionCleanup(VSMotionDetect* md) {
   if(md->fields) {
     vs_free(md->fields);
     md->fields=0;
   }
-  freeFrame(&md->prev);
-  freeFrame(&md->curr);
-  freeFrame(&md->currtmp);
+  vsFrameFree(&md->prev);
+  vsFrameFree(&md->curr);
+  vsFrameFree(&md->currtmp);
 
   md->initialized = 0;
 }
 
 
-int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame) {
+int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame) {
   assert(md->initialized==2);
 
   md->currorig = *frame;
@@ -157,7 +159,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame) {
   if (md->fi.pFormat > PF_PACKED) {
     // we could calculate a grayscale version and use the PLANAR stuff afterwards
     // so far smoothing is only implemented for PLANAR
-    copyFrame(&md->curr, frame, &md->fi);
+    vsFrameCopy(&md->curr, frame, &md->fi);
   } else {
     // box-kernel smoothing (plain average of pixels), which is fine for us
     boxblurYUV(&md->curr, frame, &md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
@@ -188,7 +190,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame) {
 
   if(md->virtualTripod < 1 || md->frameNum < md->virtualTripod)
   // copy current frame (smoothed) to prev for next frame comparison
-  copyFrame(&md->prev, &md->curr, &md->fi);
+  vsFrameCopy(&md->prev, &md->curr, &md->fi);
   md->frameNum++;
   return VS_OK;
 }
@@ -198,7 +200,7 @@ int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame) {
     The size of the fields and the maxshift is used to
     calculate an optimal distribution in the frame.
 */
-int initFields(MotionDetect* md) {
+int initFields(VSMotionDetect* md) {
   int size = md->fieldSize;
   int rows = VS_MAX(3,(md->fi.height - md->maxShift*2)/size-1);
   int cols = VS_MAX(3,(md->fi.width - md->maxShift*2)/size-1);
@@ -292,7 +294,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
 
 
 /** \see contrastSubImg*/
-double contrastSubImgYUV(MotionDetect* md, const Field* field) {
+double contrastSubImgYUV(VSMotionDetect* md, const Field* field) {
 #ifdef USE_SSE2
   return contrastSubImg1_SSE(md->curr.data[0], field, md->curr.linesize[0],md->fi.height);
 #else
@@ -305,7 +307,7 @@ double contrastSubImgYUV(MotionDetect* md, const Field* field) {
    \see contrastSubImg_Michelson three times called with bytesPerPixel=3
    for all channels
 */
-double contrastSubImgRGB(MotionDetect* md, const Field* field) {
+double contrastSubImgRGB(VSMotionDetect* md, const Field* field) {
   unsigned char* const I = md->curr.data[0];
   int linesize2 = md->curr.linesize[0]/3; // linesize in pixels
   return (contrastSubImg(I, field, linesize2, md->fi.height, 3)
@@ -349,7 +351,7 @@ double contrastSubImg(unsigned char* const I, const Field* field, int width,
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-LocalMotions calcShiftRGBSimple(MotionDetect* md) {
+LocalMotions calcShiftRGBSimple(VSMotionDetect* md) {
   LocalMotions localmotions;
   vs_vector_init(&localmotions,1);
   LocalMotion lm;
@@ -383,7 +385,7 @@ LocalMotions calcShiftRGBSimple(MotionDetect* md) {
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-LocalMotions calcShiftYUVSimple(MotionDetect* md) {
+LocalMotions calcShiftYUVSimple(VSMotionDetect* md) {
   LocalMotions localmotions;
   vs_vector_init(&localmotions,1);
   LocalMotion lm;
@@ -430,7 +432,7 @@ LocalMotions calcShiftYUVSimple(MotionDetect* md) {
 /* calculates the optimal transformation for one field in YUV frames
  * (only luminance)
  */
-LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum) {
+LocalMotion calcFieldTransYUV(VSMotionDetect* md, const Field* field, int fieldnum) {
   int tx = 0;
   int ty = 0;
   uint8_t *Y_c = md->curr.data[0], *Y_p = md->prev.data[0];
@@ -578,7 +580,7 @@ LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field, int fieldnum
 /* calculates the optimal transformation for one field in RGB
  *   slower than the YUV version because it uses all three color channels
  */
-LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
+LocalMotion calcFieldTransRGB(VSMotionDetect* md, const Field* field,
                               int fieldnum) {
   int tx = 0;
   int ty = 0;
@@ -658,7 +660,7 @@ int cmp_contrast_idx(const void *ci1, const void* ci2) {
    first calc contrasts then select from each part of the
    frame a some fields
 */
-VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
+VSVector selectfields(VSMotionDetect* md, contrastSubImgFunc contrastfunc) {
   int i, j;
   VSVector goodflds;
   contrast_idx *ci =
@@ -738,7 +740,7 @@ VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc) {
  *   calculate rotation angle as cleaned mean of all angles
  *   compensate for possibly off-center rotation
  */
-LocalMotions calcTransFields(MotionDetect* md,
+LocalMotions calcTransFields(VSMotionDetect* md,
                              calcFieldTransFunc fieldfunc,
                              contrastSubImgFunc contrastfunc) {
   LocalMotions localmotions;
@@ -801,7 +803,7 @@ LocalMotions calcTransFields(MotionDetect* md,
 
 
 /** draws the field scanning area */
-void drawFieldScanArea(MotionDetect* md, const LocalMotion* lm) {
+void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* lm) {
   if (md->fi.pFormat > PF_PACKED)
     return;
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
@@ -809,7 +811,7 @@ void drawFieldScanArea(MotionDetect* md, const LocalMotion* lm) {
 }
 
 /** draws the field */
-void drawField(MotionDetect* md, const LocalMotion* lm) {
+void drawField(VSMotionDetect* md, const LocalMotion* lm) {
   if (md->fi.pFormat > PF_PACKED)
     return;
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
@@ -817,7 +819,7 @@ void drawField(MotionDetect* md, const LocalMotion* lm) {
 }
 
 /** draws the transform data of this field */
-void drawFieldTrans(MotionDetect* md, const LocalMotion* lm) {
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm) {
   if (md->fi.pFormat > PF_PACKED)
     return;
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
@@ -845,14 +847,14 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
   }
 }
 
-// void addTrans(MotionDetect* md, Transform sl) {
+// void addTrans(VSMotionDetect* md, Transform sl) {
 //   if (!md->transs) {
 //     md->transs = vs_list_new(0);
 //   }
 //   vs_list_append_dup(md->transs, &sl, sizeof(sl));
 // }
 
-// Transform getLastTransform(MotionDetect* md){
+// Transform getLastTransform(VSMotionDetect* md){
 //   if (!md->transs || !md->transs->head) {
 //     return null_transform();
 //   }

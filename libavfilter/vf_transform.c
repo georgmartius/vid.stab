@@ -42,9 +42,9 @@
 typedef struct {
     const AVClass* class;
 
-    TransformData td;
+    VSTransformData td;
 
-    Transformations trans; // transformations
+    VSTransformations trans; // transformations
     char* args;
     char* input;           // name of transform file
     int tripod;
@@ -53,7 +53,7 @@ typedef struct {
 /*** Commandline options ****/
 
 #define OFFSET(x) offsetof(TransformContext, x)
-#define OFFSETTD(x) (offsetof(TransformContext, td)+offsetof(TransformData, x))
+#define OFFSETTD(x) (offsetof(TransformContext, td)+offsetof(VSTransformData, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption transform_options[]= {
@@ -68,9 +68,9 @@ static const AVOption transform_options[]= {
     {"crop",      "keep: (def), black",                                             OFFSETTD(crop),
                    AV_OPT_TYPE_INT,    {.i64 = 0},        0, 1,    FLAGS, "crop"},
     {  "keep",    "keep border",                                                    0,
-                   AV_OPT_TYPE_CONST,  {.i64 = KeepBorder }, 0, 0, FLAGS, "crop"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VSKeepBorder }, 0, 0, FLAGS, "crop"},
     {  "black",   "black border",                                                   0,
-                   AV_OPT_TYPE_CONST,  {.i64 = CropBorder }, 0, 0, FLAGS, "crop"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VSCropBorder }, 0, 0, FLAGS, "crop"},
     {"invert",    "1: invert transforms(def: 0)",                                   OFFSETTD(invert),
                    AV_OPT_TYPE_INT,    {.i64 = 1},        0, 1,    FLAGS},
     {"relative",  "consider transforms as 0: absolute, 1: relative (def)",          OFFSETTD(relative),
@@ -82,13 +82,13 @@ static const AVOption transform_options[]= {
     {"interpol",  "type of interpolation, no, linear, bilinear (def) , bicubic",    OFFSETTD(interpolType),
                    AV_OPT_TYPE_INT,    {.i64 = 2},        0, 3,    FLAGS, "interpol"},
     {  "no",      "no interpolation",                                               0,
-                   AV_OPT_TYPE_CONST,  {.i64 = Zero  },   0, 0,    FLAGS, "interpol"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VS_Zero  },  0, 0,  FLAGS, "interpol"},
     {  "linear",  "linear (horizontal)",                                            0,
-                   AV_OPT_TYPE_CONST,  {.i64 = Linear },  0, 0,    FLAGS, "interpol"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VS_Linear }, 0, 0,  FLAGS, "interpol"},
     {  "bilinear","bi-linear",                                                      0,
-                   AV_OPT_TYPE_CONST,  {.i64 = BiLinear}, 0, 0,    FLAGS, "interpol"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VS_BiLinear},0, 0,  FLAGS, "interpol"},
     {  "bicubic", "bi-cubic",                                                       0,
-                   AV_OPT_TYPE_CONST,  {.i64 = BiCubic }, 0, 0,    FLAGS, "interpol"},
+                   AV_OPT_TYPE_CONST,  {.i64 = VS_BiCubic },0, 0,  FLAGS, "interpol"},
     {"tripod",    "if 1: virtual tripod mode (equiv. to relative=0:smoothing=0)",   OFFSET(tripod),
                    AV_OPT_TYPE_INT,    {.i64 = 0},        0, 1,    FLAGS},
     {NULL},
@@ -99,7 +99,7 @@ AVFILTER_DEFINE_CLASS(transform);
 /*** some conversions from avlib to vid.stab constants and functions ****/
 
 /** convert AV's pixelformat to vid.stab pixelformat */
-static PixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
+static VSPixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
 	switch(pf){
     case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
 		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
@@ -186,8 +186,8 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     av_opt_free(tc);
 
-    cleanupTransformData(&tc->td);
-    cleanupTransformations(&tc->trans);
+    vsTransformDataCleanup(&tc->td);
+    vsTransformationsCleanup(&tc->trans);
 
     av_free(tc->args);
     av_free(tc->input); // <- is this already free'd by av_opt_free?
@@ -218,14 +218,14 @@ static int config_input(AVFilterLink *inlink)
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
-    TransformData* td = &(tc->td);
+    VSTransformData* td = &(tc->td);
 
     VSFrameInfo fi_src;
     VSFrameInfo fi_dest;
 
-    if(!initFrameInfo(&fi_src, inlink->w, inlink->h,
+    if(!vsFrameInfoInit(&fi_src, inlink->w, inlink->h,
                       AV2VSPixelFormat(ctx,inlink->format)) ||
-       !initFrameInfo(&fi_dest, inlink->w, inlink->h,
+       !vsFrameInfoInit(&fi_dest, inlink->w, inlink->h,
                       AV2VSPixelFormat(ctx, inlink->format))){
         av_log(ctx, AV_LOG_ERROR, "unknown pixel format: %i (%s)",
                inlink->format, desc->name);
@@ -244,13 +244,13 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    if(initTransformData(td, &fi_src, &fi_dest, "transform") != VS_OK){
+    if(vsTransformDataInit(td, &fi_src, &fi_dest, "transform") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
         return AVERROR(EINVAL);
     }
     td->verbose=1; // TODO: get from somewhere
 
-    // we need to do it after initTransformData because otherwise the values are overwritten
+    // we need to do it after vsTransformDataInit because otherwise the values are overwritten
     if ((returnval = (av_set_options_string(tc, tc->args, "=", ":"))) < 0)
         return returnval;
 
@@ -263,11 +263,11 @@ static int config_input(AVFilterLink *inlink)
     /* can we get the input name from somewhere? */
     /* if (tc->args != NULL) { */
     /*     if(optstr_lookup(tc->options, "help")) { */
-    /*         av_log(ctx, AV_LOG_INFO, transform_help); */
+    /*         av_log(ctx, AV_LOG_INFO, vs_transform_help); */
     /*         return AVERROR(EINVAL); */
     /*     } */
 
-    if(configureTransformData(td)!= VS_OK){
+    if(vsTransformDataConfigure(td)!= VS_OK){
       av_log(ctx, AV_LOG_ERROR, "configuration of Tranform failed\n");
         return AVERROR(EINVAL);
     }
@@ -282,27 +282,27 @@ static int config_input(AVFilterLink *inlink)
     av_log(ctx, AV_LOG_INFO, "    invert    = %s\n", td->invert ? "True" : "False");
     av_log(ctx, AV_LOG_INFO, "    zoom      = %f\n", td->zoom);
     av_log(ctx, AV_LOG_INFO, "    optzoom   = %s\n", td->optZoom ? "On" : "Off");
-    av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", interpolTypes[td->interpolType]);
+    av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", getInterpolationTypeName(td->interpolType));
     av_log(ctx, AV_LOG_INFO, "    sharpen   = %f\n", td->sharpen);
 
     f = fopen(tc->input, "r");
     if (f == NULL) {
         av_log(ctx, AV_LOG_ERROR, "cannot open input file %s!\n", tc->input);
     } else {
-        ManyLocalMotions mlms;
-        if(readLocalMotionsFile(f,&mlms)==VS_OK){
+        VSManyLocalMotions mlms;
+        if(vsReadLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(localmotions2TransformsSimple(td, &mlms,&tc->trans)!=VS_OK)
+            if(vsLocalmotions2TransformsSimple(td, &mlms,&tc->trans)!=VS_OK)
                 av_log(ctx, AV_LOG_ERROR, "calculating transformations failed!\n");
         }else{ // try to read old format
-            if (!readOldTransforms(td, f, &tc->trans)) { /* read input file */
+            if (!vsReadOldTransforms(td, f, &tc->trans)) { /* read input file */
                 av_log(ctx, AV_LOG_ERROR, "error parsing input file %s!\n", tc->input);
             }
         }
     }
     fclose(f);
 
-    if (preprocessTransforms(td, &tc->trans)!= VS_OK ) {
+    if (vsPreprocessTransforms(td, &tc->trans)!= VS_OK ) {
         av_log(ctx, AV_LOG_ERROR, "error while preprocessing transforms\n");
         return AVERROR(EINVAL);
     }
@@ -316,7 +316,7 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     TransformContext *tc = ctx->priv;
-    TransformData* td = &(tc->td);
+    VSTransformData* td = &(tc->td);
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
     //const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
@@ -344,22 +344,19 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
         inframe.linesize[plane] = in->linesize[plane];
     }
     if(out == in){ // inplace
-        transformPrepare(td, &inframe, &inframe);
+        vsTransformPrepare(td, &inframe, &inframe);
     }else{ // seperate frames
         VSFrame outframe;
         for(plane=0; plane < td->fiDest.planes; plane++){
             outframe.data[plane] = out->data[plane];
             outframe.linesize[plane] = out->linesize[plane];
         }
-        transformPrepare(td, &inframe, &outframe);
+        vsTransformPrepare(td, &inframe, &outframe);
     }
 
-    if (tc->td.fiSrc.pFormat > PF_PACKED) {
-        transformRGB(td, getNextTransform(td, &tc->trans));
-    } else {
-        transformYUV(td, getNextTransform(td, &tc->trans));
-    }
-    transformFinish(td);
+    vsDoTransform(td, vsGetNextTransform(td, &tc->trans));
+
+    vsTransformFinish(td);
 
     if (!direct)
         av_frame_free(&in);

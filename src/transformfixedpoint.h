@@ -35,18 +35,19 @@
 #include <stdint.h>
 
 typedef int32_t fp8;
-typedef int32_t fp16; // also not definition of interpolFun in transform.h
+typedef int32_t fp16; // also ncot definition of interpolFun in transform.h
 
-struct _TransformData;
+struct _VSTransformData;
 
 /// does the actual transformation in RGB space
-int transformRGB(struct _TransformData* td, Transform t);
+int transformRGB(struct _VSTransformData* td, Transform t);
+
 /// does the actual transformation in YUV space
-int transformYUV(struct _TransformData* td, Transform t);
+int transformYUV(struct _VSTransformData* td, Transform t);
 
 // testing
 /// does the actual transformation in YUV space
-int transformYUV_orc(struct _TransformData* td, Transform t);
+int transformYUV_orc(struct _VSTransformData* td, Transform t);
 
 
 /* forward deklarations, please see .c file for documentation*/

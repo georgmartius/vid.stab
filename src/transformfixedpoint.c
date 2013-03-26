@@ -252,7 +252,7 @@ inline void interpolateN(unsigned char *rv, fp16 x, fp16 y,
  * Preconditions:
  *  The frame must be in RGB format
  */
-int transformRGB(TransformData* td, Transform t)
+int transformRGB(VSTransformData* td, Transform t)
 {
 	int x = 0, y = 0, k = 0;
 	uint8_t *D_1, *D_2;
@@ -312,16 +312,16 @@ int transformRGB(TransformData* td, Transform t)
  *  for angle and zoom we use val<<16
  *
  */
-int transformYUV(TransformData* td, Transform t)
+int transformYUV(VSTransformData* td, Transform t)
 {
 	int32_t x = 0, y = 0;
 	uint8_t *dat_1, *dat_2;
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
-    if(equalFrames(&td->src,&td->destbuf))
+    if(vsFramesEqual(&td->src,&td->destbuf))
       return VS_OK; // noop
     else {
-      copyFrame(&td->destbuf, &td->src, &td->fiSrc);
+      vsFrameCopy(&td->destbuf, &td->src, &td->fiSrc);
       return VS_OK;
     }
   }
@@ -330,8 +330,8 @@ int transformYUV(TransformData* td, Transform t)
   for(plane=0; plane< td->fiSrc.planes; plane++){
 		dat_1  = td->src.data[plane];
     dat_2  = td->destbuf.data[plane];
-    int wsub = getPlaneWidthSubS(&td->fiSrc,plane);
-    int hsub = getPlaneHeightSubS(&td->fiSrc,plane);
+    int wsub = vsGetPlaneWidthSubS(&td->fiSrc,plane);
+    int hsub = vsGetPlaneHeightSubS(&td->fiSrc,plane);
 		int dw = CHROMA_SIZE(td->fiDest.width , wsub);
 		int dh = CHROMA_SIZE(td->fiDest.height, hsub);
 		int sw = CHROMA_SIZE(td->fiSrc.width  , wsub);
@@ -393,7 +393,7 @@ int transformYUV(TransformData* td, Transform t)
 /*  *  for angle and zoom we use val<<16 */
 /*  * */
 /*  *\/ */
-/* int transformYUV_orc(TransformData* td, Transform t) */
+/* int transformYUV_orc(VSTransformData* td, Transform t) */
 /* { */
 /*     int32_t x = 0, y = 0; */
 /*     unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */

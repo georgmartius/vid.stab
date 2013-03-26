@@ -42,7 +42,7 @@
 typedef struct _stab_data {
     const AVClass* class;
 
-    MotionDetect md;
+    VSMotionDetect md;
     AVFilterBufferRef *ref;    ///< Previous frame
 
     char* args;
@@ -54,7 +54,7 @@ typedef struct _stab_data {
 /* ** Commandline options *** */
 
 #define OFFSET(x) offsetof(StabData, x)
-#define OFFSETMD(x) (offsetof(StabData, md)+offsetof(MotionDetect, x))
+#define OFFSETMD(x) (offsetof(StabData, md)+offsetof(VSMotionDetect, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption stabilize_options[]= {
@@ -75,7 +75,7 @@ AVFILTER_DEFINE_CLASS(stabilize);
 /* ** some conversions from avlib to vid.stab constants and functions *** */
 
 /** convert AV's pixelformat to vid.stab pixelformat */
-static PixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
+static VSPixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
 	switch(pf){
     case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
 		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
@@ -157,7 +157,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
 static av_cold void uninit(AVFilterContext *ctx)
 {
     StabData *sd = ctx->priv;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
 
     av_opt_free(sd);
     if (sd->f) {
@@ -165,7 +165,7 @@ static av_cold void uninit(AVFilterContext *ctx)
         sd->f = NULL;
     }
 
-    cleanupMotionDetection(md);
+    vsMotionDetectionCleanup(md);
     av_free(sd->result); // <- is this already free'd by av_opt_free?
     av_free(sd->args);
 }
@@ -192,11 +192,11 @@ static int config_input(AVFilterLink *inlink)
     StabData *sd = ctx->priv;
     int returnval;
 
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     VSFrameInfo fi;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
-    initFrameInfo(&fi,inlink->w, inlink->h, AV2VSPixelFormat(ctx, inlink->format));
+    vsFrameInfoInit(&fi,inlink->w, inlink->h, AV2VSPixelFormat(ctx, inlink->format));
     // check
     if(fi.bytesPerPixel != av_get_bits_per_pixel(desc)/8)
         av_log(ctx, AV_LOG_ERROR, "pixel-format error: wrong bits/per/pixel");
@@ -205,22 +205,22 @@ static int config_input(AVFilterLink *inlink)
     if(fi.log2ChromaH != desc->log2_chroma_h)
         av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_h");
 
-    if(initMotionDetect(md, &fi, "stabilize") != VS_OK){
+    if(vsMotionDetectInit(md, &fi, "stabilize") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed");
         return AVERROR(EINVAL);
     }
 
-    // we need to do it after initMotionDetect because otherwise the values are overwritten
+    // we need to do it after vsMotionDetectInit because otherwise the values are overwritten
     if ((returnval = (av_set_options_string(sd, sd->args, "=", ":"))) < 0)
         return returnval;
 
     // display help
     /* if(optstr_lookup(sd->options, "help")) { */
-    /*     av_log(ctx, AV_LOG_INFO, motiondetect_help); */
+    /*     av_log(ctx, AV_LOG_INFO, vs_motiondetect_help); */
     /*     return AVERROR(EINVAL); */
     /* } */
 
-    if(configureMotionDetect(md)!= VS_OK){
+    if(vsMotionDetectConfigure(md)!= VS_OK){
     	av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed\n");
         return AVERROR(EINVAL);
     }
@@ -239,7 +239,7 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_ERROR, "cannot open transform file %s!\n", sd->result);
         return AVERROR(EINVAL);
     }else{
-        if(prepareFile(md, sd->f) != VS_OK){
+        if(vsPrepareFile(md, sd->f) != VS_OK){
             av_log(ctx, AV_LOG_ERROR, "cannot write to transform file %s!\n", sd->result);
             return AVERROR(EINVAL);
         }
@@ -252,7 +252,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     StabData *sd = ctx->priv;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     LocalMotions localmotions;
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
@@ -277,11 +277,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         frame.data[plane] = in->data[plane];
         frame.linesize[plane] = in->linesize[plane];
     }
-    if(motionDetection(md, &localmotions, &frame) !=  VS_OK){
+    if(vsMotionDetection(md, &localmotions, &frame) !=  VS_OK){
         av_log(ctx, AV_LOG_ERROR, "motion detection failed");
         return AVERROR(AVERROR_EXTERNAL);
     } else {
-        if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+        if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
             av_log(ctx, AV_LOG_ERROR, "cannot write to transform file!");
             return AVERROR(EPERM);
         }

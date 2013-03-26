@@ -55,7 +55,7 @@ LocalMotion restoreLocalmotion(FILE* f){
   return lm;
 }
 
-int storeLocalmotions(FILE* f, const LocalMotions* lms){
+int vsStoreLocalmotions(FILE* f, const LocalMotions* lms){
   int len = vs_vector_size(lms);
   int i;
   fprintf(f,"List %i [",len);
@@ -68,7 +68,7 @@ int storeLocalmotions(FILE* f, const LocalMotions* lms){
 }
 
 /// restores local motions from file
-LocalMotions restoreLocalmotions(FILE* f){
+LocalMotions vsRestoreLocalmotions(FILE* f){
   LocalMotions lms;
   int i;
   char c;
@@ -98,7 +98,7 @@ LocalMotions restoreLocalmotions(FILE* f){
   return lms;
 }
 
-int prepareFile(const MotionDetect* md, FILE* f){
+int vsPrepareFile(const VSMotionDetect* md, FILE* f){
     if(!f) return VS_ERROR;
     fprintf(f, "VID.STAB 1\n");
 		//    fprintf(f, "#      accuracy = %d\n", md->accuracy);
@@ -110,18 +110,18 @@ int prepareFile(const MotionDetect* md, FILE* f){
     return VS_OK;
 }
 
-int writeToFile(const MotionDetect* md, FILE* f, const LocalMotions* lms){
+int vsWriteToFile(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
 	if(!f || !lms) return VS_ERROR;
 
 	if(fprintf(f, "Frame %i (", md->frameNum)>0
-		 && storeLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
+		 && vsStoreLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
 		return VS_OK;
 	else
 		return VS_ERROR;
 }
 
 /// reads the header of the file and return the version number
-int readFileVersion(FILE* f){
+int vsReadFileVersion(FILE* f){
 	if(!f) return VS_ERROR;
 	int version;
 	if(fscanf(f, "VID.STAB %i\n", &version)!=1)
@@ -129,7 +129,7 @@ int readFileVersion(FILE* f){
 	else return version;
 }
 
-int readFromFile(FILE* f, LocalMotions* lms){
+int vsReadFromFile(FILE* f, LocalMotions* lms){
 	char c = fgetc(f);
 	if(c=='F') {
 		int num;
@@ -137,7 +137,7 @@ int readFromFile(FILE* f, LocalMotions* lms){
 			vs_log_error(modname,"cannot read file, expect 'Frame num (...'");
 			return VS_ERROR;
 		}
-		*lms = restoreLocalmotions(f);
+		*lms = vsRestoreLocalmotions(f);
 		if(fscanf(f,")\n")<0) {
 			vs_log_error(modname,"cannot read file, expect '...)'");
 			return VS_ERROR;
@@ -146,9 +146,9 @@ int readFromFile(FILE* f, LocalMotions* lms){
 	} else if(c=='#') {
 		char l[1024];
     if(fgets(l, sizeof(l), f)==0) return VS_ERROR;
-		return readFromFile(f,lms);
+		return vsReadFromFile(f,lms);
 	} else if(c=='\n' || c==' ') {
-		return readFromFile(f,lms);
+		return vsReadFromFile(f,lms);
 	} else if(c==EOF) {
 		return VS_ERROR;
 	} else {
@@ -158,8 +158,8 @@ int readFromFile(FILE* f, LocalMotions* lms){
 	}
 }
 
-int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
-	int version = readFileVersion(f);
+int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
+	int version = vsReadFileVersion(f);
 	if(version<1) // old format or unknown
 		return VS_ERROR;
 	if(version>1){
@@ -173,7 +173,7 @@ int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
 	int index;
 	int oldindex = 0;
 	LocalMotions lms;
-	while((index = readFromFile(f,&lms)) != VS_ERROR){
+	while((index = vsReadFromFile(f,&lms)) != VS_ERROR){
 		if(index > oldindex+1){
 			vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
 									oldindex, index);
@@ -190,7 +190,7 @@ int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
 
 
 /**
- * readOldTransforms: read transforms file (Deprecated format)
+ * vsReadOldTransforms: read transforms file (Deprecated format)
  *  The format is as follows:
  *   Lines with # at the beginning are comments and will be ignored
  *   Data lines have 5 columns seperated by space or tab containing
@@ -205,7 +205,7 @@ int readLocalMotionsFile(FILE* f, ManyLocalMotions* mlms){
  *         number of transforms read
  * Preconditions: f is opened
  */
-int readOldTransforms(const TransformData* td, FILE* f , Transformations* trans)
+int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* trans)
 {
     char l[1024];
     int s = 0;
@@ -251,7 +251,7 @@ int readOldTransforms(const TransformData* td, FILE* f , Transformations* trans)
 }
 
 
-//     t = simpleMotionsToTransform(md, &localmotions);
+//     t = vsSimpleMotionsToTransform(md, &localmotions);
 
 
 /*

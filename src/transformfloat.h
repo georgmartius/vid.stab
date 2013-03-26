@@ -40,12 +40,12 @@
 #define _FLT(n) n
 #endif
 
-struct _TransformData;
+struct _VSTransformData;
 
 /// does the actual transformation in RGB space
-int _FLT(transformRGB)(struct _TransformData* td, Transform t);
+int _FLT(transformRGB)(struct _VSTransformData* td, Transform t);
 /// does the actual transformation in YUV space
-int _FLT(transformYUV)(struct _TransformData* td, Transform t);
+int _FLT(transformYUV)(struct _VSTransformData* td, Transform t);
 
 /**
  * interpolate: general interpolation function pointer for one channel image data
@@ -59,7 +59,7 @@ int _FLT(transformYUV)(struct _TransformData* td, Transform t);
  *            def: default value if coordinates are out of range
  * Return value:  None
  */
-typedef void (*_FLT(interpolateFun))(unsigned char *rv, float x, float y,
+typedef void (*_FLT(vsInterpolateFun))(unsigned char *rv, float x, float y,
                                unsigned char* img, int width, int height,
                                unsigned char def);
 

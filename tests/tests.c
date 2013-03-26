@@ -46,8 +46,8 @@ int main(int argc, char** argv){
 	int all = contains(argv,argc,"--all", "Perform all tests")!=0;
 
 	TestData testdata;
-	initFrameInfo(&testdata.fi,1280, 720, PF_YUV420P);
-	initFrameInfo(&testdata.fi_color, 640, 360, PF_GRAY8);
+	vsFrameInfoInit(&testdata.fi,1280, 720, PF_YUV420P);
+	vsFrameInfoInit(&testdata.fi_color, 640, 360, PF_GRAY8);
 
   if(contains(argv,argc,"--load",
 							"Load frames from files from frames/frame001.raw (def: generate)")!=0){
@@ -55,7 +55,7 @@ int main(int argc, char** argv){
     char name[128];
 		int i;
     for(i=0; i<5; i++){
-      allocateFrame(&testdata.frames[i],&testdata.fi);
+      vsFrameAllocate(&testdata.frames[i],&testdata.fi);
       sprintf(name,"../frames/frame%03i.raw",i+4);
       fprintf(stderr, "load file %s\n", name);
       file = fopen(name,"rb");

@@ -32,40 +32,40 @@
 
 /* type for a function that calculates the transformation of a certain field
  */
-typedef LocalMotion (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
+typedef LocalMotion (*calcFieldTransFunc)(VSMotionDetect*, const Field*, int);
 
 /* type for a function that calculates the contrast of a certain field
  */
-typedef double (*contrastSubImgFunc)(MotionDetect*, const Field*);
+typedef double (*contrastSubImgFunc)(VSMotionDetect*, const Field*);
 
 
-int initFields(MotionDetect* md);
+int initFields(VSMotionDetect* md);
 unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
                         int bytesPerPixel, int strive1, int strive2, int d_x, int d_y);
 
-double contrastSubImgYUV(MotionDetect* md, const Field* field);
-double contrastSubImgRGB(MotionDetect* md, const Field* field);
+double contrastSubImgYUV(VSMotionDetect* md, const Field* field);
+double contrastSubImgRGB(VSMotionDetect* md, const Field* field);
 double contrastSubImg(unsigned char* const I, const Field* field,
                       int width, int height, int bytesPerPixel);
 
 
 int cmp_contrast_idx(const void *ci1, const void* ci2);
-VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
+VSVector selectfields(VSMotionDetect* md, contrastSubImgFunc contrastfunc);
 
-LocalMotions calcShiftRGBSimple(MotionDetect* md);
-LocalMotions calcShiftYUVSimple(MotionDetect* md);
+LocalMotions calcShiftRGBSimple(VSMotionDetect* md);
+LocalMotions calcShiftYUVSimple(VSMotionDetect* md);
 
-LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field,
+LocalMotion calcFieldTransYUV(VSMotionDetect* md, const Field* field,
                             int fieldnum);
-LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
+LocalMotion calcFieldTransRGB(VSMotionDetect* md, const Field* field,
                             int fieldnum);
-LocalMotions calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
+LocalMotions calcTransFields(VSMotionDetect* md, calcFieldTransFunc fieldfunc,
                              contrastSubImgFunc contrastfunc);
 
 
-void drawFieldScanArea(MotionDetect* md, const LocalMotion* motion);
-void drawField(MotionDetect* md, const LocalMotion* motion);
-void drawFieldTrans(MotionDetect* md, const LocalMotion* motion);
+void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion);
+void drawField(VSMotionDetect* md, const LocalMotion* motion);
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion);
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
 

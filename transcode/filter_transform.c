@@ -49,10 +49,10 @@
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
 
 typedef struct {
-    TransformData td;
+    VSTransformData td;
     vob_t* vob;          // pointer to information structure
 
-    Transformations trans; // transformations
+    VSTransformations trans; // transformations
 
     char input[TC_BUF_LINE];
     char conf_str[TC_BUF_MIN];
@@ -97,7 +97,7 @@ static int transform_configure(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(self, "configure");
 
     fd = self->userdata;
-    TransformData* td = &(fd->td);
+    VSTransformData* td = &(fd->td);
 
     fd->vob = vob;
     if (!fd->vob)
@@ -107,18 +107,18 @@ static int transform_configure(TCModuleInstance *self,
 
     VSFrameInfo fi_src;
     VSFrameInfo fi_dest;
-    initFrameInfo(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
+    vsFrameInfoInit(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
-    initFrameInfo(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
+    vsFrameInfoInit(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
 
-    if(initTransformData(td, &fi_src, &fi_dest, MOD_NAME) != VS_OK){
-        tc_log_error(MOD_NAME, "initialization of TransformData failed");
+    if(vsTransformDataInit(td, &fi_src, &fi_dest, MOD_NAME) != VS_OK){
+        tc_log_error(MOD_NAME, "initialization of VSTransformData failed");
         return TC_ERROR;
     }
     td->verbose=verbose;
 
-    initTransformations(&fd->trans);
+    vsTransformationsInit(&fd->trans);
 
     filenamecopy = tc_strdup(fd->vob->video_in_file);
     filebasename = basename(filenamecopy);
@@ -136,7 +136,7 @@ static int transform_configure(TCModuleInstance *self,
     if (options != NULL) {
         // We support also the help option.
         if(optstr_lookup(options, "help")) {
-            tc_log_info(MOD_NAME,transform_help);
+            tc_log_info(MOD_NAME,vs_transform_help);
             return(TC_IMPORT_ERROR);
         }
         optstr_get(options, "input", "%[^:]", (char*)&fd->input);
@@ -157,7 +157,7 @@ static int transform_configure(TCModuleInstance *self,
         }
     }
 
-    if(configureTransformData(td)!= VS_OK){
+    if(vsTransformDataConfigure(td)!= VS_OK){
         tc_log_error(MOD_NAME, "configuration of TransformData failed");
         return TC_ERROR;
     }
@@ -178,7 +178,7 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "    optzoom   = %s",
                     td->optZoom ? "On" : "Off");
         tc_log_info(MOD_NAME, "    interpol  = %s",
-                    interpolTypes[td->interpolType]);
+                    getInterpolationTypeName(td->interpolType));
         tc_log_info(MOD_NAME, "    sharpen   = %f", td->sharpen);
     }
 
@@ -187,20 +187,20 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open input file %s!\n", fd->input);
         /* return (-1); when called using tcmodinfo this will fail */
     } else {
-        ManyLocalMotions mlms;
-        if(readLocalMotionsFile(f,&mlms)==VS_OK){
+        VSManyLocalMotions mlms;
+        if(vsReadLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(localmotions2TransformsSimple(td, &mlms,&fd->trans)!=VS_OK)
+            if(vsLocalmotions2TransformsSimple(td, &mlms,&fd->trans)!=VS_OK)
                 tc_log_error(MOD_NAME, "calculating transformations failed!\n");
         }else{ // try to read old format
-            if (!readOldTransforms(td, f, &fd->trans)) { /* read input file */
+            if (!vsReadOldTransforms(td, f, &fd->trans)) { /* read input file */
                 tc_log_error(MOD_NAME, "error parsing input file %s!\n", fd->input);
             }
         }
     }
     fclose(f);
 
-    if (preprocessTransforms(td, &fd->trans)!= VS_OK ) {
+    if (vsPreprocessTransforms(td, &fd->trans)!= VS_OK ) {
         tc_log_error(MOD_NAME, "error while preprocessing transforms!");
         return TC_ERROR;
     }
@@ -236,20 +236,15 @@ static int transform_filter_video(TCModuleInstance *self,
 
     fd = self->userdata;
     VSFrame vsFrame;
-    fillFrameFromBuffer(&vsFrame,frame->video_buf, &fd->td.fiSrc);
+    vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &fd->td.fiSrc);
 
-    transformPrepare(&fd->td, &vsFrame,  &vsFrame);
+    vsTransformPrepare(&fd->td, &vsFrame,  &vsFrame);
 
-    Transform t = getNextTransform(&fd->td, &fd->trans);
-    if (fd->vob->im_v_codec == CODEC_RGB) {
-        transformRGB(&fd->td, t);
-    } else if (fd->vob->im_v_codec == CODEC_YUV) {
-        transformYUV(&fd->td, t);
-    } else {
-        tc_log_error(MOD_NAME, "unsupported Codec: %i\n", fd->vob->im_v_codec);
-        return TC_ERROR;
-    }
-    transformFinish(&fd->td);
+    Transform t = vsGetNextTransform(&fd->td, &fd->trans);
+
+    vsDoTransform(&fd->td, t);
+
+    vsTransformFinish(&fd->td);
     return TC_OK;
 }
 
@@ -278,9 +273,9 @@ static int transform_stop(TCModuleInstance *self)
     FilterData *fd = NULL;
     TC_MODULE_SELF_CHECK(self, "stop");
     fd = self->userdata;
-    cleanupTransformData(&fd->td);
+    vsTransformDataCleanup(&fd->td);
 
-    cleanupTransformations(&fd->trans);
+    vsTransformationsCleanup(&fd->trans);
     return TC_OK;
 }
 
@@ -307,7 +302,7 @@ static int transform_inspect(TCModuleInstance *self,
     fd = self->userdata;
 
     if (optstr_lookup(param, "help")) {
-        *value = transform_help;
+        *value = vs_transform_help;
     }
     CHECKPARAM("maxshift", "maxshift=%d",  fd->td.maxShift);
     CHECKPARAM("maxangle", "maxangle=%f",  fd->td.maxAngle);

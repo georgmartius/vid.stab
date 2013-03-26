@@ -118,7 +118,7 @@ int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi)
 
 
   // read in rest of data
-	allocateFrame(frame,fi);
+	vsFrameAllocate(frame,fi);
   if (fread( frame->data[0], fi->width*fi->height, 1, f) != 1){
     vs_log_error("TEST", "Can't read data from image file '%s'", filename);
     return 0;

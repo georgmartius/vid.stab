@@ -19,21 +19,21 @@ int openmptest(){
   return end-start;
 }
 int openmp(){
-	fprintf(stderr, "Processors: %i, Max # theads: %i\n", omp_get_num_procs(), omp_get_max_threads());
+  fprintf(stderr, "Processors: %i, Max # theads: %i\n", omp_get_num_procs(), omp_get_max_threads());
 
-	int time, timeref;
-	omp_set_dynamic( 0 );
-	omp_set_num_threads( 1 );
-	fprintf(stderr,"********** omp speedtest:\n");
-	time = openmptest();
-	fprintf(stderr,"***C    time: %i ms\n",  time);
-	timeref=time;
-	omp_set_dynamic( 0 );
-	omp_set_num_threads( 2 );
-	time = openmptest();
-	fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
-					(double)timeref/time);
-	omp_set_dynamic( 1 );
-	return 1;
+  int time, timeref;
+  omp_set_dynamic( 0 );
+  omp_set_num_threads( 1 );
+  fprintf(stderr,"********** omp speedtest:\n");
+  time = openmptest();
+  fprintf(stderr,"***C    time: %i ms\n",  time);
+  timeref=time;
+  omp_set_dynamic( 0 );
+  omp_set_num_threads( 2 );
+  time = openmptest();
+  fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
+          (double)timeref/time);
+  omp_set_dynamic( 1 );
+  return 1;
 }
 #endif

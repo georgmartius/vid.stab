@@ -187,7 +187,7 @@ static int stabilize_configure(TCModuleInstance *self,
     }
 
     if(vsMotionDetectConfigure(md)!= VS_OK){
-    	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
+      tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
         return TC_ERROR;
     }
 
@@ -248,8 +248,8 @@ static int stabilize_filter_video(TCModuleInstance *self,
     vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
     if(vsMotionDetection(md, &localmotions, &vsFrame)!= VS_OK){
-    	tc_log_error(MOD_NAME, "motion detection failed");
-    	return TC_ERROR;
+      tc_log_error(MOD_NAME, "motion detection failed");
+      return TC_ERROR;
     }
     if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
         vs_vector_del(&localmotions);
@@ -298,7 +298,7 @@ static int stabilize_stop(TCModuleInstance *self)
  */
 
 static int stabilize_inspect(TCModuleInstance *self,
-			     const char *param, const char **value)
+           const char *param, const char **value)
 {
     StabData *sd = NULL;
 

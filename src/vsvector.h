@@ -29,9 +29,9 @@
 */
 typedef struct vsvector_ VSVector;
 struct vsvector_ {
-  void**	data;
-  int		buffersize;
-  int		nelems;
+  void**  data;
+  int    buffersize;
+  int    nelems;
 };
 
 /**

@@ -7,6 +7,11 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 
 include (FindSSE)
 
+set(MAJOR_VERSION 0)
+set(MINOR_VERSION 9)
+set(PATCH_VERSION 6)
+set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
+
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC )
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 
@@ -31,12 +36,17 @@ set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedp
   motiondetect.c motiondetect_opt.c serialize.c
 	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
 
-set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h 
+set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h
   motiondetect.h serialize.h localmotion2transform.h boxblur.h vsvector.h )
 
+
 # Create the vidstab library
-add_library (vidstab STATIC ${SOURCES})
-add_library (vidstab-0.9 SHARED ${SOURCES})
+# add_library (vidstab STATIC ${SOURCES})
+add_library (vidstab SHARED ${SOURCES})
+
+#set version of lib
+set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})
+
 
 target_link_libraries(vidstab m)
 if(ORC_FOUND)
@@ -46,13 +56,17 @@ if(USE_OMP)
 target_link_libraries(vidstab gomp)
 endif()
 
+
 #if(!NOHEADERS)
 FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
 INSTALL(FILES ${HEADERS} DESTINATION include/vid.stab)
 #endif()
 
-INSTALL(TARGETS vidstab vidstab-0.9
+INSTALL(TARGETS vidstab
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
 )
+
+include(create_pkgconfig_file)
+create_pkgconfig_file(vidstab "Vid.Stab, a library for stabilizing video clips")

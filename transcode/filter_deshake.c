@@ -39,7 +39,7 @@
 
 #define MOD_FEATURES                                    \
   TC_MODULE_FEATURE_FILTER|TC_MODULE_FEATURE_VIDEO
-#define MOD_FLAGS					\
+#define MOD_FLAGS          \
   TC_MODULE_FLAG_RECONFIGURABLE | TC_MODULE_FLAG_DELAY
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
@@ -165,7 +165,7 @@ static int deshake_fini(TCModuleInstance *self)
  * tcmodule-data.h for function details.
  */
 static int deshake_configure(TCModuleInstance *self,
-			     const char *options, vob_t *vob)
+           const char *options, vob_t *vob)
 {
   DeshakeData *sd = NULL;
   TC_MODULE_SELF_CHECK(self, "configure");
@@ -174,7 +174,7 @@ static int deshake_configure(TCModuleInstance *self,
   sd = self->userdata;
 
   /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
-	sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
+  sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
   VSMotionDetect* md = &(sd->md);
   VSTransformData* td = &(sd->td);
@@ -196,7 +196,7 @@ static int deshake_configure(TCModuleInstance *self,
     tc_snprintf(sd->result, TC_BUF_LINE, "%s.trf", filebasename);
   } else {
     tc_log_warn(MOD_NAME, "input name too long, using default `%s'",
-		DEFAULT_TRANS_FILE_NAME);
+    DEFAULT_TRANS_FILE_NAME);
     tc_snprintf(sd->result, TC_BUF_LINE, DEFAULT_TRANS_FILE_NAME);
   }
 
@@ -262,10 +262,10 @@ static int deshake_configure(TCModuleInstance *self,
     tc_log_info(MOD_NAME, "    maxshift  = %d", td->maxShift);
     tc_log_info(MOD_NAME, "    maxangle  = %f", td->maxAngle);
     tc_log_info(MOD_NAME, "         crop = %s",
-		td->crop ? "Black" : "Keep");
+    td->crop ? "Black" : "Keep");
     tc_log_info(MOD_NAME, "         zoom = %f", td->zoom);
     tc_log_info(MOD_NAME, "      optzoom = %s",
-		td->optZoom ? "On" : "Off");
+    td->optZoom ? "On" : "Off");
     tc_log_info(MOD_NAME, "     interpol = %s",
                 getInterpolationTypeName(td->interpolType));
     tc_log_info(MOD_NAME, "      sharpen = %f", td->sharpen);
@@ -290,7 +290,7 @@ static int deshake_configure(TCModuleInstance *self,
  */
 
 static int deshake_filter_video(TCModuleInstance *self,
-				vframe_list_t *frame)
+                                vframe_list_t *frame)
 {
   DeshakeData *sd = NULL;
 
@@ -359,10 +359,10 @@ static int deshake_stop(TCModuleInstance *self)
 
 /* checks for parameter in function _inspect */
 #define CHECKPARAM(paramname, formatstring, variable)   \
-  if (optstr_lookup(param, paramname)) {		\
-    tc_snprintf(sd->conf_str, sizeof(sd->conf_str),	\
-		formatstring, variable);		\
-    *value = sd->conf_str;				\
+  if (optstr_lookup(param, paramname)) {    \
+    tc_snprintf(sd->conf_str, sizeof(sd->conf_str),  \
+    formatstring, variable);    \
+    *value = sd->conf_str;        \
   }
 
 /**
@@ -371,7 +371,7 @@ static int deshake_stop(TCModuleInstance *self)
  */
 
 static int deshake_inspect(TCModuleInstance *self,
-			   const char *param, const char **value)
+         const char *param, const char **value)
 {
   DeshakeData *sd = NULL;
 
@@ -431,7 +431,7 @@ static int deshake_get_config(TCModuleInstance *self, char *options)
   TC_MODULE_SELF_CHECK(self, "get_config");
 
   optstr_filter_desc(options, MOD_NAME, MOD_CAP, MOD_VERSION,
-		     MOD_AUTHOR, "VRY4", "1");
+         MOD_AUTHOR, "VRY4", "1");
 
   return TC_OK;
 }

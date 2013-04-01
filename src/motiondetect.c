@@ -54,7 +54,7 @@ typedef struct _contrast_idx {
 } contrast_idx;
 
 int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi,
-		     const char* modName) {
+         const char* modName) {
   assert(md && fi);
   md->fi = *fi;
   md->modName = modName;
@@ -119,7 +119,7 @@ int vsMotionDetectConfigure(VSMotionDetect* md) {
 #endif
 
   vs_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel\n",
-	      md->fieldSize, md->maxShift);
+        md->fieldSize, md->maxShift);
   if (md->algo == 1) {
     // initialize measurement fields. field_num is set here.
     if (!initFields(md)) {
@@ -127,7 +127,7 @@ int vsMotionDetectConfigure(VSMotionDetect* md) {
     }
     md->maxFields = (md->accuracy) * md->fieldNum / 15;
     vs_log_info(md->modName, "Number of used measurement fields: %i out of %i\n",
-		md->maxFields, md->fieldNum);
+    md->maxFields, md->fieldNum);
   }
   //  if (md->show)
   vsFrameAllocate(&md->curr,&md->fi);
@@ -833,7 +833,7 @@ void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm) {
  (the same for all channels)
 */
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
-	     int y, int sizex, int sizey, unsigned char color) {
+       int y, int sizex, int sizey, unsigned char color) {
 
   unsigned char* p = NULL;
   int j, k;
@@ -866,8 +866,8 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
 /// plain C implementation of compareSubImg (without ORC)
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width1, int width2, int height,
-			     int bytesPerPixel, int d_x, int d_y,
-			     unsigned int threshold) {
+           int bytesPerPixel, int d_x, int d_y,
+           unsigned int threshold) {
   int k, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;

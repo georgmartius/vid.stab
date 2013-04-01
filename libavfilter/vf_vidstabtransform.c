@@ -1,33 +1,29 @@
 /*
- *  vf_transform.c
+ *  vf_vidstabtransform.c
  *
  *  Copyright (C) Georg Martius - Jan 2012
  *   georg dot martius at web dot de
  *
- *  This file is part of vid.stab, video deshaking lib
+ * This file is part of FFmpeg.
  *
- *  vid.stab is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
- *  vid.stab is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- */
-
-/* Typical call:
- *  ffmpeg -i inp.mpeg -vf transform,unsharp=5:5:0.8:3:3:0.4 inp_s.mpeg
- *  all parameters are optional
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
 #define DEFAULT_INPUT_NAME     "transforms.trf"
+
+#include <vid.stab/libvidstab.h>
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
@@ -35,8 +31,6 @@
 // #include "libavcodec/dsputil.h"
 #include "avfilter.h"
 #include "internal.h"
-
-#include <vid.stab/libvidstab.h>
 
 /* private date structure of this filter*/
 typedef struct {
@@ -56,7 +50,7 @@ typedef struct {
 #define OFFSETTD(x) (offsetof(TransformContext, td)+offsetof(VSTransformData, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
-static const AVOption transform_options[]= {
+static const AVOption vidstabtransform_options[]= {
     {"input",     "path to the file storing the transforms (def:transforms.trf)",   OFFSET(input),
                    AV_OPT_TYPE_STRING, {.str = DEFAULT_INPUT_NAME} },
     {"smoothing", "number of frames*2 + 1 used for lowpass filtering (def: 10)",    OFFSETTD(smoothing),
@@ -94,28 +88,28 @@ static const AVOption transform_options[]= {
     {NULL},
 };
 
-AVFILTER_DEFINE_CLASS(transform);
+AVFILTER_DEFINE_CLASS(vidstabtransform);
 
 /*** some conversions from avlib to vid.stab constants and functions ****/
 
 /** convert AV's pixelformat to vid.stab pixelformat */
-static VSPixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
-	switch(pf){
+static VSPixelFormat av_2_vs_pixel_format(AVFilterContext *ctx, enum AVPixelFormat pf){
+    switch(pf){
     case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
-		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
-		case AV_PIX_FMT_YUV444P:	return PF_YUV444P;
-		case AV_PIX_FMT_YUV410P:	return PF_YUV410P;
-		case AV_PIX_FMT_YUV411P:	return PF_YUV411P;
-		case AV_PIX_FMT_YUV440P:	return PF_YUV440P;
-		case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
-		case AV_PIX_FMT_GRAY8:		return PF_GRAY8;
-		case AV_PIX_FMT_RGB24:		return PF_RGB24;
-		case AV_PIX_FMT_BGR24:		return PF_BGR24;
-		case AV_PIX_FMT_RGBA:		  return PF_RGBA;
-	default:
-		av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i!\n", pf);
-		return PF_NONE;
-	}
+    case AV_PIX_FMT_YUV422P:  return PF_YUV422P;
+    case AV_PIX_FMT_YUV444P:  return PF_YUV444P;
+    case AV_PIX_FMT_YUV410P:  return PF_YUV410P;
+    case AV_PIX_FMT_YUV411P:  return PF_YUV411P;
+    case AV_PIX_FMT_YUV440P:  return PF_YUV440P;
+    case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
+    case AV_PIX_FMT_GRAY8:    return PF_GRAY8;
+    case AV_PIX_FMT_RGB24:    return PF_RGB24;
+    case AV_PIX_FMT_BGR24:    return PF_BGR24;
+    case AV_PIX_FMT_RGBA:     return PF_RGBA;
+    default:
+        av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i\n", pf);
+        return PF_NONE;
+    }
 }
 
 
@@ -128,7 +122,7 @@ typedef struct {
 static int av_log_wrapper(int type, const char* tag, const char* format, ...){
     va_list ap;
     TransformLogCtx ctx;
-    ctx.class = &transform_class;
+    ctx.class = &vidstabtransform_class;
     av_log(&ctx,  type, "%s: ", tag);
     va_start (ap, format);
     av_vlog(&ctx, type, format, ap);
@@ -137,7 +131,7 @@ static int av_log_wrapper(int type, const char* tag, const char* format, ...){
 }
 
 /** sets the memory allocation function and logging constants to av versions */
-static void setMemAndLogFunctions(void){
+static void set_mem_and_log_functions(void){
     vs_malloc  = av_malloc;
     vs_zalloc  = av_mallocz;
     vs_realloc = av_realloc;
@@ -165,17 +159,16 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
 
     TransformContext* tc = ctx->priv;
 
-    setMemAndLogFunctions();
+    set_mem_and_log_functions();
 
-    tc->class = &transform_class;
+    tc->class = &vidstabtransform_class;
     av_opt_set_defaults(tc); // the default values are overwritten by initMotiondetect later
 
-    av_log(ctx, AV_LOG_VERBOSE, "transform filter: init %s\n", LIBVIDSTAB_VERSION);
+    av_log(ctx, AV_LOG_VERBOSE, "vidstabtransform filter: init %s\n", LIBVIDSTAB_VERSION);
 
     // save args for later, because the initialization of the vid.stab library requires
     //  knowledge about the input.
-    if(args)
-        tc->args=av_strdup(args);
+    tc->args=av_strdup(args);
 
     return 0;
 }
@@ -190,7 +183,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     vsTransformationsCleanup(&tc->trans);
 
     av_free(tc->args);
-    av_free(tc->input); // <- is this already free'd by av_opt_free?
 }
 
 
@@ -224,9 +216,9 @@ static int config_input(AVFilterLink *inlink)
     VSFrameInfo fi_dest;
 
     if(!vsFrameInfoInit(&fi_src, inlink->w, inlink->h,
-                      AV2VSPixelFormat(ctx,inlink->format)) ||
+                      av_2_vs_pixel_format(ctx,inlink->format)) ||
        !vsFrameInfoInit(&fi_dest, inlink->w, inlink->h,
-                      AV2VSPixelFormat(ctx, inlink->format))){
+                      av_2_vs_pixel_format(ctx, inlink->format))){
         av_log(ctx, AV_LOG_ERROR, "unknown pixel format: %i (%s)",
                inlink->format, desc->name);
         return AVERROR(EINVAL);
@@ -244,7 +236,7 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    if(vsTransformDataInit(td, &fi_src, &fi_dest, "transform") != VS_OK){
+    if(vsTransformDataInit(td, &fi_src, &fi_dest, "vidstabtransform") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
         return AVERROR(EINVAL);
     }
@@ -260,19 +252,12 @@ static int config_input(AVFilterLink *inlink)
         td->smoothing=0;
     }
 
-    /* can we get the input name from somewhere? */
-    /* if (tc->args != NULL) { */
-    /*     if(optstr_lookup(tc->options, "help")) { */
-    /*         av_log(ctx, AV_LOG_INFO, vs_transform_help); */
-    /*         return AVERROR(EINVAL); */
-    /*     } */
-
     if(vsTransformDataConfigure(td)!= VS_OK){
       av_log(ctx, AV_LOG_ERROR, "configuration of Tranform failed\n");
         return AVERROR(EINVAL);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Image Transformation/Stabilization Settings:\n");
+    av_log(ctx, AV_LOG_INFO, "Video transformation/stabilization settings (pass 2/2):\n");
     av_log(ctx, AV_LOG_INFO, "    input     = %s\n", tc->input);
     av_log(ctx, AV_LOG_INFO, "    smoothing = %d\n", td->smoothing);
     av_log(ctx, AV_LOG_INFO, "    maxshift  = %d\n", td->maxShift);
@@ -287,16 +272,20 @@ static int config_input(AVFilterLink *inlink)
 
     f = fopen(tc->input, "r");
     if (f == NULL) {
-        av_log(ctx, AV_LOG_ERROR, "cannot open input file %s!\n", tc->input);
+        av_log(ctx, AV_LOG_ERROR, "cannot open input file %s\n", tc->input);
+        return AVERROR(errno);
     } else {
         VSManyLocalMotions mlms;
         if(vsReadLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(vsLocalmotions2TransformsSimple(td, &mlms,&tc->trans)!=VS_OK)
-                av_log(ctx, AV_LOG_ERROR, "calculating transformations failed!\n");
+            if(vsLocalmotions2TransformsSimple(td, &mlms,&tc->trans)!=VS_OK){
+                av_log(ctx, AV_LOG_ERROR, "calculating transformations failed\n");
+                return AVERROR(EINVAL);
+            }
         }else{ // try to read old format
             if (!vsReadOldTransforms(td, f, &tc->trans)) { /* read input file */
-                av_log(ctx, AV_LOG_ERROR, "error parsing input file %s!\n", tc->input);
+                av_log(ctx, AV_LOG_ERROR, "error parsing input file %s\n", tc->input);
+                return AVERROR(EINVAL);
             }
         }
     }
@@ -319,9 +308,6 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
     VSTransformData* td = &(tc->td);
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
-    //const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
-    //int hsub0 = desc->log2_chroma_w;
-    //int vsub0 = desc->log2_chroma_h;
     int direct = 0;
     AVFrame *out;
     VSFrame inframe;
@@ -364,19 +350,17 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
     return ff_filter_frame(outlink, out);
 }
 
-static const AVFilterPad avfilter_vf_transform_inputs[] = {
+static const AVFilterPad avfilter_vf_vidstabtransform_inputs[] = {
     {
         .name             = "default",
         .type             = AVMEDIA_TYPE_VIDEO,
-        .get_video_buffer = ff_null_get_video_buffer,
         .filter_frame     = filter_frame,
         .config_props     = config_input,
-        .min_perms        = AV_PERM_READ,
     },
     { NULL }
 };
 
-static const AVFilterPad avfilter_vf_transform_outputs[] = {
+static const AVFilterPad avfilter_vf_vidstabtransform_outputs[] = {
     {
         .name             = "default",
         .type             = AVMEDIA_TYPE_VIDEO,
@@ -384,18 +368,19 @@ static const AVFilterPad avfilter_vf_transform_outputs[] = {
     { NULL }
 };
 
-AVFilter avfilter_vf_transform = {
-    .name          = "transform",
-    .description   = NULL_IF_CONFIG_SMALL("transforms each frame according to transformations\n\
-    given in an input file (e.g. translation, rotate) see also filter stabilize."),
+AVFilter avfilter_vf_vidstabtransform = {
+    .name          = "vidstabtransform",
+    .description   = NULL_IF_CONFIG_SMALL("pass 2 of stabilization"
+                                          "transforms the frames"
+                                          "(see vidstabdetect for pass 1)"),
     .priv_size     = sizeof(TransformContext),
     .init          = init,
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs        = avfilter_vf_transform_inputs,
-    .outputs       = avfilter_vf_transform_outputs,
-    .priv_class    = &transform_class,
+    .inputs        = avfilter_vf_vidstabtransform_inputs,
+    .outputs       = avfilter_vf_vidstabtransform_outputs,
+    .priv_class    = &vidstabtransform_class,
 
 };
 

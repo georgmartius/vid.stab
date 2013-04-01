@@ -29,15 +29,15 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-#define VS_MAX(a, b)		(((a) > (b)) ?(a) :(b))
-#define VS_MIN(a, b)		(((a) < (b)) ?(a) :(b))
+#define VS_MAX(a, b)    (((a) > (b)) ?(a) :(b))
+#define VS_MIN(a, b)    (((a) < (b)) ?(a) :(b))
 /* clamp x between a and b */
-#define VS_CLAMP(x, a, b)	VS_MIN(VS_MAX((a), (x)), (b))
+#define VS_CLAMP(x, a, b)  VS_MIN(VS_MAX((a), (x)), (b))
 
 #define VS_DEBUG 2
 
 /// pixel in single layer image
-#define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? (def)	\
+#define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? (def)  \
   : (((x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (w)])
 /// pixel in single layer image without rangecheck
 #define PIX(img, x, y, w, h) (img[(x) + (y) * (w)])

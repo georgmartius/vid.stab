@@ -1,33 +1,29 @@
 /*
- *  vf_stabilize.c
+ *  vf_vidstabdetect.c
  *
  *  Copyright (C) Georg Martius - Jan 2012
  *   georg dot martius at web dot de
  *
- *  This file is part of vid.stab, video deshaking lib
+ * This file is part of FFmpeg.
  *
- *  vid.stab is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
- *  vid.stab is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- */
-
-/* Typical call: (This will visualize some internals in the video)
- *  ffmpeg -i input -vf stabilize=shakiness=5:show=1 dummy.avi
- *  all parameters are optional
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
 #define DEFAULT_RESULT_NAME     "transforms.trf"
+
+#include <vid.stab/libvidstab.h>
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
@@ -36,14 +32,11 @@
 #include "avfilter.h"
 #include "internal.h"
 
-#include <vid.stab/libvidstab.h>
-
 /* private date structure of this filter*/
 typedef struct _stab_data {
     const AVClass* class;
 
     VSMotionDetect md;
-    AVFilterBufferRef *ref;    ///< Previous frame
 
     char* args;
     char* result;
@@ -57,41 +50,41 @@ typedef struct _stab_data {
 #define OFFSETMD(x) (offsetof(StabData, md)+offsetof(VSMotionDetect, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
-static const AVOption stabilize_options[]= {
+static const AVOption vidstabdetect_options[]= {
     {"result",      "path to the file used to write the transforms (def:transforms.trf)", OFFSET(result),              AV_OPT_TYPE_STRING, {.str = DEFAULT_RESULT_NAME}},
-    {"shakiness",   "how shaky is the video and how quick is the camera?\n"
-                    "    1: little (fast) 10: very strong/quick (slow) (def: 5)",         OFFSETMD(shakiness),         AV_OPT_TYPE_INT,    {.i64 = 5},  1, 10,       FLAGS},
+    {"shakiness",   "how shaky is the video and how quick is the camera?"
+                    " 1: little (fast) 10: very strong/quick (slow) (def: 5)",            OFFSETMD(shakiness),         AV_OPT_TYPE_INT,    {.i64 = 5},  1, 10,       FLAGS},
     {"accuracy",    "(>=shakiness) 1: low 15: high (slow) (def: 9)",                      OFFSETMD(accuracy),          AV_OPT_TYPE_INT,    {.i64 = 9 }, 1, 15,       FLAGS},
     {"stepsize",    "region around minimum is scanned with 1 pixel resolution (def: 6)",  OFFSETMD(stepSize),          AV_OPT_TYPE_INT,    {.i64 = 6},  1, 32,       FLAGS},
     {"mincontrast", "below this contrast a field is discarded (0-1) (def: 0.3)",          OFFSETMD(contrastThreshold), AV_OPT_TYPE_DOUBLE, {.dbl =  0.25}, 0.0, 1.0, FLAGS},
     {"show",        "0: draw nothing (def); 1,2: show fields and transforms",             OFFSETMD(show),              AV_OPT_TYPE_INT,    {.i64 =  0}, 0, 2,        FLAGS},
-    {"tripod",      "virtual tripod mode (if >0): motion is compared to a reference\n"
-                    "    reference frame (frame # is the value) (def: 0)",                OFFSETMD(virtualTripod),     AV_OPT_TYPE_INT,    {.i64 = 0},  0, INT_MAX,  FLAGS},
+    {"tripod",      "virtual tripod mode (if >0): motion is compared to a reference"
+                    " reference frame (frame # is the value) (def: 0)",                   OFFSETMD(virtualTripod),     AV_OPT_TYPE_INT,    {.i64 = 0},  0, INT_MAX,  FLAGS},
     {NULL},
 };
 
-AVFILTER_DEFINE_CLASS(stabilize);
+AVFILTER_DEFINE_CLASS(vidstabdetect);
 
 /* ** some conversions from avlib to vid.stab constants and functions *** */
 
 /** convert AV's pixelformat to vid.stab pixelformat */
-static VSPixelFormat AV2VSPixelFormat(AVFilterContext *ctx, enum AVPixelFormat pf){
-	switch(pf){
+static VSPixelFormat av_2_vs_pixel_format(AVFilterContext *ctx, enum AVPixelFormat pf){
+    switch(pf){
     case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
-		case AV_PIX_FMT_YUV422P:	return PF_YUV422P;
-		case AV_PIX_FMT_YUV444P:	return PF_YUV444P;
-		case AV_PIX_FMT_YUV410P:	return PF_YUV410P;
-		case AV_PIX_FMT_YUV411P:	return PF_YUV411P;
-		case AV_PIX_FMT_YUV440P:	return PF_YUV440P;
-		case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
-		case AV_PIX_FMT_GRAY8:		return PF_GRAY8;
-		case AV_PIX_FMT_RGB24:		return PF_RGB24;
-		case AV_PIX_FMT_BGR24:		return PF_BGR24;
-		case AV_PIX_FMT_RGBA:		  return PF_RGBA;
-	default:
-		av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i!\n", pf);
-		return PF_NONE;
-	}
+    case AV_PIX_FMT_YUV422P:  return PF_YUV422P;
+    case AV_PIX_FMT_YUV444P:  return PF_YUV444P;
+    case AV_PIX_FMT_YUV410P:  return PF_YUV410P;
+    case AV_PIX_FMT_YUV411P:  return PF_YUV411P;
+    case AV_PIX_FMT_YUV440P:  return PF_YUV440P;
+    case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
+    case AV_PIX_FMT_GRAY8:    return PF_GRAY8;
+    case AV_PIX_FMT_RGB24:    return PF_RGB24;
+    case AV_PIX_FMT_BGR24:    return PF_BGR24;
+    case AV_PIX_FMT_RGBA:     return PF_RGBA;
+    default:
+        av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i\n", pf);
+        return PF_NONE;
+    }
 }
 
 /// struct to hold a valid context for logging from within vid.stab lib
@@ -103,7 +96,7 @@ typedef struct {
 static int av_log_wrapper(int type, const char* tag, const char* format, ...){
     va_list ap;
     StabLogCtx ctx;
-    ctx.class = &stabilize_class;
+    ctx.class = &vidstabdetect_class;
     av_log(&ctx,  type, "%s: ", tag);
     va_start (ap, format);
     av_vlog(&ctx, type, format, ap);
@@ -112,7 +105,7 @@ static int av_log_wrapper(int type, const char* tag, const char* format, ...){
 }
 
 /** sets the memory allocation function and logging constants to av versions */
-static void setMemAndLogFunctions(void){
+static void set_mem_and_log_functions(void){
     vs_malloc  = av_malloc;
     vs_zalloc  = av_mallocz;
     vs_realloc = av_realloc;
@@ -139,17 +132,16 @@ static void setMemAndLogFunctions(void){
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
     StabData* sd = ctx->priv;
-    setMemAndLogFunctions();
+    set_mem_and_log_functions();
 
-    sd->class = &stabilize_class;
+    sd->class = &vidstabdetect_class;
     av_opt_set_defaults(sd); // the default values are overwritten by initMotiondetect later
 
-    av_log(ctx, AV_LOG_VERBOSE, "stabilize filter: init %s\n", LIBVIDSTAB_VERSION);
+    av_log(ctx, AV_LOG_VERBOSE, "vidstabdetect filter: init %s\n", LIBVIDSTAB_VERSION);
 
     // save args for later, because the initialization of the vid.stab library requires
     //  knowledge about the input.
-    if(args)
-        sd->args=av_strdup(args);
+    sd->args=av_strdup(args);
 
     return 0;
 }
@@ -166,7 +158,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     }
 
     vsMotionDetectionCleanup(md);
-    av_free(sd->result); // <- is this already free'd by av_opt_free?
     av_free(sd->args);
 }
 
@@ -196,16 +187,23 @@ static int config_input(AVFilterLink *inlink)
     VSFrameInfo fi;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
-    vsFrameInfoInit(&fi,inlink->w, inlink->h, AV2VSPixelFormat(ctx, inlink->format));
+    vsFrameInfoInit(&fi,inlink->w, inlink->h, av_2_vs_pixel_format(ctx, inlink->format));
     // check
-    if(fi.bytesPerPixel != av_get_bits_per_pixel(desc)/8)
+    if(fi.bytesPerPixel != av_get_bits_per_pixel(desc)/8){
         av_log(ctx, AV_LOG_ERROR, "pixel-format error: wrong bits/per/pixel");
-    if(fi.log2ChromaW != desc->log2_chroma_w)
+        return AVERROR(EINVAL);
+    }
+    if(fi.log2ChromaW != desc->log2_chroma_w){
         av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_w");
-    if(fi.log2ChromaH != desc->log2_chroma_h)
-        av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_h");
+        return AVERROR(EINVAL);
+    }
 
-    if(vsMotionDetectInit(md, &fi, "stabilize") != VS_OK){
+    if(fi.log2ChromaH != desc->log2_chroma_h){
+        av_log(ctx, AV_LOG_ERROR, "pixel-format error: log2_chroma_h");
+        return AVERROR(EINVAL);
+    }
+
+    if(vsMotionDetectInit(md, &fi, "vidstabdetect") != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed");
         return AVERROR(EINVAL);
     }
@@ -214,33 +212,26 @@ static int config_input(AVFilterLink *inlink)
     if ((returnval = (av_set_options_string(sd, sd->args, "=", ":"))) < 0)
         return returnval;
 
-    // display help
-    /* if(optstr_lookup(sd->options, "help")) { */
-    /*     av_log(ctx, AV_LOG_INFO, vs_motiondetect_help); */
-    /*     return AVERROR(EINVAL); */
-    /* } */
-
     if(vsMotionDetectConfigure(md)!= VS_OK){
-    	av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed\n");
+        av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed\n");
         return AVERROR(EINVAL);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Image Stabilization Settings:\n");
+    av_log(ctx, AV_LOG_INFO, "Video stabilization settings (pass 1/2):\n");
     av_log(ctx, AV_LOG_INFO, "     shakiness = %d\n", md->shakiness);
     av_log(ctx, AV_LOG_INFO, "      accuracy = %d\n", md->accuracy);
     av_log(ctx, AV_LOG_INFO, "      stepsize = %d\n", md->stepSize);
-    av_log(ctx, AV_LOG_INFO, "          algo = %d\n", md->algo);
     av_log(ctx, AV_LOG_INFO, "   mincontrast = %f\n", md->contrastThreshold);
     av_log(ctx, AV_LOG_INFO, "          show = %d\n", md->show);
     av_log(ctx, AV_LOG_INFO, "        result = %s\n", sd->result);
 
     sd->f = fopen(sd->result, "w");
     if (sd->f == NULL) {
-        av_log(ctx, AV_LOG_ERROR, "cannot open transform file %s!\n", sd->result);
+        av_log(ctx, AV_LOG_ERROR, "cannot open transform file %s\n", sd->result);
         return AVERROR(EINVAL);
     }else{
         if(vsPrepareFile(md, sd->f) != VS_OK){
-            av_log(ctx, AV_LOG_ERROR, "cannot write to transform file %s!\n", sd->result);
+            av_log(ctx, AV_LOG_ERROR, "cannot write to transform file %s\n", sd->result);
             return AVERROR(EINVAL);
         }
     }
@@ -283,7 +274,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     } else {
         if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
             av_log(ctx, AV_LOG_ERROR, "cannot write to transform file!");
-            return AVERROR(EPERM);
+            return AVERROR(errno);
         }
         vs_vector_del(&localmotions);
     }
@@ -300,19 +291,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     return ff_filter_frame(outlink, out);
 }
 
-static const AVFilterPad avfilter_vf_stabilize_inputs[] = {
+static const AVFilterPad avfilter_vf_vidstabdetect_inputs[] = {
     {
         .name             = "default",
         .type             = AVMEDIA_TYPE_VIDEO,
-        .get_video_buffer = ff_null_get_video_buffer,
         .filter_frame     = filter_frame,
         .config_props     = config_input,
-        .min_perms        = AV_PERM_READ,
     },
     { NULL }
 };
 
-static const AVFilterPad avfilter_vf_stabilize_outputs[] = {
+static const AVFilterPad avfilter_vf_vidstabdetect_outputs[] = {
     {
         .name             = "default",
         .type             = AVMEDIA_TYPE_VIDEO,
@@ -320,17 +309,17 @@ static const AVFilterPad avfilter_vf_stabilize_outputs[] = {
     { NULL }
 };
 
-AVFilter avfilter_vf_stabilize = {
-    .name          = "stabilize",
-    .description   = NULL_IF_CONFIG_SMALL("extracts relative transformations of \n\
-    subsequent frames (used for stabilization together with the\n\
-    transform filter in a second pass)."),
+AVFilter avfilter_vf_vidstabdetect = {
+    .name          = "vidstabdetect",
+    .description   = NULL_IF_CONFIG_SMALL("pass 1 of 2 for stabilization"
+                                          "extracts relative transformations"
+                                          "(pass 2 see vidstabtransform)"),
     .priv_size     = sizeof(StabData),
     .init          = init,
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs        = avfilter_vf_stabilize_inputs,
-    .outputs       = avfilter_vf_stabilize_outputs,
-    .priv_class    = &stabilize_class,
+    .inputs        = avfilter_vf_vidstabdetect_inputs,
+    .outputs       = avfilter_vf_vidstabdetect_outputs,
+    .priv_class    = &vidstabdetect_class,
 };

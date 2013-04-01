@@ -84,29 +84,29 @@ int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pForma
 }
 
 int vsGetPlaneWidthSubS(const VSFrameInfo* fi, int plane){
-	return plane == 1 || plane == 2 ? fi->log2ChromaW : 0;
+  return plane == 1 || plane == 2 ? fi->log2ChromaW : 0;
 }
 
 int vsGetPlaneHeightSubS(const VSFrameInfo* fi, int plane){
-	return  plane == 1 || plane == 2 ? fi->log2ChromaH : 0;
+  return  plane == 1 || plane == 2 ? fi->log2ChromaH : 0;
 }
 
 int vsFrameIsNull(const VSFrame* frame) {
-	return frame==0 || frame->data[0]==0;
+  return frame==0 || frame->data[0]==0;
 }
 
 
 int vsFramesEqual(const VSFrame* frame1,const VSFrame* frame2){
-	return frame1 && frame2 && (frame1==frame2 || frame1->data[0] == frame2->data[0]);
+  return frame1 && frame2 && (frame1==frame2 || frame1->data[0] == frame2->data[0]);
 }
 
 void vsFrameNull(VSFrame* frame){
-	memset(frame->data,0,sizeof(uint8_t*)*4);
-	memset(frame->linesize,0,sizeof(int)*4);
+  memset(frame->data,0,sizeof(uint8_t*)*4);
+  memset(frame->linesize,0,sizeof(int)*4);
 }
 
 void vsFrameAllocate(VSFrame* frame, const VSFrameInfo* fi){
-	vsFrameNull(frame);
+  vsFrameNull(frame);
   if(fi->pFormat<PF_PACKED){
     int i;
     assert(fi->planes > 0 && fi->planes <= 4);
@@ -130,29 +130,29 @@ void vsFrameAllocate(VSFrame* frame, const VSFrameInfo* fi){
 }
 
 void vsFrameCopyPlane(VSFrame* dest, const VSFrame* src,
-										const VSFrameInfo* fi, int plane){
-	assert(src->data[plane]);
-	int h = fi->height >> vsGetPlaneHeightSubS(fi, plane);
-	if(src->linesize[plane] == dest->linesize[plane])
-		memcpy(dest->data[plane], src->data[plane], src->linesize[plane] *  h * sizeof(uint8_t));
-	else {
-		uint8_t* d = dest->data[plane];
-		const uint8_t* s = src->data[plane];
-		int w = fi->width  >> vsGetPlaneWidthSubS(fi, plane);
-		for (; h>0; h--) {
-			memcpy(d,s,sizeof(uint8_t) * w);
-			d += dest->linesize[plane];
-			s += src ->linesize[plane];
-		}
-	}
+                    const VSFrameInfo* fi, int plane){
+  assert(src->data[plane]);
+  int h = fi->height >> vsGetPlaneHeightSubS(fi, plane);
+  if(src->linesize[plane] == dest->linesize[plane])
+    memcpy(dest->data[plane], src->data[plane], src->linesize[plane] *  h * sizeof(uint8_t));
+  else {
+    uint8_t* d = dest->data[plane];
+    const uint8_t* s = src->data[plane];
+    int w = fi->width  >> vsGetPlaneWidthSubS(fi, plane);
+    for (; h>0; h--) {
+      memcpy(d,s,sizeof(uint8_t) * w);
+      d += dest->linesize[plane];
+      s += src ->linesize[plane];
+    }
+  }
 }
 
 void vsFrameCopy(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi){
-	int plane;
-	assert(fi->planes > 0 && fi->planes <= 4);
-	for (plane=0; plane< fi->planes; plane++){
-		vsFrameCopyPlane(dest,src,fi,plane);
-	}
+  int plane;
+  assert(fi->planes > 0 && fi->planes <= 4);
+  for (plane=0; plane< fi->planes; plane++){
+    vsFrameCopyPlane(dest,src,fi,plane);
+  }
 }
 
 void vsFrameFillFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi){
@@ -170,12 +170,12 @@ void vsFrameFillFromBuffer(VSFrame* frame, uint8_t* img, const VSFrameInfo* fi){
 }
 
 void vsFrameFree(VSFrame* frame){
-	int plane;
-	for (plane=0; plane< 4; plane++){
-		if(frame->data[plane]) vs_free(frame->data[plane]);
-		frame->data[plane]=0;
-		frame->linesize[plane]=0;
-	}
+  int plane;
+  for (plane=0; plane< 4; plane++){
+    if(frame->data[plane]) vs_free(frame->data[plane]);
+    frame->data[plane]=0;
+    frame->linesize[plane]=0;
+  }
 }
 
 

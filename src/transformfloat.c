@@ -211,7 +211,7 @@ int _FLT(transformRGB)(VSTransformData* td, Transform t)
    *  t the translation, and M the rotation matrix
    *      p_s = M^{-1}(p_d - c_d - t) + c_s
    */
-	int channels = td->fiSrc.bytesPerPixel;
+  int channels = td->fiSrc.bytesPerPixel;
   /* All channels */
   if (fabs(t.alpha) > td->rotationThreshhold) {
     for (x = 0; x < td->fiDest.width; x++) {

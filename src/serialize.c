@@ -101,7 +101,7 @@ LocalMotions vsRestoreLocalmotions(FILE* f){
 int vsPrepareFile(const VSMotionDetect* md, FILE* f){
     if(!f) return VS_ERROR;
     fprintf(f, "VID.STAB 1\n");
-		//    fprintf(f, "#      accuracy = %d\n", md->accuracy);
+    //    fprintf(f, "#      accuracy = %d\n", md->accuracy);
     fprintf(f, "#      accuracy = %d\n", md->accuracy);
     fprintf(f, "#     shakiness = %d\n", md->shakiness);
     fprintf(f, "#      stepsize = %d\n", md->stepSize);
@@ -111,81 +111,81 @@ int vsPrepareFile(const VSMotionDetect* md, FILE* f){
 }
 
 int vsWriteToFile(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
-	if(!f || !lms) return VS_ERROR;
+  if(!f || !lms) return VS_ERROR;
 
-	if(fprintf(f, "Frame %i (", md->frameNum)>0
-		 && vsStoreLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
-		return VS_OK;
-	else
-		return VS_ERROR;
+  if(fprintf(f, "Frame %i (", md->frameNum)>0
+     && vsStoreLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
+    return VS_OK;
+  else
+    return VS_ERROR;
 }
 
 /// reads the header of the file and return the version number
 int vsReadFileVersion(FILE* f){
-	if(!f) return VS_ERROR;
-	int version;
-	if(fscanf(f, "VID.STAB %i\n", &version)!=1)
-		return VS_ERROR;
-	else return version;
+  if(!f) return VS_ERROR;
+  int version;
+  if(fscanf(f, "VID.STAB %i\n", &version)!=1)
+    return VS_ERROR;
+  else return version;
 }
 
 int vsReadFromFile(FILE* f, LocalMotions* lms){
-	char c = fgetc(f);
-	if(c=='F') {
-		int num;
-		if(fscanf(f,"rame %i (", &num)!=1) {
-			vs_log_error(modname,"cannot read file, expect 'Frame num (...'");
-			return VS_ERROR;
-		}
-		*lms = vsRestoreLocalmotions(f);
-		if(fscanf(f,")\n")<0) {
-			vs_log_error(modname,"cannot read file, expect '...)'");
-			return VS_ERROR;
-		}
-		return num;
-	} else if(c=='#') {
-		char l[1024];
+  char c = fgetc(f);
+  if(c=='F') {
+    int num;
+    if(fscanf(f,"rame %i (", &num)!=1) {
+      vs_log_error(modname,"cannot read file, expect 'Frame num (...'");
+      return VS_ERROR;
+    }
+    *lms = vsRestoreLocalmotions(f);
+    if(fscanf(f,")\n")<0) {
+      vs_log_error(modname,"cannot read file, expect '...)'");
+      return VS_ERROR;
+    }
+    return num;
+  } else if(c=='#') {
+    char l[1024];
     if(fgets(l, sizeof(l), f)==0) return VS_ERROR;
-		return vsReadFromFile(f,lms);
-	} else if(c=='\n' || c==' ') {
-		return vsReadFromFile(f,lms);
-	} else if(c==EOF) {
-		return VS_ERROR;
-	} else {
-		vs_log_error(modname,"cannot read frame local motions from file, got %c (%i)",
-								 c, (int) c);
-		return VS_ERROR;
-	}
+    return vsReadFromFile(f,lms);
+  } else if(c=='\n' || c==' ') {
+    return vsReadFromFile(f,lms);
+  } else if(c==EOF) {
+    return VS_ERROR;
+  } else {
+    vs_log_error(modname,"cannot read frame local motions from file, got %c (%i)",
+                 c, (int) c);
+    return VS_ERROR;
+  }
 }
 
 int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
-	int version = vsReadFileVersion(f);
-	if(version<1) // old format or unknown
-		return VS_ERROR;
-	if(version>1){
-		vs_log_error(modname,"Version of VID.STAB file too large: got %i, expect <= 1",
-								 version);
-		return VS_ERROR;
-	}
-	assert(mlms);
-	// initial number of frames, but it will automatically be increaseed
-	vs_vector_init(mlms,1024);
-	int index;
-	int oldindex = 0;
-	LocalMotions lms;
-	while((index = vsReadFromFile(f,&lms)) != VS_ERROR){
-		if(index > oldindex+1){
-			vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
-									oldindex, index);
-		}
-		if(index<1){
-			vs_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
-		} else {
-			vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
-		}
-		oldindex=index;
-	}
-	return VS_OK;
+  int version = vsReadFileVersion(f);
+  if(version<1) // old format or unknown
+    return VS_ERROR;
+  if(version>1){
+    vs_log_error(modname,"Version of VID.STAB file too large: got %i, expect <= 1",
+                 version);
+    return VS_ERROR;
+  }
+  assert(mlms);
+  // initial number of frames, but it will automatically be increaseed
+  vs_vector_init(mlms,1024);
+  int index;
+  int oldindex = 0;
+  LocalMotions lms;
+  while((index = vsReadFromFile(f,&lms)) != VS_ERROR){
+    if(index > oldindex+1){
+      vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
+                  oldindex, index);
+    }
+    if(index<1){
+      vs_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
+    } else {
+      vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
+    }
+    oldindex=index;
+  }
+  return VS_OK;
 }
 
 

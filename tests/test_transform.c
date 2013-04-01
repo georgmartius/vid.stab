@@ -1,7 +1,7 @@
 
 void testImageStripeYUV(int size, VSFrameInfo* fi, VSFrame* img){
   int i,j;
-	vsFrameInfoInit(fi, size, 4, PF_YUV420P);
+  vsFrameInfoInit(fi, size, 4, PF_YUV420P);
   vsFrameAllocate(img,fi);
   memset(img->data[0],100,sizeof(uint8_t)*fi->width*fi->height);
   for(j=0; j<fi->height; j++){
@@ -25,10 +25,10 @@ void test_transform_implementation(const TestData* testdata){
   VSFrameInfo fi;
   VSFrame src;
   testImageStripeYUV(128,&fi,&src);
-	VSFrame dest;
-	vsFrameAllocate(&dest,&fi);
+  VSFrame dest;
+  vsFrameAllocate(&dest,&fi);
   VSFrame cfinal;
-	vsFrameAllocate(&cfinal,&fi);
+  vsFrameAllocate(&cfinal,&fi);
   VSTransformData td;
   fprintf(stderr,"--- Validate Interpolations ----\n");
 
@@ -50,7 +50,7 @@ void test_transform_implementation(const TestData* testdata){
     test_bool(transformYUV_float(&td, t)== VS_OK);
 
     vsFrameCopy(&cfinal,&td.dest,&fi);
-		vsTransformDataCleanup(&td);
+    vsTransformDataCleanup(&td);
 
     vsFrameCopy(&dest, &src, &fi);
     test_bool(vsTransformDataInit(&td, &fi, &fi, "test") == VS_OK);
@@ -62,101 +62,101 @@ void test_transform_implementation(const TestData* testdata){
     // validate
     sum=0;
     for(i=0; i<fi.width*fi.height; i++){
-			int diff = cfinal.data[0][i] - td.dest.data[0][i];
+      int diff = cfinal.data[0][i] - td.dest.data[0][i];
       if(abs(diff)>2){
-				sum+=abs(diff);
-				printf("%i,%i: %i\n", i/fi.width, i%fi.width, diff);
+        sum+=abs(diff);
+        printf("%i,%i: %i\n", i/fi.width, i%fi.width, diff);
       }
     }
-		vsTransformDataCleanup(&td);
+    vsTransformDataCleanup(&td);
     printf("***Difference: %i\n", sum);
-		test_bool(sum==0);
+    test_bool(sum==0);
   }
-	vsFrameFree(&dest);
-	vsFrameFree(&cfinal);
-	vsFrameFree(&src);
+  vsFrameFree(&dest);
+  vsFrameFree(&cfinal);
+  vsFrameFree(&src);
 }
 
 void test_transform_performance(const TestData* testdata){
 
 
-	fprintf(stderr,"--- Performance of Transforms ----\n");
-	VSFrame dest;
-	VSFrame cfinal;
-	int it;
-	int start, numruns;
-	int timeC, timeCFP; //, timeOrc;
-	vsFrameAllocate(&dest, &testdata->fi);
-	vsFrameAllocate(&cfinal, &testdata->fi);
-	numruns = 5;
-	for(it=VS_Zero; it<=VS_BiCubic; it++){
-		VSTransformData td;
-		int i;
-		//// Float implementation
-		test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
-		td.interpolType=it;
-		test_bool(vsTransformDataConfigure(&td)== VS_OK);
+  fprintf(stderr,"--- Performance of Transforms ----\n");
+  VSFrame dest;
+  VSFrame cfinal;
+  int it;
+  int start, numruns;
+  int timeC, timeCFP; //, timeOrc;
+  vsFrameAllocate(&dest, &testdata->fi);
+  vsFrameAllocate(&cfinal, &testdata->fi);
+  numruns = 5;
+  for(it=VS_Zero; it<=VS_BiCubic; it++){
+    VSTransformData td;
+    int i;
+    //// Float implementation
+    test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
+    td.interpolType=it;
+    test_bool(vsTransformDataConfigure(&td)== VS_OK);
 
-		fprintf(stderr,"Transform: %s", getInterpolationTypeName(it));
-		start = timeOfDayinMS();
-		for(i=0; i<numruns; i++){
-			Transform t = null_transform();
-			t.x = i*10+10;
-			t.alpha = (i+1)*2*M_PI/(180.0);
-			t.zoom = 0;
-			vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
-			test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-			test_bool(transformYUV_float(&td, t)== VS_OK);
-		}
-		timeC = timeOfDayinMS() - start;
-		fprintf(stderr,"\n***C   elapsed time for %i runs: %i ms ****\n",
-						numruns, timeC );
+    fprintf(stderr,"Transform: %s", getInterpolationTypeName(it));
+    start = timeOfDayinMS();
+    for(i=0; i<numruns; i++){
+      Transform t = null_transform();
+      t.x = i*10+10;
+      t.alpha = (i+1)*2*M_PI/(180.0);
+      t.zoom = 0;
+      vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
+      test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
+      test_bool(transformYUV_float(&td, t)== VS_OK);
+    }
+    timeC = timeOfDayinMS() - start;
+    fprintf(stderr,"\n***C   elapsed time for %i runs: %i ms ****\n",
+            numruns, timeC );
 
-		if(it==VS_BiLinear){
-			storePGMImage("transformed.pgm", td.dest.data[0], testdata->fi);
-			storePGMImage("transformed_u.pgm", td.dest.data[1], testdata->fi_color);
-			fprintf(stderr,"stored transformed.pgm\n");
-		}
-		vsFrameCopy(&cfinal,&td.dest,&testdata->fi);
-		vsTransformDataCleanup(&td);
+    if(it==VS_BiLinear){
+      storePGMImage("transformed.pgm", td.dest.data[0], testdata->fi);
+      storePGMImage("transformed_u.pgm", td.dest.data[1], testdata->fi_color);
+      fprintf(stderr,"stored transformed.pgm\n");
+    }
+    vsFrameCopy(&cfinal,&td.dest,&testdata->fi);
+    vsTransformDataCleanup(&td);
 
-		//// fixed point implementation
-		test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
-		td.interpolType=it;
-		test_bool(vsTransformDataConfigure(&td)== VS_OK);
-		start = timeOfDayinMS();
-		for(i=0; i<numruns; i++){
-			Transform t = null_transform();
-			t.x = i*10+10;
-			t.alpha = (i+1)*2*M_PI/(180.0);
-			t.zoom = 0;
-			vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
-			test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-			test_bool(transformYUV(&td, t)== VS_OK);
-		}
-		timeCFP = timeOfDayinMS() - start;
-		fprintf(stderr,"***FP  elapsed time for %i runs: %i ms ****\n",
-						numruns, timeCFP );
-		if(it==VS_BiLinear){
-			storePGMImage("transformed_FP.pgm", td.dest.data[0], testdata->fi);
-			storePGMImage("transformed_u_FP.pgm", td.dest.data[1], testdata->fi_color);
-			fprintf(stderr,"stored transformed_FP.pgm\n");
-		}
-		fprintf(stderr,"***Speedup %3.2f\n", (double)timeC/timeCFP);
-		// validate
-		int sum=0;
-		for(i=0; i<testdata->fi.width*testdata->fi.height; i++){
-			int diff = cfinal.data[0][i] - td.dest.data[0][i];
+    //// fixed point implementation
+    test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
+    td.interpolType=it;
+    test_bool(vsTransformDataConfigure(&td)== VS_OK);
+    start = timeOfDayinMS();
+    for(i=0; i<numruns; i++){
+      Transform t = null_transform();
+      t.x = i*10+10;
+      t.alpha = (i+1)*2*M_PI/(180.0);
+      t.zoom = 0;
+      vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
+      test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
+      test_bool(transformYUV(&td, t)== VS_OK);
+    }
+    timeCFP = timeOfDayinMS() - start;
+    fprintf(stderr,"***FP  elapsed time for %i runs: %i ms ****\n",
+            numruns, timeCFP );
+    if(it==VS_BiLinear){
+      storePGMImage("transformed_FP.pgm", td.dest.data[0], testdata->fi);
+      storePGMImage("transformed_u_FP.pgm", td.dest.data[1], testdata->fi_color);
+      fprintf(stderr,"stored transformed_FP.pgm\n");
+    }
+    fprintf(stderr,"***Speedup %3.2f\n", (double)timeC/timeCFP);
+    // validate
+    int sum=0;
+    for(i=0; i<testdata->fi.width*testdata->fi.height; i++){
+      int diff = cfinal.data[0][i] - td.dest.data[0][i];
       if(abs(diff)>2){
-				sum+=abs(diff);
-				//printf("%i,%i: %i\n", i/fi.width, i%fi.width, diff);
+        sum+=abs(diff);
+        //printf("%i,%i: %i\n", i/fi.width, i%fi.width, diff);
       }
     }
-		printf("***Difference: %i\n", sum);
-		vsTransformDataCleanup(&td);
-		test_bool(sum==0);
-	}
+    printf("***Difference: %i\n", sum);
+    vsTransformDataCleanup(&td);
+    test_bool(sum==0);
+  }
 
-	vsFrameFree(&dest);
-	vsFrameFree(&cfinal);
+  vsFrameFree(&dest);
+  vsFrameFree(&cfinal);
 }

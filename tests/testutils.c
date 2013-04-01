@@ -9,7 +9,7 @@ void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y, 
     int i,j;
     for(j=y; j < y+sizey; j++){
       for(i=x; i<x+sizex; i++){
-	buffer[j*fi->width + i] = color;
+  buffer[j*fi->width + i] = color;
       }
     }
 
@@ -64,9 +64,9 @@ static void skipWhiteSpace (const char* filename, FILE *f)
     // skip comments
     if (c == '#') {
       do {
-	d = fgetc(f);
-	if (d==EOF)
-	  vs_log_error("TEST", "unexpected end of file in '%s'", filename);
+  d = fgetc(f);
+  if (d==EOF)
+    vs_log_error("TEST", "unexpected end of file in '%s'", filename);
       } while (d != '\n');
       continue;
     }
@@ -118,7 +118,7 @@ int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi)
 
 
   // read in rest of data
-	vsFrameAllocate(frame,fi);
+  vsFrameAllocate(frame,fi);
   if (fread( frame->data[0], fi->width*fi->height, 1, f) != 1){
     vs_log_error("TEST", "Can't read data from image file '%s'", filename);
     return 0;

@@ -8,20 +8,20 @@ cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local ../
 make
 make install
 
-link/copy the vf_stabilize.c and vf_transform.c files to your
+link/copy the vf_vidstabdetect.c and vf_vidstabtransform.c files to your
 ffmpeg/libavfilter/
 
 add the following lines to the files in libavfilter/
 allfilters.c
 
-    REGISTER_FILTER (STABILIZE,   stabilize,   vf);
-    REGISTER_FILTER (TRANSFORM,   transform,   vf);
+    REGISTER_FILTER (STABILIZE,   vidstabdetect,   vf);
+    REGISTER_FILTER (TRANSFORM,   vidstabtransform,   vf);
 
 Makefile
 
 and
-OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_stabilize.o
-OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_transform.o
+OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_vidstabdetect.o
+OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_vidstabtransform.o
 
 and
 configure ffmpeg with

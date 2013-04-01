@@ -34,8 +34,8 @@
 /** converts for each frame the localmotions into a transform
  */
 int vsLocalmotions2TransformsSimple(VSTransformData* td,
-																	const VSManyLocalMotions* motions,
-																	VSTransformations* trans );
+                                  const VSManyLocalMotions* motions,
+                                  VSTransformations* trans );
 
 
 /** calculates rotation angle for the given transform and

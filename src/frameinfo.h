@@ -92,7 +92,7 @@ void vsFrameAllocate(VSFrame* frame, const VSFrameInfo* fi);
 
 /// copies the given plane number from src to dest
 void vsFrameCopyPlane(VSFrame* dest, const VSFrame* src,
-										const VSFrameInfo* fi, int plane);
+                    const VSFrameInfo* fi, int plane);
 
 /// copies src to dest
 void vsFrameCopy(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi);

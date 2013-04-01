@@ -101,7 +101,7 @@ int vsTransformDataConfigure(VSTransformData* td){
       case VS_Linear:   td->_FLT(interpolate) = &_FLT(interpolateLin); break;
       case VS_BiLinear: td->_FLT(interpolate) = &_FLT(interpolateBiLin); break;
       case VS_BiCubic:  td->_FLT(interpolate) = &_FLT(interpolateBiCub); break;
-      default: td->_FLT(interpolate)	   = &_FLT(interpolateBiLin);
+      default: td->_FLT(interpolate)          = &_FLT(interpolateBiLin);
     }
 
 #endif
@@ -378,7 +378,7 @@ Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
     if(td->smoothing>0){
       // otherwise do the sliding window
       mem->avg = add_transforms_(mult_transform(&mem->avg, 1 - s),
-				 mult_transform(trans, s));
+         mult_transform(trans, s));
     }else{
       mem->avg = *trans;
     }

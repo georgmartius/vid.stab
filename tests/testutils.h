@@ -15,7 +15,7 @@ Transform getTestFrameTransform(int i);
 void fillArrayWithNoise(unsigned char* buffer, int length, float corr);
 
 void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y,
-										int sizex, int sizey, unsigned char color);
+                    int sizex, int sizey, unsigned char color);
 
 inline static unsigned char randPixel(){
   return rand()%256;

@@ -171,9 +171,9 @@ double contrastSubImg_variance_C(unsigned char* const I,
    \param d_y shift in y direction
 */
 unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
-																	 const Field* field, int width1, int width2, int height,
-																	 int bytesPerPixel, int d_x, int d_y,
-																	 unsigned int threshold) {
+                                   const Field* field, int width1, int width2, int height,
+                                   int bytesPerPixel, int d_x, int d_y,
+                                   unsigned int threshold) {
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
@@ -198,9 +198,9 @@ unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const
 
 // implementation with 1 orc function, but no threshold
 unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
-															 const Field* field, int width1, int width2, int height,
-															 int bytesPerPixel, int d_x, int d_y,
-															 unsigned int threshold) {
+                               const Field* field, int width1, int width2, int height,
+                               int bytesPerPixel, int d_x, int d_y,
+                               unsigned int threshold) {
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
@@ -217,12 +217,12 @@ unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
 
 #ifdef USE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
-																		const Field* field,
-																		int width1, int width2, int height,
-																		int bytesPerPixel, int d_x, int d_y,
-																		unsigned int treshold) {
-	int k, j;
-	unsigned char* p1 = NULL;
+                                    const Field* field,
+                                    int width1, int width2, int height,
+                                    int bytesPerPixel, int d_x, int d_y,
+                                    unsigned int treshold) {
+  int k, j;
+  unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
   unsigned int sum = 0;

@@ -89,7 +89,7 @@ static int transform_init(TCModuleInstance *self, uint32_t features)
  * tcmodule-data.h for function details.
  */
 static int transform_configure(TCModuleInstance *self,
-			       const char *options, vob_t *vob)
+             const char *options, vob_t *vob)
 {
     FilterData *fd = NULL;
     char* filenamecopy, *filebasename;
@@ -292,7 +292,7 @@ static int transform_stop(TCModuleInstance *self)
  * the module.  See tcmodule-data.h for function details.
  */
 static int transform_inspect(TCModuleInstance *self,
-            			     const char *param, const char **value)
+                       const char *param, const char **value)
 {
     FilterData *fd = NULL;
     TC_MODULE_SELF_CHECK(self,  "inspect");

@@ -27,19 +27,19 @@
 #include <assert.h>
 
 int vsLocalmotions2TransformsSimple(VSTransformData* td,
-																	const VSManyLocalMotions* motions,
-																	VSTransformations* trans ){
-	int i;
-	int len = vs_vector_size(motions);
-	assert(trans->len==0 && trans->ts == 0);
-	trans->ts = vs_malloc(sizeof(Transform)*len );
-	for(i=0; i< vs_vector_size(motions); i++) {
-		trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
-		//    vsStoreLocalmotions(stderr,VSMLMGet(motions,i));
-		//		storeTransform(stderr,&trans->ts[i]);
-	}
-	trans->len=len;
-	return VS_OK;
+                                  const VSManyLocalMotions* motions,
+                                  VSTransformations* trans ){
+  int i;
+  int len = vs_vector_size(motions);
+  assert(trans->len==0 && trans->ts == 0);
+  trans->ts = vs_malloc(sizeof(Transform)*len );
+  for(i=0; i< vs_vector_size(motions); i++) {
+    trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+    //    vsStoreLocalmotions(stderr,VSMLMGet(motions,i));
+    //    storeTransform(stderr,&trans->ts[i]);
+  }
+  trans->len=len;
+  return VS_OK;
 }
 
 
@@ -57,7 +57,7 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y){
                       lm->f.x - center_x + lm->v.x);
     double diff = a2 - a1;
     return (diff > M_PI) ? diff - 2 * M_PI : ((diff < -M_PI) ? diff + 2
-					      * M_PI : diff);
+                * M_PI : diff);
   }
 }
 
@@ -66,7 +66,7 @@ Transform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions){
   int center_x = 0;
   int center_y = 0;
-	Transform t = null_transform();
+  Transform t = null_transform();
   if(motions==0) return t;
   int num_motions=vs_vector_size(motions);
   double *angles = (double*) vs_malloc(sizeof(double) * num_motions);
@@ -101,7 +101,7 @@ Transform vsSimpleMotionsToTransform(VSTransformData* td,
     if (max - min > td->maxAngleVariation) {
       t.alpha = 0;
       vs_log_info(td->modName, "too large variation in angle(%f)\n",
-		  max-min);
+      max-min);
     }
   }
   vs_free(angles);

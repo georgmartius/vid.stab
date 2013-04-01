@@ -47,7 +47,7 @@ int _vs_log(int type, const char* tag, const char* format, ...){
     va_start (ap, format);
     vfprintf (stderr, format, ap);
     va_end (ap);
-	  fprintf(stderr,"\n");
+    fprintf(stderr,"\n");
     return 0;
 }
 

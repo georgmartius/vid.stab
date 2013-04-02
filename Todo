@@ -3,8 +3,6 @@ Some things that could be done
 
 - optimal zoom detection with sliding average
 - transform calculation in motiondetect with full matrix estimation (pseudoinverse)
-- make transform stage work with fifo file for transforms, such that streaming is also possible with 
-  2-stage version.
 
+- make transform stage work with fifo file for transforms, such that streaming is also possible with 2-stage version.
 
-- frei0r plugin

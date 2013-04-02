@@ -1,0 +1,32 @@
+These are filters for the libavfilter framework.
+
+Hopefully they get integrated into ffmpeg but until then you have
+ to do the following to get it working:
+
+- install the vidstab lib from src/cmake with e.g.
+cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local ../
+make
+make install
+
+link/copy the vf_stabilize.c and vf_transform.c files to your
+ffmpeg/libavfilter/
+
+add the following lines to the files in libavfilter/
+allfilters.c
+
+    REGISTER_FILTER (STABILIZE,   stabilize,   vf);
+    REGISTER_FILTER (TRANSFORM,   transform,   vf);
+
+Makefile
+
+and
+OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_stabilize.o
+OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_transform.o
+
+and
+configure ffmpeg with
+
+--extra-libs="-lvidstab"
+
+
+

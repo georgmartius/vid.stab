@@ -1,5 +1,5 @@
 /*
- *  libdeshake.h
+ *  libvidstab.h
  *
  *  Created on: Feb 21, 2011
  *  Copyright (C) Georg Martius - June 2007
@@ -22,20 +22,25 @@
  *
  */
 
-#ifndef LIBDESHAKE_H
-#define LIBDESHAKE_H
+#ifndef LIBVIDSTAB_H
+#define LIBVIDSTAB_H
+
+#define LIBVIDSTAB_VERSION "v0.96 (2013-02-19)"
 
 #include "frameinfo.h"
 #include "motiondetect.h"
 #include "transform.h"
 #include "boxblur.h"
+#include "vsvector.h"
+#include "serialize.h"
+#include "localmotion2transform.h"
 
 #include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
 
-#endif  /* LIBDESHAKE_H_ */
+#endif  /* LIBVIDSTAB_H_ */
 
 /*
  * Local variables:

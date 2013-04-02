@@ -2,34 +2,36 @@
  *  filter_stabilize.c
  *
  *  Copyright (C) Georg Martius - June 2007
- *   georg dot martius at web dot de  
+ *   georg dot martius at web dot de
  *
  *  This file is part of transcode, a video stream processing tool
- *      
+ *
  *  transcode is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
  *  any later version.
- *   
+ *
  *  transcode is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *   
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA. 
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
 
 /* Typical call:
- *  transcode -V -J stabilize=shakiness=5:show=1,preview 
+ *  transcode -V -J stabilize=shakiness=5:show=1,preview
  *         -i inp.mpeg -y null,null -o dummy
  *  all parameters are optional
  */
 
+#include "libvidstab.h"
+
 #define MOD_NAME    "filter_stabilize.so"
-#define MOD_VERSION "v0.93 (2011-11-09)"
+#define MOD_VERSION LIBVIDSTAB_VERSION
 #define MOD_CAP     "extracts relative transformations of \n\
     subsequent frames (used for stabilization together with the\n\
     transform filter in a second pass)"
@@ -52,7 +54,7 @@
 
 #include <math.h>
 #include <libgen.h>
-  
+
 #include "transcode.h"
 #include "filter.h"
 #include "libtc/libtc.h"
@@ -60,7 +62,7 @@
 #include "libtc/tccodecs.h"
 #include "libtc/tcmodule-plugin.h"
 
-#include "libdeshake.h"
+#include "transcode_specifics.h"
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
@@ -72,27 +74,6 @@ typedef struct _stab_data {
 
     char conf_str[TC_BUF_MIN];
 } StabData;
-
-static const char stabilize_help[] = ""
-    "Overview:\n"
-    "    Generates a file with relative transform information\n"
-    "     (translation, rotation) about subsequent frames."
-    " See also transform.\n" 
-    "Options\n"
-    "    'result'      path to the file used to write the transforms\n"
-    "                  (def:inputfile.stab)\n"
-    "    'shakiness'   how shaky is the video and how quick is the camera?\n"
-    "                  1: little (fast) 10: very strong/quick (slow) (def: 4)\n"
-    "    'accuracy'    accuracy of detection process (>=shakiness)\n"
-    "                  1: low (fast) 15: high (slow) (def: 4)\n"
-    "    'stepsize'    stepsize of search process, region around minimum \n"
-    "                  is scanned with 1 pixel resolution (def: 6)\n"
-    "    'algo'        0: brute force (translation only);\n"
-    "                  1: small measurement fields (def)\n"
-    "    'mincontrast' below this contrast a field is discarded (0-1) (def: 0.3)\n"
-    "    'show'        0: draw nothing (def); 1,2: show fields and transforms\n"
-    "                  in the resulting frames. Consider the 'preview' filter\n"
-    "    'help'        print this help message\n";
 
 /*************************************************************************/
 
@@ -110,6 +91,8 @@ static int stabilize_init(TCModuleInstance *self, uint32_t features)
     StabData* sd = NULL;
     TC_MODULE_SELF_CHECK(self, "init");
     TC_MODULE_INIT_CHECK(self, MOD_FEATURES, features);
+
+    setLogFunctions();
 
     sd = tc_zalloc(sizeof(StabData)); // allocation with zero values
     if (!sd) {
@@ -161,21 +144,19 @@ static int stabilize_configure(TCModuleInstance *self,
 
     sd = self->userdata;
 
-    /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES * 
+    /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
           sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
     MotionDetect* md = &(sd->md);
-    DSFrameInfo fi;
-    fi.width=sd->vob->ex_v_width;
-    fi.height=sd->vob->ex_v_height;
-    fi.strive=sd->vob->ex_v_width;
-    fi.framesize=sd->vob->im_v_size;
-    fi.pFormat = vob->im_v_codec;
-    if(initMotionDetect(md, &fi, MOD_NAME) != DS_OK){
+    VSFrameInfo fi;
+    initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                  transcode2ourPF(vob->im_v_codec));
+
+    if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
         tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
-    
+
     sd->result = tc_malloc(TC_BUF_LINE);
     filenamecopy = tc_strdup(sd->vob->video_in_file);
     filebasename = basename(filenamecopy);
@@ -187,11 +168,11 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_snprintf(sd->result, TC_BUF_LINE, DEFAULT_TRANS_FILE_NAME);
     }
 
-    if (options != NULL) {            
-        // for some reason this plugin is called in the old fashion 
+    if (options != NULL) {
+        // for some reason this plugin is called in the old fashion
         //  (not with inspect). Anyway we support both ways of getting help.
         if(optstr_lookup(options, "help")) {
-            tc_log_info(MOD_NAME,stabilize_help);
+            tc_log_info(MOD_NAME,motiondetect_help);
             return(TC_IMPORT_ERROR);
         }
 
@@ -201,14 +182,15 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "stepsize",   "%d", &md->stepSize);
         optstr_get(options, "algo",       "%d", &md->algo);
         optstr_get(options, "mincontrast","%lf",&md->contrastThreshold);
+        optstr_get(options, "tripod",     "%d", &md->virtualTripod);
         optstr_get(options, "show",       "%d", &md->show);
     }
 
-    if(configureMotionDetect(md)!= DS_OK){
+    if(configureMotionDetect(md)!= VS_OK){
     	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
         return TC_ERROR;
     }
-    
+
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Stabilization Settings:");
         tc_log_info(MOD_NAME, "     shakiness = %d", md->shakiness);
@@ -216,24 +198,20 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "      stepsize = %d", md->stepSize);
         tc_log_info(MOD_NAME, "          algo = %d", md->algo);
         tc_log_info(MOD_NAME, "   mincontrast = %f", md->contrastThreshold);
+        tc_log_info(MOD_NAME, "        tripod = %d", md->virtualTripod);
         tc_log_info(MOD_NAME, "          show = %d", md->show);
         tc_log_info(MOD_NAME, "        result = %s", sd->result);
     }
-  
+
     sd->f = fopen(sd->result, "w");
     if (sd->f == NULL) {
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        // write parameters as comments to file 
-        fprintf(sd->f, "#      accuracy = %d\n", md->accuracy);
-        fprintf(sd->f, "#     shakiness = %d\n", md->shakiness);
-        fprintf(sd->f, "#      stepsize = %d\n", md->stepSize);
-        fprintf(sd->f, "#          algo = %d\n", md->algo);
-        fprintf(sd->f, "#   mincontrast = %f\n", md->contrastThreshold);
-        fprintf(sd->f, "#        result = %s\n", sd->result);
-        // write header line
-        fprintf(sd->f, "# Transforms\n#C FrameNr x y alpha zoom extra\n");        
+        if(prepareFile(md, sd->f) != VS_OK){
+            tc_log_error(MOD_NAME, "cannot write to result file %s", sd->result);
+            return TC_ERROR;
+        }
     }
 
     /***** This is now done by boxblur ****/
@@ -255,24 +233,30 @@ static int stabilize_configure(TCModuleInstance *self,
  * See tcmodule-data.h for function details.
  */
 
-static int stabilize_filter_video(TCModuleInstance *self, 
+static int stabilize_filter_video(TCModuleInstance *self,
                                   vframe_list_t *frame)
 {
     StabData *sd = NULL;
-  
+
     TC_MODULE_SELF_CHECK(self, "filter_video");
     TC_MODULE_SELF_CHECK(frame, "filter_video");
-  
-    sd = self->userdata;    
+
+    sd = self->userdata;
     MotionDetect* md = &(sd->md);
-    Transform t;
-    if(motionDetection(md, &t, frame->video_buf)!= DS_OK){
+    LocalMotions localmotions;
+    VSFrame vsFrame;
+    fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
+
+    if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
     	tc_log_error(MOD_NAME, "motion detection failed");
     	return TC_ERROR;
+    }
+    if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+        vs_vector_del(&localmotions);
+        return TC_ERROR;
     } else {
-        fprintf(sd->f, "%i %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-                md->frameNum, t.x, t.y, t.alpha, t.zoom, t.extra);
-    	return TC_OK;
+        vs_vector_del(&localmotions);
+        return TC_OK;
     }
 }
 
@@ -287,7 +271,6 @@ static int stabilize_stop(TCModuleInstance *self)
     TC_MODULE_SELF_CHECK(self, "stop");
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
-    // print transs
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;
@@ -318,31 +301,33 @@ static int stabilize_inspect(TCModuleInstance *self,
 			     const char *param, const char **value)
 {
     StabData *sd = NULL;
-    
+
     TC_MODULE_SELF_CHECK(self, "inspect");
     TC_MODULE_SELF_CHECK(param, "inspect");
     TC_MODULE_SELF_CHECK(value, "inspect");
     sd = self->userdata;
     MotionDetect* md = &(sd->md);
     if (optstr_lookup(param, "help")) {
-        *value = stabilize_help;
+        *value = motiondetect_help;
     }
     CHECKPARAM("shakiness","shakiness=%d", md->shakiness);
     CHECKPARAM("accuracy", "accuracy=%d",  md->accuracy);
     CHECKPARAM("stepsize", "stepsize=%d",  md->stepSize);
     CHECKPARAM("allowmax", "allowmax=%d",  md->allowMax);
     CHECKPARAM("algo",     "algo=%d",      md->algo);
+    CHECKPARAM("tripod",   "tripod=%d",    md->virtualTripod);
+    CHECKPARAM("show",     "show=%d",      md->show);
     CHECKPARAM("result",   "result=%s",    sd->result);
     return TC_OK;
 }
 
-static const TCCodecID stabilize_codecs_in[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID stabilize_codecs_in[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-static const TCCodecID stabilize_codecs_out[] = { 
-    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR 
+static const TCCodecID stabilize_codecs_out[] = {
+    TC_CODEC_YUV420P, TC_CODEC_YUV422P, TC_CODEC_RGB, TC_CODEC_ERROR
 };
-TC_MODULE_FILTER_FORMATS(stabilize); 
+TC_MODULE_FILTER_FORMATS(stabilize);
 
 TC_MODULE_INFO(stabilize);
 
@@ -394,7 +379,8 @@ TC_FILTER_OLDINTERFACE(stabilize)
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

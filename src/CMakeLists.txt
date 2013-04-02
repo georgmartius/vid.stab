@@ -1,15 +1,19 @@
-cmake_minimum_required (VERSION 2.6) 
-project (vid.stab) 
+cmake_minimum_required (VERSION 2.6)
+project (vid.stab)
 
 SET(CMAKE_BUILTTYPE None)
- 
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
-#add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
-# I tried it with 0.4.14 
+include (FindSSE)
+
+add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC )
+# add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+
+### ORC is not used in any active code at the moment  ###
+# I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)
-# find_package(Orc)  // it actually not used by any active code
+# find_package(Orc)
 if(ORC_FOUND)
 add_definitions( -DUSE_ORC ${ORC_DEFINITIONS} )
 include_directories( ${ORC_INCLUDE_DIRS} )
@@ -17,20 +21,38 @@ else()
 add_definitions( -DDISABLE_ORC )
 endif()
 
-# here we should check for SSE2 
+# here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
+if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+endif()
 
-# Create the deshake library 
-add_library (deshake STATIC
-    transformtype.c libdeshake.c transform.c transformfixedpoint.c 
-    motiondetect.c boxblur.c dsvector.c orc/motiondetectorc.c) 
-#  orc/transformorc.c
+set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedpoint.c
+  motiondetect.c motiondetect_opt.c serialize.c
+	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
 
-target_link_libraries(deshake m)
+set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h transformfixedpoint.h
+  motiondetect.h serialize.h localmotion2transform.h boxblur.h vsvector.h )
+
+# Create the vidstab library
+add_library (vidstab STATIC ${SOURCES})
+add_library (vidstab-0.9 SHARED ${SOURCES})
+
+target_link_libraries(vidstab m)
 if(ORC_FOUND)
-target_link_libraries(deshake ${ORC_LIBRARIES})
+target_link_libraries(vidstab ${ORC_LIBRARIES})
 endif()
 if(USE_OMP)
-target_link_libraries(deshake gomp)
+target_link_libraries(vidstab gomp)
 endif()
+
+#if(!NOHEADERS)
+FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+INSTALL(FILES ${HEADERS} DESTINATION include/vid.stab)
+#endif()
+
+INSTALL(TARGETS vidstab vidstab-0.9
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+)

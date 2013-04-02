@@ -43,8 +43,8 @@ int initFields(VSMotionDetect* md);
 unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
                         int bytesPerPixel, int strive1, int strive2, int d_x, int d_y);
 
-double contrastSubImgYUV(VSMotionDetect* md, const Field* field);
-double contrastSubImgRGB(VSMotionDetect* md, const Field* field);
+double contrastSubImgPlanar(VSMotionDetect* md, const Field* field);
+double contrastSubImgPacked(VSMotionDetect* md, const Field* field);
 double contrastSubImg(unsigned char* const I, const Field* field,
                       int width, int height, int bytesPerPixel);
 
@@ -52,12 +52,12 @@ double contrastSubImg(unsigned char* const I, const Field* field,
 int cmp_contrast_idx(const void *ci1, const void* ci2);
 VSVector selectfields(VSMotionDetect* md, contrastSubImgFunc contrastfunc);
 
-LocalMotions calcShiftRGBSimple(VSMotionDetect* md);
-LocalMotions calcShiftYUVSimple(VSMotionDetect* md);
+LocalMotions calcShiftPackedSimple(VSMotionDetect* md);
+LocalMotions calcShiftPlanarSimple(VSMotionDetect* md);
 
-LocalMotion calcFieldTransYUV(VSMotionDetect* md, const Field* field,
+LocalMotion calcFieldTransPlanar(VSMotionDetect* md, const Field* field,
                             int fieldnum);
-LocalMotion calcFieldTransRGB(VSMotionDetect* md, const Field* field,
+LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
                             int fieldnum);
 LocalMotions calcTransFields(VSMotionDetect* md, calcFieldTransFunc fieldfunc,
                              contrastSubImgFunc contrastfunc);

@@ -162,11 +162,11 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
     vsFrameCopy(&md->curr, frame, &md->fi);
   } else {
     // box-kernel smoothing (plain average of pixels), which is fine for us
-    boxblurYUV(&md->curr, frame, &md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
+    boxblurPlanar(&md->curr, frame, &md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
                BoxBlurNoColor);
     // two times yields tent-kernel smoothing, which may be better, but I don't
     //  think we need it
-    //boxblurYUV(md->curr, md->curr, md->currtmp, &md->fi, md->stepSize*1,
+    //boxblurPlanar(md->curr, md->curr, md->currtmp, &md->fi, md->stepSize*1,
     // BoxBlurNoColor);
   }
 
@@ -174,14 +174,14 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
     //    md->curr = frame;
     if (md->fi.pFormat > PF_PACKED) {
       if (md->algo == 0)
-        *motions = calcShiftRGBSimple(md);
+        *motions = calcShiftPackedSimple(md);
       else if (md->algo == 1)
-        *motions = calcTransFields(md, calcFieldTransRGB, contrastSubImgRGB);
+        *motions = calcTransFields(md, calcFieldTransPacked, contrastSubImgPacked);
     } else { // PLANAR
       if (md->algo == 0)
-        *motions = calcShiftYUVSimple(md);
+        *motions = calcShiftPlanarSimple(md);
       else if (md->algo == 1)
-        *motions = calcTransFields(md, calcFieldTransYUV, contrastSubImgYUV);
+        *motions = calcTransFields(md, calcFieldTransPlanar, contrastSubImgPlanar);
     }
   } else {
     vs_vector_init(motions,md->maxFields);
@@ -294,7 +294,7 @@ unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int hei
 
 
 /** \see contrastSubImg*/
-double contrastSubImgYUV(VSMotionDetect* md, const Field* field) {
+double contrastSubImgPlanar(VSMotionDetect* md, const Field* field) {
 #ifdef USE_SSE2
   return contrastSubImg1_SSE(md->curr.data[0], field, md->curr.linesize[0],md->fi.height);
 #else
@@ -307,7 +307,7 @@ double contrastSubImgYUV(VSMotionDetect* md, const Field* field) {
    \see contrastSubImg_Michelson three times called with bytesPerPixel=3
    for all channels
 */
-double contrastSubImgRGB(VSMotionDetect* md, const Field* field) {
+double contrastSubImgPacked(VSMotionDetect* md, const Field* field) {
   unsigned char* const I = md->curr.data[0];
   int linesize2 = md->curr.linesize[0]/3; // linesize in pixels
   return (contrastSubImg(I, field, linesize2, md->fi.height, 3)
@@ -351,7 +351,7 @@ double contrastSubImg(unsigned char* const I, const Field* field, int width,
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-LocalMotions calcShiftRGBSimple(VSMotionDetect* md) {
+LocalMotions calcShiftPackedSimple(VSMotionDetect* md) {
   LocalMotions localmotions;
   vs_vector_init(&localmotions,1);
   LocalMotion lm;
@@ -385,7 +385,7 @@ LocalMotions calcShiftRGBSimple(VSMotionDetect* md) {
     shift images to all possible positions and calc summed error
     Shift with minimal error is selected.
 */
-LocalMotions calcShiftYUVSimple(VSMotionDetect* md) {
+LocalMotions calcShiftPlanarSimple(VSMotionDetect* md) {
   LocalMotions localmotions;
   vs_vector_init(&localmotions,1);
   LocalMotion lm;
@@ -429,10 +429,10 @@ LocalMotions calcShiftYUVSimple(VSMotionDetect* md) {
   return localmotions;
 }
 
-/* calculates the optimal transformation for one field in YUV frames
+/* calculates the optimal transformation for one field in Planar frames
  * (only luminance)
  */
-LocalMotion calcFieldTransYUV(VSMotionDetect* md, const Field* field, int fieldnum) {
+LocalMotion calcFieldTransPlanar(VSMotionDetect* md, const Field* field, int fieldnum) {
   int tx = 0;
   int ty = 0;
   uint8_t *Y_c = md->curr.data[0], *Y_p = md->prev.data[0];
@@ -577,10 +577,10 @@ LocalMotion calcFieldTransYUV(VSMotionDetect* md, const Field* field, int fieldn
   return lm;
 }
 
-/* calculates the optimal transformation for one field in RGB
- *   slower than the YUV version because it uses all three color channels
+/* calculates the optimal transformation for one field in Packed
+ *   slower than the Planar version because it uses all three color channels
  */
-LocalMotion calcFieldTransRGB(VSMotionDetect* md, const Field* field,
+LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
                               int fieldnum) {
   int tx = 0;
   int ty = 0;
@@ -763,7 +763,7 @@ LocalMotions calcTransFields(VSMotionDetect* md,
   for(index=0; index < vs_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;
     LocalMotion m;
-    m = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransYUV
+    m = fieldfunc(md, &md->fields[i], i); // e.g. calcFieldTransPlanar
     m.contrast = ((contrast_idx*)vs_vector_get(&goodflds,index))->contrast;
 #ifdef STABVERBOSE
     fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
@@ -847,18 +847,18 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
   }
 }
 
-// void addTrans(VSMotionDetect* md, Transform sl) {
+// void addTrans(VSMotionDetect* md, VSTransform sl) {
 //   if (!md->transs) {
 //     md->transs = vs_list_new(0);
 //   }
 //   vs_list_append_dup(md->transs, &sl, sizeof(sl));
 // }
 
-// Transform getLastTransform(VSMotionDetect* md){
+// VSTransform getLastVSTransform(VSMotionDetect* md){
 //   if (!md->transs || !md->transs->head) {
 //     return null_transform();
 //   }
-//   return *((Transform*)md->transs->tail);
+//   return *((VSTransform*)md->transs->tail);
 // }
 
 

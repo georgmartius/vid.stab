@@ -39,7 +39,7 @@
 
 #ifdef USE_SSE2
 /**
-   \see contrastSubImg using SSE2 optimization, YUV (1 byte per channel) only
+   \see contrastSubImg using SSE2 optimization, Planar (1 byte per channel) only
 */
 double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
                            int width, int height)

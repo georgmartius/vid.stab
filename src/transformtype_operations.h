@@ -35,16 +35,16 @@
  * but useful when cascading calculations like
  * add_transforms_(mult_transform(&t1, 5.0), &t2)
  */
-Transform null_transform(void);
-Transform new_transform(double x, double y, double alpha,
-                        double zoom, int extra);
-Transform add_transforms(const Transform* t1, const Transform* t2);
-Transform add_transforms_(const Transform t1, const Transform t2);
-Transform sub_transforms(const Transform* t1, const Transform* t2);
-Transform mult_transform(const Transform* t1, double f);
-Transform mult_transform_(const Transform t1, double f);
+VSTransform null_transform(void);
+VSTransform new_transform(double x, double y, double alpha,
+                          double zoom, double barrel, double rshutter, int extra);
+VSTransform add_transforms(const VSTransform* t1, const VSTransform* t2);
+VSTransform add_transforms_(const VSTransform t1, const VSTransform t2);
+VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2);
+VSTransform mult_transform(const VSTransform* t1, double f);
+VSTransform mult_transform_(const VSTransform t1, double f);
 
-void storeTransform(FILE* f, const Transform* t);
+void storeTransform(FILE* f, const VSTransform* t);
 
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2);
@@ -61,7 +61,7 @@ int cmp_int(const void *t1, const void* t2);
 /* calculates the median of an array of transforms,
  * considering only x and y
  */
-Transform median_xy_transform(const Transform* transforms, int len);
+VSTransform median_xy_transform(const VSTransform* transforms, int len);
 /* median of a double array */
 double median(double* ds, int len);
 /* mean of a double array */
@@ -73,15 +73,15 @@ double cleanmean(double* ds, int len, double* minimum, double* maximum);
 /* calulcates the cleaned mean of an array of transforms,
  * considerung only x and y
  */
-Transform cleanmean_xy_transform(const Transform* transforms, int len);
+VSTransform cleanmean_xy_transform(const VSTransform* transforms, int len);
 
 /* calculates the cleaned (cutting of x-th percentil)
  * maximum and minimum of an array of transforms,
  * considerung only x and y
  */
-void cleanmaxmin_xy_transform(const Transform* transforms, int len,
+void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
                               int percentil,
-                              Transform* min, Transform* max);
+                              VSTransform* min, VSTransform* max);
 
 
 /* helper function to work with local motions */

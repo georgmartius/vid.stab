@@ -240,7 +240,7 @@ static int transform_filter_video(TCModuleInstance *self,
 
     vsTransformPrepare(&fd->td, &vsFrame,  &vsFrame);
 
-    Transform t = vsGetNextTransform(&fd->td, &fd->trans);
+    VSTransform t = vsGetNextTransform(&fd->td, &fd->trans);
 
     vsDoTransform(&fd->td, t);
 

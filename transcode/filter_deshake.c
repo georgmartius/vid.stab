@@ -301,7 +301,7 @@ static int deshake_filter_video(TCModuleInstance *self,
   VSMotionDetect* md = &(sd->md);
   VSTransformData* td = &(sd->td);
   LocalMotions localmotions;
-  Transform motion;
+  VSTransform motion;
   VSFrame vsFrame;
   vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
@@ -319,7 +319,7 @@ static int deshake_filter_video(TCModuleInstance *self,
 
   vsTransformPrepare(td, &vsFrame, &vsFrame);
 
-  Transform t = vsLowPassTransforms(td, &sd->avg, &motion);
+  VSTransform t = vsLowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_info(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f", */
   /*             motion.x, motion.y, motion.alpha, */
   /*             t.x, t.y, t.alpha, t.zoom); */

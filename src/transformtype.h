@@ -36,9 +36,11 @@ typedef struct _transform {
     double y;
     double alpha;
     double zoom;
+    double barrel;
+    double rshutter;
     int extra;    /* -1: ignore transform (only internal use);
                      0 for normal trans; 1 for inter scene cut (unused) */
-} Transform;
+} VSTransform;
 
 /** stores x y and size of a measurement field */
 typedef struct _field {

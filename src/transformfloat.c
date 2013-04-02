@@ -181,17 +181,17 @@ void _FLT(interpolateN)(unsigned char *rv, float x, float y,
 
 
 /**
- * transformRGB: applies current transformation to frame
+ * transformPacked: applies current transformation to frame
  * Parameters:
  *         td: private data structure of this filter
  * Return value:
  *         0 for failture, 1 for success
  * Preconditions:
- *  The frame must be in RGB format
+ *  The frame must be in Packed format
  /// TODO Add zoom!
  /// Add bytes per pixel usage
  */
-int _FLT(transformRGB)(VSTransformData* td, Transform t)
+int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0, z = 0;
   unsigned char *D_1, *D_2;
@@ -255,16 +255,16 @@ int _FLT(transformRGB)(VSTransformData* td, Transform t)
 }
 
 /**
- * transformYUV: applies current transformation to frame
+ * transformPlanar: applies current transformation to frame
  *
  * Parameters:
  *         td: private data structure of this filter
  * Return value:
  *         0 for failture, 1 for success
  * Preconditions:
- *  The frame must be in YUV format
+ *  The frame must be in Planar format
  */
-int _FLT(transformYUV)(VSTransformData* td, Transform t)
+int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0;
   uint8_t *dat_1, *dat_2;

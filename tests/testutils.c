@@ -28,8 +28,8 @@ void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
   }
 }
 
-Transform getTestFrameTransform(int i){
-  Transform t = null_transform();
+VSTransform getTestFrameTransform(int i){
+  VSTransform t = null_transform();
   t.x = ( (i%2)==0 ? -1 : 1)  *i*5;
   t.y = ( (i%3)==0 ?  1 : -1) *i*5;
   t.alpha = (i<3 ? 0 : 1) * (i)*1*M_PI/(180.0);

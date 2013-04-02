@@ -244,15 +244,15 @@ inline void interpolateN(unsigned char *rv, fp16 x, fp16 y,
 
 
 /**
- * transformRGB: applies current transformation to frame
+ * transformPacked: applies current transformation to frame
  * Parameters:
  *         td: private data structure of this filter
  * Return value:
  *         0 for failture, 1 for success
  * Preconditions:
- *  The frame must be in RGB format
+ *  The frame must be in Packed format
  */
-int transformRGB(VSTransformData* td, Transform t)
+int transformPacked(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0, k = 0;
   uint8_t *D_1, *D_2;
@@ -298,21 +298,21 @@ int transformRGB(VSTransformData* td, Transform t)
 }
 
 /**
- * transformYUV: applies current transformation to frame
+ * transformPlanar: applies current transformation to frame
  *
  * Parameters:
  *         td: private data structure of this filter
  * Return value:
  *         0 for failture, 1 for success
  * Preconditions:
- *  The frame must be in YUV format
+ *  The frame must be in Planar format
  *
  * Fixed-point format 32 bit integer:
  *  for image coords we use val<<8
  *  for angle and zoom we use val<<16
  *
  */
-int transformYUV(VSTransformData* td, Transform t)
+int transformPlanar(VSTransformData* td, VSTransform t)
 {
   int32_t x = 0, y = 0;
   uint8_t *dat_1, *dat_2;
@@ -379,21 +379,21 @@ int transformYUV(VSTransformData* td, Transform t)
 
 
 /* /\** TESTING */
-/*  * transformYUV_orc: applies current transformation to frame */
+/*  * transformPlanar_orc: applies current transformation to frame */
 /*  * */
 /*  * Parameters: */
 /*  *         td: private data structure of this filter */
 /*  * Return value:  */
 /*  *         0 for failture, 1 for success */
 /*  * Preconditions: */
-/*  *  The frame must be in YUV format */
+/*  *  The frame must be in Planar format */
 /*  * */
 /*  * Fixed-point format 32 bit integer: */
 /*  *  for image coords we use val<<8 */
 /*  *  for angle and zoom we use val<<16 */
 /*  * */
 /*  *\/ */
-/* int transformYUV_orc(VSTransformData* td, Transform t) */
+/* int transformPlanar_orc(VSTransformData* td, VSTransform t) */
 /* { */
 /*     int32_t x = 0, y = 0; */
 /*     unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */

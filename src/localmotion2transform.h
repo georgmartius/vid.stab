@@ -47,7 +47,7 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
     Using a simple cleaned-means approach to eliminate outliers.
     translation and rotation is calculated.
 */
-Transform vsSimpleMotionsToTransform(VSTransformData* td,
+VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions);
 
 #endif

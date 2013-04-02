@@ -3,9 +3,9 @@ int runboxblur( VSFrame frame1, VSFrame dest,
                 VSFrameInfo fi, int numruns){
   int start = timeOfDayinMS();
   int i;
-  boxblurYUV(&dest, &frame1, 0, &fi, 15, BoxBlurColor);
+  boxblurPlanar(&dest, &frame1, 0, &fi, 15, BoxBlurColor);
   for(i=1; i<numruns; i++){
-    boxblurYUV(&dest, &dest, 0, &fi, 15, BoxBlurColor);
+    boxblurPlanar(&dest, &dest, 0, &fi, 15, BoxBlurColor);
   }
   int end = timeOfDayinMS();
   return end-start;

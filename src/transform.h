@@ -35,15 +35,15 @@
 
 
 typedef struct _vstransformations {
-    Transform* ts; // array of transformations
+    VSTransform* ts; // array of transformations
     int current;   // index to current transformation
     int len;       // length of trans array
     short warned_end; // whether we warned that there is no transform left
 } VSTransformations;
 
 typedef struct _vsslidingavgtrans {
-    Transform avg; // average transformation
-    Transform accum; // accumulator for relative to absolute conversion
+    VSTransform avg; // average transformation
+    VSTransform accum; // accumulator for relative to absolute conversion
     double zoomavg;     // average zoom value
     short initialized; // whether it was initialized or not
 } VSSlidingAvgTrans;
@@ -173,7 +173,7 @@ void vsTransformationsInit(VSTransformations* trans);
 void vsTransformationsCleanup(VSTransformations* trans);
 
 /// return next Transform and increases internal counter
-Transform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
+VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
 
 /** preprocesses the list of transforms all at once. Here the deshaking is calculated!
  */
@@ -182,20 +182,20 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
 /**
  * vsLowPassTransforms: single step smoothing of transforms, using only the past.
  *  see also vsPreprocessTransforms. */
-Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
-                            const Transform* trans);
+VSTransform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
+                            const VSTransform* trans);
 
-/** call this function to prepare for a next transformation (transformRGB/transformYUV)
+/** call this function to prepare for a next transformation (transformPacked/transformPlanar)
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
 int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest);
 
 /// does the actual transformation
-int vsDoTransform(VSTransformData* td, Transform t);
+int vsDoTransform(VSTransformData* td, VSTransform t);
 
 
-/** call this function to finish the transformation of a frame (transformRGB/transformYUV)
+/** call this function to finish the transformation of a frame (transformPacked/transformPlanar)
  */
 int vsTransformFinish(VSTransformData* td);
 

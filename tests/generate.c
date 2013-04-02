@@ -31,12 +31,12 @@ void generateFrames(TestData* testdata, int num){
   fprintf(stderr, "testframe transforms\n");
 
   for(i=1; i<num; i++){
-    Transform t = getTestFrameTransform(i);
+    VSTransform t = getTestFrameTransform(i);
     fprintf(stderr, "%i, %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
             i, t.x, t.y, t.alpha, t.zoom, t.extra);
 
     test_bool(vsTransformPrepare(&td,&testdata->frames[i-1],&testdata->frames[i])== VS_OK);
-    test_bool(transformYUV_float(&td, t)== VS_OK);
+    test_bool(transformPlanar_float(&td, t)== VS_OK);
     test_bool(vsTransformFinish(&td)== VS_OK);
   }
   vsTransformDataCleanup(&td);

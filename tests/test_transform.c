@@ -35,7 +35,7 @@ void test_transform_implementation(const TestData* testdata){
   int it;
   int i;
   int sum;
-  Transform t;
+  VSTransform t;
   t.x = 10;
   t.alpha = 2*M_PI/(180.0);
 
@@ -47,7 +47,7 @@ void test_transform_implementation(const TestData* testdata){
 
     fprintf(stderr,"Transform: %s\n", getInterpolationTypeName(it));
     test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-    test_bool(transformYUV_float(&td, t)== VS_OK);
+    test_bool(transformPlanar_float(&td, t)== VS_OK);
 
     vsFrameCopy(&cfinal,&td.dest,&fi);
     vsTransformDataCleanup(&td);
@@ -57,7 +57,7 @@ void test_transform_implementation(const TestData* testdata){
     td.interpolType=it;
     test_bool(vsTransformDataConfigure(&td)== VS_OK);
     test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-    test_bool(transformYUV(&td, t)== VS_OK);
+    test_bool(transformPlanar(&td, t)== VS_OK);
 
     // validate
     sum=0;
@@ -100,13 +100,13 @@ void test_transform_performance(const TestData* testdata){
     fprintf(stderr,"Transform: %s", getInterpolationTypeName(it));
     start = timeOfDayinMS();
     for(i=0; i<numruns; i++){
-      Transform t = null_transform();
+      VSTransform t = null_transform();
       t.x = i*10+10;
       t.alpha = (i+1)*2*M_PI/(180.0);
       t.zoom = 0;
       vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
       test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-      test_bool(transformYUV_float(&td, t)== VS_OK);
+      test_bool(transformPlanar_float(&td, t)== VS_OK);
     }
     timeC = timeOfDayinMS() - start;
     fprintf(stderr,"\n***C   elapsed time for %i runs: %i ms ****\n",
@@ -126,13 +126,13 @@ void test_transform_performance(const TestData* testdata){
     test_bool(vsTransformDataConfigure(&td)== VS_OK);
     start = timeOfDayinMS();
     for(i=0; i<numruns; i++){
-      Transform t = null_transform();
+      VSTransform t = null_transform();
       t.x = i*10+10;
       t.alpha = (i+1)*2*M_PI/(180.0);
       t.zoom = 0;
       vsFrameCopy(&dest, &testdata->frames[0], &testdata->fi);
       test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
-      test_bool(transformYUV(&td, t)== VS_OK);
+      test_bool(transformPlanar(&td, t)== VS_OK);
     }
     timeCFP = timeOfDayinMS() - start;
     fprintf(stderr,"***FP  elapsed time for %i runs: %i ms ****\n",

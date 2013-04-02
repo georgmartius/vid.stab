@@ -152,11 +152,11 @@ int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){
     return VS_OK;
 }
 
-int vsDoTransform(VSTransformData* td, Transform t){
+int vsDoTransform(VSTransformData* td, VSTransform t){
   if (td->fiSrc.pFormat < PF_PACKED)
-    return transformYUV(td, t);
+    return transformPlanar(td, t);
   else
-    return transformRGB(td, t);
+    return transformPacked(td, t);
 }
 
 
@@ -170,7 +170,7 @@ int vsTransformFinish(VSTransformData* td){
 }
 
 
-Transform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans){
+VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans){
     if(trans->len <=0 ) return null_transform();
     if (trans->current >= trans->len) {
         trans->current = trans->len;
@@ -218,7 +218,7 @@ void vsTransformationsCleanup(VSTransformations* trans){
  */
 int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
 {
-    Transform* ts = trans->ts;
+    VSTransform* ts = trans->ts;
     int i;
 
     if (trans->len < 1)
@@ -228,8 +228,8 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     }
     if (td->smoothing>0) {
         /* smoothing */
-        Transform* ts2 = vs_malloc(sizeof(Transform) * trans->len);
-        memcpy(ts2, ts, sizeof(Transform) * trans->len);
+        VSTransform* ts2 = vs_malloc(sizeof(VSTransform) * trans->len);
+        memcpy(ts2, ts, sizeof(VSTransform) * trans->len);
 
         /*  we will do a sliding average with minimal update
          *   \hat x_{n/2} = x_1+x_2 + .. + x_n
@@ -237,29 +237,29 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
          *   avg = \hat x / n
          */
         int s = td->smoothing * 2 + 1;
-        Transform null = null_transform();
+        VSTransform null = null_transform();
         /* avg is the average over [-smoothing, smoothing] transforms
            around the current point */
-        Transform avg;
+        VSTransform avg;
         /* avg2 is a sliding average over the filtered signal! (only to past)
          *  with smoothing * 10 horizont to kill offsets */
-        Transform avg2 = null_transform();
+        VSTransform avg2 = null_transform();
         double tau = 1.0/(3 * s);
         /* initialise sliding sum with hypothetic sum centered around
          * -1st element. We have two choices:
          * a) assume the camera is not moving at the beginning
          * b) assume that the camera moves and we use the first transforms
          */
-        Transform s_sum = null;
+        VSTransform s_sum = null;
         for (i = 0; i < td->smoothing; i++){
             s_sum = add_transforms(&s_sum, i < trans->len ? &ts2[i]:&null);
         }
         mult_transform(&s_sum, 2); // choice b (comment out for choice a)
 
         for (i = 0; i < trans->len; i++) {
-            Transform* old = ((i - td->smoothing - 1) < 0)
+            VSTransform* old = ((i - td->smoothing - 1) < 0)
                 ? &null : &ts2[(i - td->smoothing - 1)];
-            Transform* new = ((i + td->smoothing) >= trans->len)
+            VSTransform* new = ((i + td->smoothing) >= trans->len)
                 ? &null : &ts2[(i + td->smoothing)];
             s_sum = sub_transforms(&s_sum, old);
             s_sum = add_transforms(&s_sum, new);
@@ -299,7 +299,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
 
     /* relative to absolute */
     if (td->relative) {
-        Transform t = ts[0];
+        VSTransform t = ts[0];
         for (i = 1; i < trans->len; i++) {
             if (td->verbose  & VS_DEBUG) {
                 vs_log_msg(td->modName, "shift: %5lf   %5lf   %lf \n",
@@ -327,7 +327,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
      *       optzoom=2?
      */
     if (td->optZoom != 0 && trans->len > 1){
-        Transform min_t, max_t;
+        VSTransform min_t, max_t;
         cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t);
         // the zoom value only for x
         double zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
@@ -361,8 +361,8 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
  * Preconditions:
  *     None
  */
-Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
-                            const Transform* trans)
+VSTransform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
+                            const VSTransform* trans)
 {
 
   if (!mem->initialized){
@@ -386,7 +386,7 @@ Transform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
     /* lowpass filter:
      * meaning high frequency must be transformed away
      */
-    Transform newtrans = sub_transforms(trans, &mem->avg);
+    VSTransform newtrans = sub_transforms(trans, &mem->avg);
 
     /* relative to absolute */
     if (td->relative) {

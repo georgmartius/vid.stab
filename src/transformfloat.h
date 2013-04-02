@@ -42,10 +42,10 @@
 
 struct _VSTransformData;
 
-/// does the actual transformation in RGB space
-int _FLT(transformRGB)(struct _VSTransformData* td, Transform t);
-/// does the actual transformation in YUV space
-int _FLT(transformYUV)(struct _VSTransformData* td, Transform t);
+/// does the actual transformation in Packed space
+int _FLT(transformPacked)(struct _VSTransformData* td, VSTransform t);
+/// does the actual transformation in Planar space
+int _FLT(transformPlanar)(struct _VSTransformData* td, VSTransform t);
 
 /**
  * interpolate: general interpolation function pointer for one channel image data

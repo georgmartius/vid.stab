@@ -43,7 +43,7 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
   accumulator: acc = acc + new - old, pixel = acc/size
 */
 
-void boxblurYUV(VSFrame* dest, const VSFrame* src,
+void boxblurPlanar(VSFrame* dest, const VSFrame* src,
     VSFrame* buffer, const VSFrameInfo* fi,
     unsigned int size, BoxBlurColorMode colormode){
   int localbuffer=0;
@@ -104,11 +104,11 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
 
 /* /\* */
 /*   The algorithm: */
-/*   see boxblurYUV but here we for RGB */
+/*   see boxblurPlanar but here we for Packed */
 
 /*   we add the 3 bytes of one pixel as if they where one number */
 /* *\/ */
-/* void boxblurRGB(const unsigned char* src, unsigned char* dest,  */
+/* void boxblurPacked(const unsigned char* src, unsigned char* dest,  */
 /*     unsigned char* buffer, const VSFrameInfo* fi,  */
 /*     unsigned int size){ */
 /*   int localbuffer=0; */
@@ -120,7 +120,7 @@ void boxblurYUV(VSFrame* dest, const VSFrame* src,
 /*   //  (and not larger than 256, because otherwise we can get an overflow) */
 /*   size  = VS_CLAMP((size/2)*2+1,3,VS_MIN(256,VS_MIN(fi->height/2,fi->width/2)));  */
 
-/*   // we need a different version of these functions for RGB */
+/*   // we need a different version of these functions for Packed */
 /*   boxblur_hori_C(src, buffer, fi->width, fi->height, fi->strive, size);   */
 /*   boxblur_vert_C(buffer, dest, fi->width, fi->height, fi->strive, size); */
 

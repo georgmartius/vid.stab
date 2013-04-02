@@ -207,47 +207,48 @@ int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
  */
 int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* trans)
 {
-    char l[1024];
-    int s = 0;
-    int i = 0;
-    int ti; // time (ignored)
-    Transform t;
+  char l[1024];
+  int s = 0;
+  int i = 0;
+  int ti; // time (ignored)
+  VSTransform t;
 
-    while (fgets(l, sizeof(l), f)) {
-        if (l[0] == '#')
-            continue;    //  ignore comments
-        if (strlen(l) == 0)
-            continue; //  ignore empty lines
-        // try new format
-        if (sscanf(l, "%i %lf %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
-                   &t.zoom, &t.extra) != 6) {
-            if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
-                       &t.extra) != 5) {
-                vs_log_error(td->modName, "Cannot parse line: %s", l);
-                return 0;
-            }
-            t.zoom=0;
-        }
-
-        if (i>=s) { // resize transform array
-            if (s == 0)
-                s = 256;
-            else
-                s*=2;
-            /* vs_log_info(td->modName, "resize: %i\n", s); */
-            trans->ts = vs_realloc(trans->ts, sizeof(Transform)* s);
-            if (!trans->ts) {
-                vs_log_error(td->modName, "Cannot allocate memory"
-                                       " for transformations: %i\n", s);
-                return 0;
-            }
-        }
-        trans->ts[i] = t;
-        i++;
+  while (fgets(l, sizeof(l), f)) {
+    t = null_transform();
+    if (l[0] == '#')
+      continue;    //  ignore comments
+    if (strlen(l) == 0)
+      continue; //  ignore empty lines
+    // try new format
+    if (sscanf(l, "%i %lf %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
+               &t.zoom, &t.extra) != 6) {
+      if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
+                 &t.extra) != 5) {
+        vs_log_error(td->modName, "Cannot parse line: %s", l);
+        return 0;
+      }
+      t.zoom=0;
     }
-    trans->len = i;
 
-    return i;
+    if (i>=s) { // resize transform array
+      if (s == 0)
+        s = 256;
+      else
+        s*=2;
+      /* vs_log_info(td->modName, "resize: %i\n", s); */
+      trans->ts = vs_realloc(trans->ts, sizeof(VSTransform)* s);
+      if (!trans->ts) {
+        vs_log_error(td->modName, "Cannot allocate memory"
+                     " for transformations: %i\n", s);
+        return 0;
+      }
+    }
+    trans->ts[i] = t;
+    i++;
+  }
+  trans->len = i;
+
+  return i;
 }
 
 

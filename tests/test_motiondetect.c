@@ -17,7 +17,7 @@ void test_motionDetect(TestData* testdata){
 
   for(i=0; i<numruns; i++){
     LocalMotions localmotions;
-    Transform t;
+    VSTransform t;
     test_bool(vsMotionDetection(&md, &localmotions,&testdata->frames[i])== VS_OK);
     /* for(k=0; k < vs_vector_size(&localmotions); k++){ */
     /*   localmotion_print(LMGet(&localmotions,k),stderr); */

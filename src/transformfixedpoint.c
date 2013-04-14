@@ -141,9 +141,8 @@ inline void interpolateBiCub(unsigned char *rv, fp16 x, fp16 y,
                             PIX(img, ix_f,   iy_f+2, width, height),
                             PIX(img, ix_f+1, iy_f+2, width, height),
                             PIX(img, ix_f+2, iy_f+2, width, height));
-    *rv = (unsigned char)bicub_kernel(y-y_f, v1, v2, v3, v4);
-    //  printf("%f,%f: \t%i %i %i %i -> %i\n", fp16ToF(x),fp16ToF(y),
-    //         v1,v2,v3,v4, *rv);
+    short res = bicub_kernel(y-y_f, v1, v2, v3, v4);
+    *rv = res < 255 ? res : 255;
   }
 }
 
@@ -171,7 +170,8 @@ inline void interpolateBiLin(unsigned char *rv, fp16 x, fp16 y,
     fp16 s  = fp16To8(v1*(x - x_f) + v3*(x_c - x))*fp16To8(y - y_f) +
       fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
     // it is underestimated due to truncation, so we add one
-    *rv = fp16ToI(s)+1;
+    short res = fp16ToI(s);
+    *rv = res < 255 ? res+1 : 255;
   }
 }
 
@@ -189,7 +189,8 @@ inline void interpolateLin(unsigned char *rv, fp16 x, fp16 y,
   short v1 = PIXEL(img, ix_c, y_n, width, height, def);
   short v2 = PIXEL(img, ix_f, y_n, width, height, def);
   fp16 s   = v1*(x - x_f) + v2*(x_c - x);
-  *rv = fp16ToI(s);
+  short res = fp16ToI(s);
+  *rv =   res < 255 ? res : 255;
 }
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */

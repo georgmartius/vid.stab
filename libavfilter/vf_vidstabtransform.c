@@ -1,8 +1,5 @@
 /*
- *  vf_vidstabtransform.c
- *
- *  Copyright (C) Georg Martius - Jan 2012
- *   georg dot martius at web dot de
+ * Copyright (c) 2013 Georg Martius <georg dot martius at web dot de>
  *
  * This file is part of FFmpeg.
  *
@@ -28,11 +25,11 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
-// #include "libavcodec/dsputil.h"
 #include "avfilter.h"
 #include "internal.h"
 
-/* private date structure of this filter*/
+#include "vidstabutils.h"
+
 typedef struct {
     const AVClass* class;
 
@@ -43,8 +40,6 @@ typedef struct {
     char* input;           // name of transform file
     int tripod;
 } TransformContext;
-
-/*** Commandline options ****/
 
 #define OFFSET(x) offsetof(TransformContext, x)
 #define OFFSETTD(x) (offsetof(TransformContext, td)+offsetof(VSTransformData, x))
@@ -90,76 +85,13 @@ static const AVOption vidstabtransform_options[]= {
 
 AVFILTER_DEFINE_CLASS(vidstabtransform);
 
-/*** some conversions from avlib to vid.stab constants and functions ****/
-
-/** convert AV's pixelformat to vid.stab pixelformat */
-static VSPixelFormat av_2_vs_pixel_format(AVFilterContext *ctx, enum AVPixelFormat pf){
-    switch(pf){
-    case AV_PIX_FMT_YUV420P:  return PF_YUV420P;
-    case AV_PIX_FMT_YUV422P:  return PF_YUV422P;
-    case AV_PIX_FMT_YUV444P:  return PF_YUV444P;
-    case AV_PIX_FMT_YUV410P:  return PF_YUV410P;
-    case AV_PIX_FMT_YUV411P:  return PF_YUV411P;
-    case AV_PIX_FMT_YUV440P:  return PF_YUV440P;
-    case AV_PIX_FMT_YUVA420P: return PF_YUVA420P;
-    case AV_PIX_FMT_GRAY8:    return PF_GRAY8;
-    case AV_PIX_FMT_RGB24:    return PF_RGB24;
-    case AV_PIX_FMT_BGR24:    return PF_BGR24;
-    case AV_PIX_FMT_RGBA:     return PF_RGBA;
-    default:
-        av_log(ctx, AV_LOG_ERROR, "cannot deal with pixel format %i\n", pf);
-        return PF_NONE;
-    }
-}
-
-
-/// struct to hold a valid context for logging from within vid.stab lib
-typedef struct {
-    const AVClass* class;
-} TransformLogCtx;
-
-/** wrapper to log vs_log into av_log */
-static int av_log_wrapper(int type, const char* tag, const char* format, ...){
-    va_list ap;
-    TransformLogCtx ctx;
-    ctx.class = &vidstabtransform_class;
-    av_log(&ctx,  type, "%s: ", tag);
-    va_start (ap, format);
-    av_vlog(&ctx, type, format, ap);
-    va_end (ap);
-    return VS_OK;
-}
-
-/** sets the memory allocation function and logging constants to av versions */
-static void set_mem_and_log_functions(void){
-    vs_malloc  = av_malloc;
-    vs_zalloc  = av_mallocz;
-    vs_realloc = av_realloc;
-    vs_free    = av_free;
-
-    VS_ERROR_TYPE = AV_LOG_ERROR;
-    VS_WARN_TYPE  = AV_LOG_WARNING;
-    VS_INFO_TYPE  = AV_LOG_INFO;
-    VS_MSG_TYPE   = AV_LOG_VERBOSE;
-
-    vs_log   = av_log_wrapper;
-
-    VS_ERROR = 0;
-    VS_OK    = 1;
-}
-
-/*************************************************************************/
-
-/* Module interface routines and data. */
-
-/*************************************************************************/
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
 
     TransformContext* tc = ctx->priv;
 
-    set_mem_and_log_functions();
+    vs_set_mem_and_log_functions();
 
     tc->class = &vidstabtransform_class;
     av_opt_set_defaults(tc); // the default values are overwritten by initMotiondetect later
@@ -224,7 +156,6 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    // check
     if(fi_src.bytesPerPixel != av_get_bits_per_pixel(desc)/8 ||
        fi_src.log2ChromaW != desc->log2_chroma_w ||
        fi_src.log2ChromaH != desc->log2_chroma_h){
@@ -240,7 +171,7 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
         return AVERROR(EINVAL);
     }
-    td->verbose=1; // TODO: get from somewhere
+    td->verbose=1;
 
     // we need to do it after vsTransformDataInit because otherwise the values are overwritten
     if ((returnval = (av_set_options_string(tc, tc->args, "=", ":"))) < 0)
@@ -296,7 +227,7 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    // TODO: add sharpening
+    // TODO: add sharpening, so far the user needs to call the unsharp filter manually
     return 0;
 }
 

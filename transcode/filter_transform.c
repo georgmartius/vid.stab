@@ -54,6 +54,8 @@ typedef struct {
 
     VSTransformations trans; // transformations
 
+
+    double sharpen;     // amount of sharpening
     char input[TC_BUF_LINE];
     char conf_str[TC_BUF_MIN];
 } FilterData;
@@ -112,11 +114,10 @@ static int transform_configure(TCModuleInstance *self,
     vsFrameInfoInit(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
 
-    if(vsTransformDataInit(td, &fi_src, &fi_dest, MOD_NAME) != VS_OK){
-        tc_log_error(MOD_NAME, "initialization of VSTransformData failed");
-        return TC_ERROR;
-    }
-    td->verbose=verbose;
+    VSTransformConfig conf = vsTransformGetDefaulfConfig(MOD_NAME);
+    conf.verbose = verbose;
+    fd->sharpen  = 0.8;
+
 
     vsTransformationsInit(&fd->trans);
 
@@ -139,47 +140,48 @@ static int transform_configure(TCModuleInstance *self,
             tc_log_info(MOD_NAME,vs_transform_help);
             return(TC_IMPORT_ERROR);
         }
-        optstr_get(options, "input", "%[^:]", (char*)&fd->input);
-        optstr_get(options, "maxshift",  "%d", &td->maxShift);
-        optstr_get(options, "maxangle",  "%lf", &td->maxAngle);
-        optstr_get(options, "smoothing", "%d", &td->smoothing);
-        optstr_get(options, "crop"     , "%d", (int*)&td->crop);
-        optstr_get(options, "invert"   , "%d", &td->invert);
-        optstr_get(options, "relative" , "%d", &td->relative);
-        optstr_get(options, "zoom"     , "%lf",&td->zoom);
-        optstr_get(options, "optzoom"  , "%d", &td->optZoom);
-        optstr_get(options, "interpol" , "%d", (int*)(&td->interpolType));
-        optstr_get(options, "sharpen"  , "%lf",&td->sharpen);
+        optstr_get(options, "input",  "%[^:]", (char*)&fd->input);
+        optstr_get(options, "maxshift",  "%d", &conf.maxShift);
+        optstr_get(options, "maxangle", "%lf", &conf.maxAngle);
+        optstr_get(options, "smoothing", "%d", &conf.smoothing);
+        optstr_get(options, "crop"     , "%d", (int*)&conf.crop);
+        optstr_get(options, "invert"   , "%d", &conf.invert);
+        optstr_get(options, "relative" , "%d", &conf.relative);
+        optstr_get(options, "zoom"     ,"%lf", &conf.zoom);
+        optstr_get(options, "optzoom"  , "%d", &conf.optZoom);
+        optstr_get(options, "interpol" , "%d", (int*)(&conf.interpolType));
+        optstr_get(options, "sharpen"  ,"%lf", &fd->sharpen);
         if(optstr_lookup(options, "tripod")){
             tc_log_info(MOD_NAME,"Virtual tripod mode: relative=False, smoothing=0");
-            td->relative=0;
-            td->smoothing=0;
+            conf.relative=0;
+            conf.smoothing=0;
         }
     }
 
-    if(vsTransformDataConfigure(td)!= VS_OK){
-        tc_log_error(MOD_NAME, "configuration of TransformData failed");
+    if(vsTransformDataInit(td, &conf, &fi_src, &fi_dest) != VS_OK){
+        tc_log_error(MOD_NAME, "initialization of VSTransformData failed");
         return TC_ERROR;
     }
+    vsTransformGetConfig(&conf,td);
 
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Transformation/Stabilization Settings:");
         tc_log_info(MOD_NAME, "    input     = %s", fd->input);
-        tc_log_info(MOD_NAME, "    smoothing = %d", td->smoothing);
-        tc_log_info(MOD_NAME, "    maxshift  = %d", td->maxShift);
-        tc_log_info(MOD_NAME, "    maxangle  = %f", td->maxAngle);
+        tc_log_info(MOD_NAME, "    smoothing = %d", conf.smoothing);
+        tc_log_info(MOD_NAME, "    maxshift  = %d", conf.maxShift);
+        tc_log_info(MOD_NAME, "    maxangle  = %f", conf.maxAngle);
         tc_log_info(MOD_NAME, "    crop      = %s",
-                        td->crop ? "Black" : "Keep");
+                        conf.crop ? "Black" : "Keep");
         tc_log_info(MOD_NAME, "    relative  = %s",
-                    td->relative ? "True": "False");
+                    conf.relative ? "True": "False");
         tc_log_info(MOD_NAME, "    invert    = %s",
-                    td->invert ? "True" : "False");
-        tc_log_info(MOD_NAME, "    zoom      = %f", td->zoom);
+                    conf.invert ? "True" : "False");
+        tc_log_info(MOD_NAME, "    zoom      = %f", conf.zoom);
         tc_log_info(MOD_NAME, "    optzoom   = %s",
-                    td->optZoom ? "On" : "Off");
+                    conf.optZoom ? "On" : "Off");
         tc_log_info(MOD_NAME, "    interpol  = %s",
-                    getInterpolationTypeName(td->interpolType));
-        tc_log_info(MOD_NAME, "    sharpen   = %f", td->sharpen);
+                    getInterpolationTypeName(conf.interpolType));
+        tc_log_info(MOD_NAME, "    sharpen   = %f", fd->sharpen);
     }
 
     f = fopen(fd->input, "r");
@@ -207,12 +209,12 @@ static int transform_configure(TCModuleInstance *self,
 
     // sharpen is still in transcode...
     /* Is this the right point to add the filter? Seems to be the case.*/
-    if(td->sharpen>0){
+    if(fd->sharpen>0){
         /* load unsharp filter */
         char unsharp_param[256];
         sprintf(unsharp_param,"luma=%f:%s:chroma=%f:%s",
-                td->sharpen, "luma_matrix=5x5",
-                td->sharpen/2, "chroma_matrix=5x5");
+                fd->sharpen, "luma_matrix=5x5",
+                fd->sharpen/2, "chroma_matrix=5x5");
         if (!tc_filter_add("unsharp", unsharp_param)) {
             tc_log_warn(MOD_NAME, "cannot load unsharp filter!");
         }
@@ -236,7 +238,7 @@ static int transform_filter_video(TCModuleInstance *self,
 
     fd = self->userdata;
     VSFrame vsFrame;
-    vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &fd->td.fiSrc);
+    vsFrameFillFromBuffer(&vsFrame,frame->video_buf, vsTransformGetSrcFrameInfo(&fd->td));
 
     vsTransformPrepare(&fd->td, &vsFrame,  &vsFrame);
 
@@ -304,16 +306,18 @@ static int transform_inspect(TCModuleInstance *self,
     if (optstr_lookup(param, "help")) {
         *value = vs_transform_help;
     }
-    CHECKPARAM("maxshift", "maxshift=%d",  fd->td.maxShift);
-    CHECKPARAM("maxangle", "maxangle=%f",  fd->td.maxAngle);
-    CHECKPARAM("smoothing","smoothing=%d", fd->td.smoothing);
-    CHECKPARAM("crop",     "crop=%d",      fd->td.crop);
-    CHECKPARAM("relative", "relative=%d",  fd->td.relative);
-    CHECKPARAM("invert",   "invert=%i",    fd->td.invert);
+    VSTransformConfig conf;
+    vsTransformGetConfig(&conf,&fd->td);
+    CHECKPARAM("maxshift", "maxshift=%d",  conf.maxShift);
+    CHECKPARAM("maxangle", "maxangle=%f",  conf.maxAngle);
+    CHECKPARAM("smoothing","smoothing=%d", conf.smoothing);
+    CHECKPARAM("crop",     "crop=%d",      conf.crop);
+    CHECKPARAM("relative", "relative=%d",  conf.relative);
+    CHECKPARAM("invert",   "invert=%i",    conf.invert);
     CHECKPARAM("input",    "input=%s",     fd->input);
-    CHECKPARAM("optzoom",  "optzoom=%i",   fd->td.optZoom);
-    CHECKPARAM("zoom",     "zoom=%f",      fd->td.zoom);
-    CHECKPARAM("sharpen",  "sharpen=%f",   fd->td.sharpen);
+    CHECKPARAM("optzoom",  "optzoom=%i",   conf.optZoom);
+    CHECKPARAM("zoom",     "zoom=%f",      conf.zoom);
+    CHECKPARAM("sharpen",  "sharpen=%f",   fd->sharpen);
 
     return TC_OK;
 };
@@ -370,18 +374,14 @@ static int transform_process(TCModuleInstance *self, frame_list_t *frame)
 TC_FILTER_OLDINTERFACE(transform)
 
 /*************************************************************************/
-/*
-  TODO:
-  - check for optimization, e.g. mmx stuff
-*/
 
 /*
  * Local variables:
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
- *   c-basic-offset: 2 t
+ *   c-basic-offset: 4 t
  * End:
  *
- * vim: expandtab shiftwidth=2:
+ * vim: expandtab shiftwidth=4:
  */

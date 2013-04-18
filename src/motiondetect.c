@@ -53,21 +53,44 @@ typedef struct _contrast_idx {
   int index;
 } contrast_idx;
 
-int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi,
-         const char* modName) {
+
+VSMotionDetectConfig vsMotionDetectGetDefaulfConfig(const char* modName){
+  VSMotionDetectConfig conf;
+  conf.stepSize          = 6;
+  conf.algo              = 1;
+  conf.accuracy          = 9;
+  conf.shakiness         = 5;
+  conf.virtualTripod     = 0;
+  conf.contrastThreshold = 0.25;
+  conf.show              = 0;
+  conf.modName           = modName;
+  return conf;
+}
+
+void vsMotionDetectGetConfig(VSMotionDetectConfig* conf, const VSMotionDetect* md){
+  if(md && conf)
+    *conf = md->conf;
+}
+
+const VSFrameInfo* vsMotionDetectGetFrameInfo(const VSMotionDetect* md){
+  return &md->fi;
+}
+
+
+int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, const VSFrameInfo* fi){
   assert(md && fi);
+  md->conf = *conf;
   md->fi = *fi;
-  md->modName = modName;
 
   if(fi->pFormat<=PF_NONE ||  fi->pFormat==PF_PACKED || fi->pFormat>=PF_NUMBER) {
-    vs_log_warn(md->modName, "unsupported Pixel Format (%i)\n",
+    vs_log_warn(md->conf.modName, "unsupported Pixel Format (%i)\n",
                 md->fi.pFormat);
     return VS_ERROR;
   }
 
   vsFrameAllocate(&md->prev, &md->fi);
   if (vsFrameIsNull(&md->prev)) {
-    vs_log_error(md->modName, "malloc failed");
+    vs_log_error(md->conf.modName, "malloc failed");
     return VS_ERROR;
   }
 
@@ -77,56 +100,40 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi,
   md->hasSeenOneFrame = 0;
   md->frameNum = 0;
 
-  // Options
-  md->stepSize  = 6;
-  md->allowMax  = 0;
-  md->algo      = 1;
-  md->accuracy  = 9;
-  md->shakiness = 5;
   md->fieldSize = VS_MIN(md->fi.width, md->fi.height) / 12;
-  md->virtualTripod = 0;
-  md->show = 0;
-  md->contrastThreshold = 0.25;
-  md->initialized = 1;
-  return VS_OK;
-}
+  md->allowMax  = 0;
+  md->fieldNum  = 0; // will be set in initFields()
 
-int vsMotionDetectConfigure(VSMotionDetect* md) {
-  if (md->initialized != 1)
-    return VS_ERROR;
-
-  md->shakiness = VS_MIN(10,VS_MAX(1,md->shakiness));
-  md->accuracy = VS_MIN(15,VS_MAX(1,md->accuracy));
-  if (md->accuracy < md->shakiness / 2) {
-    vs_log_info(md->modName, "Accuracy should not be lower than shakiness/2 -- fixed");
-    md->accuracy = md->shakiness / 2;
+  md->conf.shakiness = VS_MIN(10,VS_MAX(1,md->conf.shakiness));
+  md->conf.accuracy = VS_MIN(15,VS_MAX(1,md->conf.accuracy));
+  if (md->conf.accuracy < md->conf.shakiness / 2) {
+    vs_log_info(md->conf.modName, "Accuracy should not be lower than shakiness/2 -- fixed");
+    md->conf.accuracy = md->conf.shakiness / 2;
   }
-  if (md->accuracy > 9 && md->stepSize > 6) {
-    vs_log_info(md->modName, "For high accuracy use lower stepsize  -- set to 6 now");
-    md->stepSize = 6; // maybe 4
+  if (md->conf.accuracy > 9 && md->conf.stepSize > 6) {
+    vs_log_info(md->conf.modName, "For high accuracy use lower stepsize  -- set to 6 now");
+    md->conf.stepSize = 6; // maybe 4
   }
 
   // shift: shakiness 1: height/40; 10: height/4
   int minDimension = VS_MIN(md->fi.width, md->fi.height);
-  md->maxShift
-    = VS_MAX(4,(minDimension*md->shakiness)/40);
+  md->maxShift = VS_MAX(4,(minDimension*md->conf.shakiness)/40);
   // size: shakiness 1: height/40; 10: height/6 (clipped)
-  md->fieldSize
-    = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->shakiness)/40));
+  md->fieldSize = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->conf.shakiness)/40));
 
 #if defined(USE_SSE2) || defined(USE_SSE2_ASM)
   md->fieldSize = (md->fieldSize / 16 + 1) * 16;
 #endif
 
-  vs_log_info(md->modName, "Fieldsize: %i, Maximal translation: %i pixel\n",
-        md->fieldSize, md->maxShift);
-  if (md->algo == 1) {
+  vs_log_info(md->conf.modName, "Fieldsize: %i, Maximal translation: %i pixel\n",
+              md->fieldSize, md->maxShift);
+  if (md->conf.algo == 1) {
     // initialize measurement fields. field_num is set here.
     if (!initFields(md)) {
       return VS_ERROR;
     }
-    md->maxFields = (md->accuracy) * md->fieldNum / 15;
-    vs_log_info(md->modName, "Number of used measurement fields: %i out of %i\n",
+    md->maxFields = (md->conf.accuracy) * md->fieldNum / 15;
+    vs_log_info(md->conf.modName, "Number of used measurement fields: %i out of %i\n",
     md->maxFields, md->fieldNum);
   }
   //  if (md->show)
@@ -162,7 +169,7 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
     vsFrameCopy(&md->curr, frame, &md->fi);
   } else {
     // box-kernel smoothing (plain average of pixels), which is fine for us
-    boxblurPlanar(&md->curr, frame, &md->currtmp, &md->fi, md->stepSize*1/*1.4*/,
+    boxblurPlanar(&md->curr, frame, &md->currtmp, &md->fi, md->conf.stepSize*1/*1.4*/,
                BoxBlurNoColor);
     // two times yields tent-kernel smoothing, which may be better, but I don't
     //  think we need it
@@ -173,14 +180,14 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
   if (md->hasSeenOneFrame) {
     //    md->curr = frame;
     if (md->fi.pFormat > PF_PACKED) {
-      if (md->algo == 0)
+      if (md->conf.algo == 0)
         *motions = calcShiftPackedSimple(md);
-      else if (md->algo == 1)
+      else if (md->conf.algo == 1)
         *motions = calcTransFields(md, calcFieldTransPacked, contrastSubImgPacked);
     } else { // PLANAR
-      if (md->algo == 0)
+      if (md->conf.algo == 0)
         *motions = calcShiftPlanarSimple(md);
-      else if (md->algo == 1)
+      else if (md->conf.algo == 1)
         *motions = calcTransFields(md, calcFieldTransPlanar, contrastSubImgPlanar);
     }
   } else {
@@ -188,9 +195,9 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
     md->hasSeenOneFrame = 1;
   }
 
-  if(md->virtualTripod < 1 || md->frameNum < md->virtualTripod)
-  // copy current frame (smoothed) to prev for next frame comparison
-  vsFrameCopy(&md->prev, &md->curr, &md->fi);
+  if(md->conf.virtualTripod < 1 || md->frameNum < md->conf.virtualTripod)
+    // copy current frame (smoothed) to prev for next frame comparison
+    vsFrameCopy(&md->prev, &md->curr, &md->fi);
   md->frameNum++;
   return VS_OK;
 }
@@ -211,14 +218,14 @@ int initFields(VSMotionDetect* md) {
   //            rows, cols, md->field_num);
 
   if (!(md->fields = (Field*) vs_malloc(sizeof(Field) * md->fieldNum))) {
-    vs_log_error(md->modName, "malloc failed!\n");
+    vs_log_error(md->conf.modName, "malloc failed!\n");
     return 0;
   } else {
     int i, j;
     // the border is the amount by which the field centers
     // have to be away from the image boundary
     // (stepsize is added in case shift is increased through stepsize)
-    int border = size / 2 + md->maxShift + md->stepSize;
+    int border = size / 2 + md->maxShift + md->conf.stepSize;
     int step_x = (md->fi.width - 2 * border) / VS_MAX(cols-1,1);
     int step_y = (md->fi.height - 2 * border) / VS_MAX(rows-1,1);
     for (j = 0; j < rows; j++) {
@@ -439,7 +446,7 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, const Field* field, int fie
   int linesize_c = md->curr.linesize[0], linesize_p = md->prev.linesize[0];
   // we only use the luminance part of the image
   int i, j;
-  int stepSize = md->stepSize;
+  int stepSize = md->conf.stepSize;
 
 #ifdef STABVERBOSE
   // printf("%i %i %f\n", md->frameNum, fieldnum, contr);
@@ -557,13 +564,13 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, const Field* field, int fie
   vs_log_msg(md->modName, "Minerror: %f\n", minerror);
 #endif
 
-  if (!md->allowMax && fabs(tx) >= md->maxShift + md->stepSize) {
+  if (!md->allowMax && fabs(tx) >= md->maxShift + md->conf.stepSize) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal x shift ");
 #endif
     tx = 0;
   }
-  if (!md->allowMax && fabs(ty) == md->maxShift + md->stepSize) {
+  if (!md->allowMax && fabs(ty) == md->maxShift + md->conf.stepSize) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal y shift ");
 #endif
@@ -588,6 +595,7 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
   int width1 = md->curr.linesize[0]/3; // linesize in pixels
   int width2 = md->prev.linesize[0]/3; // linesize in pixels
   int i, j;
+  int stepSize = md->conf.stepSize;
 
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start
@@ -595,8 +603,8 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
   unsigned int minerror = compareSubImg(I_c, I_p, field, width1, width2, md->fi.height,
                                         3, 0, 0, UINT_MAX);
   // check all positions...
-  for (i = -md->maxShift; i <= md->maxShift; i += md->stepSize) {
-    for (j = -md->maxShift; j <= md->maxShift; j += md->stepSize) {
+  for (i = -md->maxShift; i <= md->maxShift; i += stepSize) {
+    for (j = -md->maxShift; j <= md->maxShift; j += stepSize) {
       if( i==0 && j==0 )
         continue; //no need to check this since already done
       unsigned int error = compareSubImg(I_c, I_p, field, width1, width2,
@@ -608,10 +616,10 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
       }
     }
   }
-  if (md->stepSize > 1) { // make fine grain check around the best match
+  if (stepSize > 1) { // make fine grain check around the best match
     int txc = tx; // save the shifts
     int tyc = ty;
-    int r = md->stepSize - 1;
+    int r = stepSize - 1;
     for (i = txc - r; i <= txc + r; i += 1) {
       for (j = tyc - r; j <= tyc + r; j += 1) {
         if (i == txc && j == tyc)
@@ -627,13 +635,13 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, const Field* field,
     }
   }
 
-  if (!md->allowMax && fabs(tx) >= md->maxShift + md->stepSize) {
+  if (!md->allowMax && fabs(tx) >= md->maxShift + stepSize - 1) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal x shift ");
 #endif
     tx = 0;
   }
-  if (!md->allowMax && fabs(ty) == md->maxShift + md->stepSize) {
+  if (!md->allowMax && fabs(ty) >= md->maxShift + stepSize - 1) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal y shift ");
 #endif
@@ -680,7 +688,7 @@ VSVector selectfields(VSMotionDetect* md, contrastSubImgFunc contrastfunc) {
   for (i = 0; i < md->fieldNum; i++) {
     ci[i].contrast = contrastfunc(md, &md->fields[i]);
     ci[i].index = i;
-    if (ci[i].contrast < md->contrastThreshold)
+    if (ci[i].contrast < md->conf.contrastThreshold)
       ci[i].contrast = 0;
     // else printf("%i %lf\n", ci[i].index, ci[i].contrast);
   }
@@ -777,13 +785,13 @@ LocalMotions calcTransFields(VSMotionDetect* md,
   num_motions = vs_vector_size(&localmotions); // amount of transforms we actually have
   vs_vector_del(&goodflds);
   if (num_motions < 1) {
-    vs_log_warn(md->modName, "too low contrast! No field remains.\n \
+    vs_log_warn(md->conf.modName, "too low contrast! No field remains.\n \
                     (no translations are detected in frame %i)", md->frameNum);
   }
 
-  if (md->show) { // draw fields and transforms into frame.
+  if (md->conf.show) { // draw fields and transforms into frame.
     // this has to be done one after another to handle possible overlap
-    if (md->show > 1) {
+    if (md->conf.show > 1) {
       for (i = 0; i < num_motions; i++)
         drawFieldScanArea(md, LMGet(&localmotions,i));
     }

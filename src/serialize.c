@@ -101,12 +101,11 @@ LocalMotions vsRestoreLocalmotions(FILE* f){
 int vsPrepareFile(const VSMotionDetect* md, FILE* f){
     if(!f) return VS_ERROR;
     fprintf(f, "VID.STAB 1\n");
-    //    fprintf(f, "#      accuracy = %d\n", md->accuracy);
-    fprintf(f, "#      accuracy = %d\n", md->accuracy);
-    fprintf(f, "#     shakiness = %d\n", md->shakiness);
-    fprintf(f, "#      stepsize = %d\n", md->stepSize);
-    fprintf(f, "#          algo = %d\n", md->algo);
-    fprintf(f, "#   mincontrast = %f\n", md->contrastThreshold);
+    fprintf(f, "#      accuracy = %d\n", md->conf.accuracy);
+    fprintf(f, "#     shakiness = %d\n", md->conf.shakiness);
+    fprintf(f, "#      stepsize = %d\n", md->conf.stepSize);
+    fprintf(f, "#          algo = %d\n", md->conf.algo);
+    fprintf(f, "#   mincontrast = %f\n", md->conf.contrastThreshold);
     return VS_OK;
 }
 
@@ -224,7 +223,7 @@ int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* 
                &t.zoom, &t.extra) != 6) {
       if (sscanf(l, "%i %lf %lf %lf %i", &ti, &t.x, &t.y, &t.alpha,
                  &t.extra) != 5) {
-        vs_log_error(td->modName, "Cannot parse line: %s", l);
+        vs_log_error(td->conf.modName, "Cannot parse line: %s", l);
         return 0;
       }
       t.zoom=0;
@@ -238,7 +237,7 @@ int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* 
       /* vs_log_info(td->modName, "resize: %i\n", s); */
       trans->ts = vs_realloc(trans->ts, sizeof(VSTransform)* s);
       if (!trans->ts) {
-        vs_log_error(td->modName, "Cannot allocate memory"
+        vs_log_error(td->conf.modName, "Cannot allocate memory"
                      " for transformations: %i\n", s);
         return 0;
       }

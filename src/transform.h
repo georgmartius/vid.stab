@@ -74,6 +74,26 @@ typedef void (*vsInterpolateFun)(unsigned char *rv, int32_t x, int32_t y,
                                unsigned char* img, int width, int height,
                                unsigned char def);
 
+typedef struct _VSTransformConfig {
+
+    /* whether to consider transforms as relative (to previous frame)
+     * or absolute transforms
+     */
+    int            relative;
+    /* number of frames (forward and backward)
+     * to use for smoothing transforms */
+    int            smoothing;
+    VSBorderType   crop;        // 1: black bg, 0: keep border from last frame(s)
+    int            invert;      // 1: invert transforms, 0: nothing
+    double         zoom;        // percentage to zoom: 0->no zooming 10:zoom in 10%
+    int            optZoom;     // 1: determine optimal zoom, 0: nothing
+    VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
+    int            maxShift;    // maximum number of pixels we will shift
+    double         maxAngle;    // maximum angle in rad
+    const char*    modName;     // module name (used for logging)
+    int            verbose;     // level of logging
+} VSTransformConfig;
+
 typedef struct _VSTransformData {
     VSFrameInfo fiSrc;
     VSFrameInfo fiDest;
@@ -84,7 +104,6 @@ typedef struct _VSTransformData {
     VSFrame dest;        // pointer to the destination buffer
 
     short srcMalloced;   // 1 if the source buffer was internally malloced
-    const char* modName;
 
     vsInterpolateFun interpolate; // pointer to interpolation function
 #ifdef TESTING
@@ -92,30 +111,12 @@ typedef struct _VSTransformData {
 #endif
 
     /* Options */
-    int maxShift;        // maximum number of pixels we will shift
-    double maxAngle;     // maximum angle in rad
+    VSTransformConfig conf;
+
     /* maximal difference in angles of fields */
     double maxAngleVariation;
-
-
-    /* whether to consider transforms as relative (to previous frame)
-     * or absolute transforms
-     */
-    int relative;
-    /* number of frames (forward and backward)
-     * to use for smoothing transforms */
-    int smoothing;
-    VSBorderType crop;  // 1: black bg, 0: keep border from last frame(s)
-    int invert;       // 1: invert transforms, 0: nothing
-    /* constants */
     /* threshhold below which no rotation is performed */
-    double rotationThreshhold;
-    double zoom;      // percentage to zoom: 0->no zooming 10:zoom in 10%
-    int optZoom;      // 1: determine optimal zoom, 0: nothing
-    VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
-    double sharpen;   // amount of sharpening
-
-    int verbose;     // level of logging
+    double         rotationThreshhold;
 
     int initialized; // 1 if initialized and 2 if configured
 } VSTransformData;
@@ -149,22 +150,30 @@ static const char vs_transform_help[] = ""
     "    'tripod'    virtual tripod mode (=relative=0:smoothing=0)\n"
     "    'help'      print this help message\n";
 
-/** initialized the VSTransformData structure and allocates memory
+/** returns the default config
+ */
+VSTransformConfig vsTransformGetDefaulfConfig(const char* modName);
+
+/** initialized the VSTransformData structure using the config and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int vsTransformDataInit(VSTransformData* td, const VSFrameInfo* fi_src,
-                      const VSFrameInfo* fi_dest , const char* modName);
+int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
+                        const VSFrameInfo* fi_src, const VSFrameInfo* fi_dest);
 
-/** configures VSTransformData structure and checks ranges, initializes fields and so on.
- *  @return VS_OK on success otherwise VS_ERROR
- */
-int vsTransformDataConfigure(VSTransformData* td);
 
 /** Deletes internal data structures.
  * In order to use the VSTransformData again, you have to call vsTransformDataInit
  */
 void vsTransformDataCleanup(VSTransformData* td);
+
+/// returns the current config
+void vsTransformGetConfig(VSTransformConfig* conf, const VSTransformData* td);
+
+/// returns the frame info for the src
+const VSFrameInfo* vsTransformGetSrcFrameInfo(const VSTransformData* td);
+/// returns the frame info for the dest
+const VSFrameInfo* vsTransformGetDestFrameInfo(const VSTransformData* td);
 
 
 /// initializes VSTransformations structure

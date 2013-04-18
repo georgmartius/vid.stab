@@ -34,41 +34,41 @@ typedef struct {
     const AVClass* class;
 
     VSTransformData td;
+    VSTransformConfig conf;
 
     VSTransformations trans; // transformations
-    char* args;
     char* input;           // name of transform file
     int tripod;
 } TransformContext;
 
 #define OFFSET(x) offsetof(TransformContext, x)
-#define OFFSETTD(x) (offsetof(TransformContext, td)+offsetof(VSTransformData, x))
+#define OFFSETC(x) (offsetof(TransformContext, conf)+offsetof(VSTransformConfig, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption vidstabtransform_options[]= {
     {"input",     "path to the file storing the transforms (def:transforms.trf)",   OFFSET(input),
                    AV_OPT_TYPE_STRING, {.str = DEFAULT_INPUT_NAME} },
-    {"smoothing", "number of frames*2 + 1 used for lowpass filtering (def: 10)",    OFFSETTD(smoothing),
+    {"smoothing", "number of frames*2 + 1 used for lowpass filtering (def: 10)",    OFFSETC(smoothing),
                    AV_OPT_TYPE_INT,    {.i64 = 10},       1, 1000, FLAGS},
-    {"maxshift",  "maximal number of pixels to translate image (def: -1 no limit)", OFFSETTD(maxShift),
+    {"maxshift",  "maximal number of pixels to translate image (def: -1 no limit)", OFFSETC(maxShift),
                    AV_OPT_TYPE_INT,    {.i64 = -1},      -1, 500,  FLAGS},
-    {"maxangle",  "maximal angle in rad to rotate image (def: -1 no limit)",        OFFSETTD(maxAngle),
+    {"maxangle",  "maximal angle in rad to rotate image (def: -1 no limit)",        OFFSETC(maxAngle),
                    AV_OPT_TYPE_DOUBLE, {.dbl = -1.0},  -1.0, 3.14, FLAGS},
-    {"crop",      "keep: (def), black",                                             OFFSETTD(crop),
+    {"crop",      "keep: (def), black",                                             OFFSETC(crop),
                    AV_OPT_TYPE_INT,    {.i64 = 0},        0, 1,    FLAGS, "crop"},
     {  "keep",    "keep border",                                                    0,
                    AV_OPT_TYPE_CONST,  {.i64 = VSKeepBorder }, 0, 0, FLAGS, "crop"},
     {  "black",   "black border",                                                   0,
                    AV_OPT_TYPE_CONST,  {.i64 = VSCropBorder }, 0, 0, FLAGS, "crop"},
-    {"invert",    "1: invert transforms(def: 0)",                                   OFFSETTD(invert),
-                   AV_OPT_TYPE_INT,    {.i64 = 1},        0, 1,    FLAGS},
-    {"relative",  "consider transforms as 0: absolute, 1: relative (def)",          OFFSETTD(relative),
+    {"invert",    "1: invert transforms (def: 0)",                                  OFFSETC(invert),
                    AV_OPT_TYPE_INT,    {.i64 = 0},        0, 1,    FLAGS},
-    {"zoom",      "percentage to zoom >0: zoom in, <0 zoom out (def: 0)",           OFFSETTD(zoom),
-                   AV_OPT_TYPE_DOUBLE, {.dbl = 0},        0, 100,  FLAGS},
-    {"optzoom",   "0: nothing, 1: determine optimal zoom (def) (added to 'zoom')",  OFFSETTD(optZoom),
+    {"relative",  "consider transforms as 0: absolute, 1: relative (def)",          OFFSETC(relative),
                    AV_OPT_TYPE_INT,    {.i64 = 1},        0, 1,    FLAGS},
-    {"interpol",  "type of interpolation, no, linear, bilinear (def) , bicubic",    OFFSETTD(interpolType),
+    {"zoom",      "percentage to zoom >0: zoom in, <0 zoom out (def: 0)",           OFFSETC(zoom),
+                   AV_OPT_TYPE_DOUBLE, {.dbl = 0},        0, 100,  FLAGS},
+    {"optzoom",   "0: nothing, 1: determine optimal zoom (def) (added to 'zoom')",  OFFSETC(optZoom),
+                   AV_OPT_TYPE_INT,    {.i64 = 1},        0, 1,    FLAGS},
+    {"interpol",  "type of interpolation, no, linear, bilinear (def) , bicubic",    OFFSETC(interpolType),
                    AV_OPT_TYPE_INT,    {.i64 = 2},        0, 3,    FLAGS, "interpol"},
     {  "no",      "no interpolation",                                               0,
                    AV_OPT_TYPE_CONST,  {.i64 = VS_Zero  },  0, 0,  FLAGS, "interpol"},
@@ -85,23 +85,12 @@ static const AVOption vidstabtransform_options[]= {
 
 AVFILTER_DEFINE_CLASS(vidstabtransform);
 
-
-static av_cold int init(AVFilterContext *ctx, const char *args)
+static av_cold int init(AVFilterContext *ctx)
 {
-
     TransformContext* tc = ctx->priv;
-
     vs_set_mem_and_log_functions();
-
     tc->class = &vidstabtransform_class;
-    av_opt_set_defaults(tc); // the default values are overwritten by initMotiondetect later
-
     av_log(ctx, AV_LOG_VERBOSE, "vidstabtransform filter: init %s\n", LIBVIDSTAB_VERSION);
-
-    // save args for later, because the initialization of the vid.stab library requires
-    //  knowledge about the input.
-    tc->args=av_strdup(args);
-
     return 0;
 }
 
@@ -113,10 +102,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     vsTransformDataCleanup(&tc->td);
     vsTransformationsCleanup(&tc->trans);
-
-    av_free(tc->args);
 }
-
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -138,7 +124,6 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     TransformContext *tc = ctx->priv;
     FILE* f;
-    int returnval;
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
@@ -167,39 +152,32 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    if(vsTransformDataInit(td, &fi_src, &fi_dest, "vidstabtransform") != VS_OK){
-        av_log(ctx, AV_LOG_ERROR, "initialization of TransformData failed\n");
-        return AVERROR(EINVAL);
-    }
-    td->verbose=1;
-
-    // we need to do it after vsTransformDataInit because otherwise the values are overwritten
-    if ((returnval = (av_set_options_string(tc, tc->args, "=", ":"))) < 0)
-        return returnval;
-
+    // set values that are not initializes by the options
+    tc->conf.modName = "vidstabtransform";
+    tc->conf.verbose=1;
     if(tc->tripod){
         av_log(ctx, AV_LOG_INFO, "Virtual tripod mode: relative=0, smoothing=0");
-        td->relative=0;
-        td->smoothing=0;
+        tc->conf.relative=0;
+        tc->conf.smoothing=0;
     }
 
-    if(vsTransformDataConfigure(td)!= VS_OK){
-      av_log(ctx, AV_LOG_ERROR, "configuration of Tranform failed\n");
-        return AVERROR(EINVAL);
+    if(vsTransformDataInit(td, &tc->conf, &fi_src, &fi_dest) != VS_OK){
+      av_log(ctx, AV_LOG_ERROR, "initialization of vid.stab transform failed, please report a BUG\n");
+      return AVERROR(EINVAL);
     }
 
+    vsTransformGetConfig(&tc->conf,td);
     av_log(ctx, AV_LOG_INFO, "Video transformation/stabilization settings (pass 2/2):\n");
     av_log(ctx, AV_LOG_INFO, "    input     = %s\n", tc->input);
-    av_log(ctx, AV_LOG_INFO, "    smoothing = %d\n", td->smoothing);
-    av_log(ctx, AV_LOG_INFO, "    maxshift  = %d\n", td->maxShift);
-    av_log(ctx, AV_LOG_INFO, "    maxangle  = %f\n", td->maxAngle);
-    av_log(ctx, AV_LOG_INFO, "    crop      = %s\n", td->crop ? "Black" : "Keep");
-    av_log(ctx, AV_LOG_INFO, "    relative  = %s\n", td->relative ? "True": "False");
-    av_log(ctx, AV_LOG_INFO, "    invert    = %s\n", td->invert ? "True" : "False");
-    av_log(ctx, AV_LOG_INFO, "    zoom      = %f\n", td->zoom);
-    av_log(ctx, AV_LOG_INFO, "    optzoom   = %s\n", td->optZoom ? "On" : "Off");
-    av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", getInterpolationTypeName(td->interpolType));
-    av_log(ctx, AV_LOG_INFO, "    sharpen   = %f\n", td->sharpen);
+    av_log(ctx, AV_LOG_INFO, "    smoothing = %d\n", tc->conf.smoothing);
+    av_log(ctx, AV_LOG_INFO, "    maxshift  = %d\n", tc->conf.maxShift);
+    av_log(ctx, AV_LOG_INFO, "    maxangle  = %f\n", tc->conf.maxAngle);
+    av_log(ctx, AV_LOG_INFO, "    crop      = %s\n", tc->conf.crop ? "Black" : "Keep");
+    av_log(ctx, AV_LOG_INFO, "    relative  = %s\n", tc->conf.relative ? "True": "False");
+    av_log(ctx, AV_LOG_INFO, "    invert    = %s\n", tc->conf.invert ? "True" : "False");
+    av_log(ctx, AV_LOG_INFO, "    zoom      = %f\n", tc->conf.zoom);
+    av_log(ctx, AV_LOG_INFO, "    optzoom   = %s\n", tc->conf.optZoom ? "On" : "Off");
+    av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", getInterpolationTypeName(tc->conf.interpolType));
 
     f = fopen(tc->input, "r");
     if (f == NULL) {
@@ -256,7 +234,7 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
-    for(plane=0; plane < td->fiSrc.planes; plane++){
+    for(plane=0; plane < vsTransformGetSrcFrameInfo(td)->planes; plane++){
         inframe.data[plane] = in->data[plane];
         inframe.linesize[plane] = in->linesize[plane];
     }
@@ -264,7 +242,7 @@ static int filter_frame(AVFilterLink *inlink,  AVFrame *in)
         vsTransformPrepare(td, &inframe, &inframe);
     }else{ // seperate frames
         VSFrame outframe;
-        for(plane=0; plane < td->fiDest.planes; plane++){
+        for(plane=0; plane < vsTransformGetDestFrameInfo(td)->planes; plane++){
             outframe.data[plane] = out->data[plane];
             outframe.linesize[plane] = out->linesize[plane];
         }

@@ -36,41 +36,45 @@
 #include "vsvector.h"
 #include "frameinfo.h"
 
+typedef struct _vsmotiondetectconfig {
+  /* meta parameter for maxshift and fieldsize between 1 and 15 */
+  int         shakiness;
+  int         accuracy;         // meta parameter for number of fields between 1 and 10
+  int         stepSize;         // stepsize of field transformation detection
+  int         algo;             // algorithm to use
+  /* if >0 then all the frames are compared with the given frame (1 for first) */
+  int         virtualTripod;
+  /* if 1 and 2 then the fields and transforms are shown in the frames */
+  int         show;
+  /* measurement fields with lower contrast are discarded */
+  double      contrastThreshold;
+  const char* modName;          // module name (used for logging)
+} VSMotionDetectConfig;
+
+
 /** data structure for motion detection part of deshaking*/
 typedef struct _vsmotiondetect {
   VSFrameInfo fi;
 
-  VSFrame curr;     // blurred version of current frame buffer
-  VSFrame currorig; // current frame buffer (original) (only pointer)
-  VSFrame currtmp;  // temporary buffer for blurring
-  VSFrame prev;     // frame buffer for last frame (copied)
-  short hasSeenOneFrame;   // true if we have a valid previous frame
+  VSMotionDetectConfig conf;
 
-  const char* modName;
+  /* maximum number of pixels we expect the shift of subsequent frames */
+  int maxShift;
+  int allowMax;                 // 1 if maximal shift is allowed
+  int fieldNum;                 // number of measurement fields
+  int maxFields;                // maximum number of fields used (selected by contrast)
+  int fieldSize;                // size = min(md->width, md->height)/10;
+  int fieldRows;                // number of rows
+
+  VSFrame curr;                 // blurred version of current frame buffer
+  VSFrame currorig;             // current frame buffer (original) (only pointer)
+  VSFrame currtmp;              // temporary buffer for blurring
+  VSFrame prev;                 // frame buffer for last frame (copied)
+  short hasSeenOneFrame;        // true if we have a valid previous frame
 
   Field* fields;
 
-  /* Options */
-  /* maximum number of pixels we expect the shift of subsequent frames */
-  int maxShift;
-  int stepSize; // stepsize of field transformation detection
-  int allowMax; // 1 if maximal shift is allowed
-  int algo;     // algorithm to use
-  int fieldNum;  // number of measurement fields
-  int maxFields;  // maximum number of fields used (selected by contrast)
-  int fieldSize; // size    = min(md->width, md->height)/10;
-  int fieldRows; // number of rows
-  /* if >0 then all the frames are compared with the given frame (1 for first) */
-  int virtualTripod;
-  /* if 1 and 2 then the fields and transforms are shown in the frames */
-  int show;
-  /* measurement fields with lower contrast are discarded */
-  double contrastThreshold;
-  /* meta parameter for maxshift and fieldsize between 1 and 15 */
-  int shakiness;
-  int accuracy;   // meta parameter for number of fields between 1 and 10
-
-  int initialized; // 1 if initialized and 2 if configured
+  int initialized;              // 1 if initialized and 2 if configured
 
   int frameNum;
 } VSMotionDetect;
@@ -100,16 +104,16 @@ static const char vs_motiondetect_help[] = ""
     "    'help'        print this help message\n";
 
 
+/** returns the default config
+ */
+VSMotionDetectConfig vsMotionDetectGetDefaulfConfig(const char* modName);
+
 /** initialized the VSMotionDetect structure and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int vsMotionDetectInit(VSMotionDetect* md, const VSFrameInfo* fi, const char* modName);
-
-/** configures VSMotionDetect structure and checks ranges, initializes fields and so on.
- *  @return VS_OK on success otherwise VS_ERROR
- */
-int vsMotionDetectConfigure(VSMotionDetect* md);
+int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf,
+                       const VSFrameInfo* fi);
 
 /**
  *  Performs a motion detection step
@@ -124,6 +128,11 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
  */
 void vsMotionDetectionCleanup(VSMotionDetect* md);
 
+/// returns the current config
+void vsMotionDetectGetConfig(VSMotionDetectConfig* conf, const VSMotionDetect* md);
+
+/// returns the frame info
+const VSFrameInfo* vsMotionDetectGetFrameInfo(const VSMotionDetect* md);
 
 #endif  /* MOTIONDETECT_H */
 

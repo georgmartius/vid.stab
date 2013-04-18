@@ -34,46 +34,38 @@ typedef struct {
     const AVClass* class;
 
     VSMotionDetect md;
+    VSMotionDetectConfig conf;
 
-    char* args;
     char* result;
     FILE* f;
 } StabData;
 
 
 #define OFFSET(x) offsetof(StabData, x)
-#define OFFSETMD(x) (offsetof(StabData, md)+offsetof(VSMotionDetect, x))
+#define OFFSETC(x) (offsetof(StabData, conf)+offsetof(VSMotionDetectConfig, x))
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption vidstabdetect_options[]= {
     {"result",      "path to the file used to write the transforms (def:transforms.trf)", OFFSET(result),              AV_OPT_TYPE_STRING, {.str = DEFAULT_RESULT_NAME}},
     {"shakiness",   "how shaky is the video and how quick is the camera?"
-                    " 1: little (fast) 10: very strong/quick (slow) (def: 5)",            OFFSETMD(shakiness),         AV_OPT_TYPE_INT,    {.i64 = 5},  1, 10,       FLAGS},
-    {"accuracy",    "(>=shakiness) 1: low 15: high (slow) (def: 9)",                      OFFSETMD(accuracy),          AV_OPT_TYPE_INT,    {.i64 = 9 }, 1, 15,       FLAGS},
-    {"stepsize",    "region around minimum is scanned with 1 pixel resolution (def: 6)",  OFFSETMD(stepSize),          AV_OPT_TYPE_INT,    {.i64 = 6},  1, 32,       FLAGS},
-    {"mincontrast", "below this contrast a field is discarded (0-1) (def: 0.3)",          OFFSETMD(contrastThreshold), AV_OPT_TYPE_DOUBLE, {.dbl =  0.25}, 0.0, 1.0, FLAGS},
-    {"show",        "0: draw nothing (def); 1,2: show fields and transforms",             OFFSETMD(show),              AV_OPT_TYPE_INT,    {.i64 =  0}, 0, 2,        FLAGS},
+                    " 1: little (fast) 10: very strong/quick (slow) (def: 5)",            OFFSETC(shakiness),         AV_OPT_TYPE_INT,    {.i64 = 5},  1, 10,       FLAGS},
+    {"accuracy",    "(>=shakiness) 1: low 15: high (slow) (def: 9)",                      OFFSETC(accuracy),          AV_OPT_TYPE_INT,    {.i64 = 9 }, 1, 15,       FLAGS},
+    {"stepsize",    "region around minimum is scanned with 1 pixel resolution (def: 6)",  OFFSETC(stepSize),          AV_OPT_TYPE_INT,    {.i64 = 6},  1, 32,       FLAGS},
+    {"mincontrast", "below this contrast a field is discarded (0-1) (def: 0.3)",          OFFSETC(contrastThreshold), AV_OPT_TYPE_DOUBLE, {.dbl =  0.25}, 0.0, 1.0, FLAGS},
+    {"show",        "0: draw nothing (def); 1,2: show fields and transforms",             OFFSETC(show),              AV_OPT_TYPE_INT,    {.i64 =  0}, 0, 2,        FLAGS},
     {"tripod",      "virtual tripod mode (if >0): motion is compared to a reference"
-                    " reference frame (frame # is the value) (def: 0)",                   OFFSETMD(virtualTripod),     AV_OPT_TYPE_INT,    {.i64 = 0},  0, INT_MAX,  FLAGS},
+                    " reference frame (frame # is the value) (def: 0)",                   OFFSETC(virtualTripod),     AV_OPT_TYPE_INT,    {.i64 = 0},  0, INT_MAX,  FLAGS},
     {NULL},
 };
 
 AVFILTER_DEFINE_CLASS(vidstabdetect);
 
-static av_cold int init(AVFilterContext *ctx, const char *args)
+static av_cold int init(AVFilterContext *ctx)
 {
     StabData* sd = ctx->priv;
     vs_set_mem_and_log_functions();
-
     sd->class = &vidstabdetect_class;
-    av_opt_set_defaults(sd); // the default values are overwritten by initMotiondetect later
-
     av_log(ctx, AV_LOG_VERBOSE, "vidstabdetect filter: init %s\n", LIBVIDSTAB_VERSION);
-
-    // save args for later, because the initialization of the vid.stab library requires
-    //  knowledge about the input.
-    sd->args=av_strdup(args);
-
     return 0;
 }
 
@@ -89,7 +81,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     }
 
     vsMotionDetectionCleanup(md);
-    av_free(sd->args);
+
 }
 
 static int query_formats(AVFilterContext *ctx)
@@ -112,7 +104,6 @@ static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
     StabData *sd = ctx->priv;
-    int returnval;
 
     VSMotionDetect* md = &(sd->md);
     VSFrameInfo fi;
@@ -133,26 +124,21 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    if(vsMotionDetectInit(md, &fi, "vidstabdetect") != VS_OK){
+    // set values that are not initializes by the options
+    sd->conf.algo=1;
+    sd->conf.modName = "vidstabdetect";
+    if(vsMotionDetectInit(md, &sd->conf, &fi) != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed, please report a BUG");
         return AVERROR(EINVAL);
     }
 
-    // we need to do it after vsMotionDetectInit because otherwise the values are overwritten
-    if ((returnval = (av_set_options_string(sd, sd->args, "=", ":"))) < 0)
-        return returnval;
-
-    if(vsMotionDetectConfigure(md)!= VS_OK){
-        av_log(ctx, AV_LOG_ERROR, "configuration of Motion Detection failed, please report a BUG\n");
-        return AVERROR(EINVAL);
-    }
-
+    vsMotionDetectGetConfig(&sd->conf, md);
     av_log(ctx, AV_LOG_INFO, "Video stabilization settings (pass 1/2):\n");
-    av_log(ctx, AV_LOG_INFO, "     shakiness = %d\n", md->shakiness);
-    av_log(ctx, AV_LOG_INFO, "      accuracy = %d\n", md->accuracy);
-    av_log(ctx, AV_LOG_INFO, "      stepsize = %d\n", md->stepSize);
-    av_log(ctx, AV_LOG_INFO, "   mincontrast = %f\n", md->contrastThreshold);
-    av_log(ctx, AV_LOG_INFO, "          show = %d\n", md->show);
+    av_log(ctx, AV_LOG_INFO, "     shakiness = %d\n", sd->conf.shakiness);
+    av_log(ctx, AV_LOG_INFO, "      accuracy = %d\n", sd->conf.accuracy);
+    av_log(ctx, AV_LOG_INFO, "      stepsize = %d\n", sd->conf.stepSize);
+    av_log(ctx, AV_LOG_INFO, "   mincontrast = %f\n", sd->conf.contrastThreshold);
+    av_log(ctx, AV_LOG_INFO, "          show = %d\n", sd->conf.show);
     av_log(ctx, AV_LOG_INFO, "        result = %s\n", sd->result);
 
     sd->f = fopen(sd->result, "w");
@@ -208,7 +194,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         }
         vs_vector_del(&localmotions);
     }
-    if(md->show>0 && !direct){
+    if(sd->conf.show>0 && !direct){
         av_image_copy(out->data, out->linesize,
                       (void*)in->data, in->linesize,
                       in->format, in->width, in->height);

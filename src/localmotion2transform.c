@@ -100,7 +100,7 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
     t.alpha = -cleanmean(angles, num_motions, &min, &max);
     if (max - min > td->maxAngleVariation) {
       t.alpha = 0;
-      vs_log_info(td->modName, "too large variation in angle(%f)\n",
+      vs_log_info(td->conf.modName, "too large variation in angle(%f)\n",
       max-min);
     }
   }

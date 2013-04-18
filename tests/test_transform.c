@@ -30,6 +30,8 @@ void test_transform_implementation(const TestData* testdata){
   VSFrame cfinal;
   vsFrameAllocate(&cfinal,&fi);
   VSTransformData td;
+  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_transform_implementation");
+
   fprintf(stderr,"--- Validate Interpolations ----\n");
 
   int it;
@@ -41,9 +43,8 @@ void test_transform_implementation(const TestData* testdata){
 
   for(it=VS_Zero; it<=VS_BiCubic; it++){
     vsFrameCopy(&dest, &src, &fi);
-    test_bool(vsTransformDataInit(&td, &fi, &fi, "test") == VS_OK);
-    td.interpolType=it;
-    test_bool(vsTransformDataConfigure(&td)== VS_OK);
+    conf.interpolType=it;
+    test_bool(vsTransformDataInit(&td, &conf, &fi, &fi) == VS_OK);
 
     fprintf(stderr,"Transform: %s\n", getInterpolationTypeName(it));
     test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
@@ -53,9 +54,7 @@ void test_transform_implementation(const TestData* testdata){
     vsTransformDataCleanup(&td);
 
     vsFrameCopy(&dest, &src, &fi);
-    test_bool(vsTransformDataInit(&td, &fi, &fi, "test") == VS_OK);
-    td.interpolType=it;
-    test_bool(vsTransformDataConfigure(&td)== VS_OK);
+    test_bool(vsTransformDataInit(&td, &conf, &fi, &fi) == VS_OK);
     test_bool(vsTransformPrepare(&td,&dest,&dest)== VS_OK);
     test_bool(transformPlanar(&td, t)== VS_OK);
 
@@ -80,6 +79,7 @@ void test_transform_implementation(const TestData* testdata){
 void test_transform_performance(const TestData* testdata){
 
 
+  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_transform_performance");
   fprintf(stderr,"--- Performance of Transforms ----\n");
   VSFrame dest;
   VSFrame cfinal;
@@ -93,9 +93,8 @@ void test_transform_performance(const TestData* testdata){
     VSTransformData td;
     int i;
     //// Float implementation
-    test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
-    td.interpolType=it;
-    test_bool(vsTransformDataConfigure(&td)== VS_OK);
+    conf.interpolType=it;
+    test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
 
     fprintf(stderr,"Transform: %s", getInterpolationTypeName(it));
     start = timeOfDayinMS();
@@ -121,9 +120,7 @@ void test_transform_performance(const TestData* testdata){
     vsTransformDataCleanup(&td);
 
     //// fixed point implementation
-    test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "test") == VS_OK);
-    td.interpolType=it;
-    test_bool(vsTransformDataConfigure(&td)== VS_OK);
+    test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
     start = timeOfDayinMS();
     for(i=0; i<numruns; i++){
       VSTransform t = null_transform();

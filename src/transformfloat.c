@@ -195,6 +195,7 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0, z = 0;
   unsigned char *D_1, *D_2;
+  char crop = td->conf.crop;
 
   D_1  = td->src.data[0];
   D_2  = td->destbuf.data[0];
@@ -226,7 +227,7 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
           unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+z];
           _FLT(interpolateN)(dest, x_s, y_s, D_1,
                              td->fiSrc.width, td->fiSrc.height,
-                             channels, z, td->crop ? 16 : *dest);
+                             channels, z, crop ? 16 : *dest);
         }
       }
     }
@@ -242,7 +243,7 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
           short p = PIXELN(D_1, x - round_tx, y - round_ty,
                            td->fiSrc.width, td->fiSrc.height, channels, z, -1);
           if (p == -1) {
-            if (td->crop == 1)
+            if (crop == 1)
               D_2[(x + y * td->fiDest.width)*channels+z] = 16;
           } else {
             D_2[(x + y * td->fiDest.width)*channels+z] = (unsigned char)p;
@@ -268,6 +269,7 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0;
   uint8_t *dat_1, *dat_2;
+  char crop = td->conf.crop;
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
     if(vsFramesEqual(&td->src,&td->destbuf))
@@ -316,7 +318,7 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
         unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         td->_FLT(interpolate)(dest, x_s, y_s, dat_1,
                               td->src.linesize[plane], td->fiSrc.height>>hsub,
-                              td->crop ? 16 : *dest);
+                              crop ? 16 : *dest);
       }
     }
   }

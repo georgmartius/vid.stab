@@ -9,9 +9,9 @@ int compare_localmotions(const LocalMotions* lms1, const LocalMotions* lms2){
 }
 
 int test_store_restore(TestData* testdata){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaulfConfig("test_motionDetect");
   VSMotionDetect md;
-  test_bool(vsMotionDetectInit(&md, &testdata->fi, "test") == VS_OK);
-  test_bool(vsMotionDetectConfigure(&md)== VS_OK);
+  test_bool(vsMotionDetectInit(&md, &mdconf, &testdata->fi) == VS_OK);
 
   LocalMotions lms;
   int i;

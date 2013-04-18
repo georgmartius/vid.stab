@@ -1,11 +1,12 @@
 void test_motionDetect(TestData* testdata){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaulfConfig("test_motionDetect");
   VSMotionDetect md;
-  test_bool(vsMotionDetectInit(&md, &testdata->fi, "test") == VS_OK);
-  test_bool(vsMotionDetectConfigure(&md)== VS_OK);
+  test_bool(vsMotionDetectInit(&md, &mdconf, &testdata->fi) == VS_OK);
+
+  VSTransformConfig tdconf = vsTransformGetDefaulfConfig("test_motionDetect-trans");
   VSTransformData td;
-  test_bool(vsTransformDataInit(&td,
-                              &testdata->fi, &testdata->fi, "test") == VS_OK);
-  test_bool(vsTransformDataConfigure(&td)== VS_OK);
+
+  test_bool(vsTransformDataInit(&td, &tdconf, &testdata->fi, &testdata->fi) == VS_OK);
   fprintf(stderr,"MotionDetect:\n");
   int numruns =5;
   int i;

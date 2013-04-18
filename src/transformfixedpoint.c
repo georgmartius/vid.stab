@@ -291,7 +291,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
         unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+k];
         interpolateN(dest, x_s, y_s, D_1,
                      td->fiSrc.width, td->fiSrc.height,
-                     channels, k, td->crop ? 16 : *dest);
+                     channels, k, td->conf.crop ? 16 : *dest);
       }
     }
   }
@@ -369,7 +369,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         //  (but then we cannot use the function pointer anymore...)
         td->interpolate(dest, x_s, y_s, dat_1,
                         td->src.linesize[plane], sh,
-                        td->crop ? 16 : *dest);
+                        td->conf.crop ? 16 : *dest);
       }
     }
   }

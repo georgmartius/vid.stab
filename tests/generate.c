@@ -22,11 +22,10 @@ void generateFrames(TestData* testdata, int num){
 
   }
 
+  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_generate");
+  conf.interpolType=VS_Zero;
   VSTransformData td;
-  test_bool(vsTransformDataInit(&td, &testdata->fi, &testdata->fi, "generate") == VS_OK);
-  td.interpolType=VS_Zero;
-  test_bool(vsTransformDataConfigure(&td)== VS_OK);
-
+  test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
 
   fprintf(stderr, "testframe transforms\n");
 

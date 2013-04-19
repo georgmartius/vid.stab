@@ -74,7 +74,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     StabData *sd = ctx->priv;
     VSMotionDetect* md = &(sd->md);
 
-    av_opt_free(sd);
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;
@@ -86,7 +85,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    // If you add something here also add it to the above mapping function
+    // If you add something here also add it in vidstabutils.c
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
@@ -125,8 +124,8 @@ static int config_input(AVFilterLink *inlink)
     }
 
     // set values that are not initializes by the options
-    sd->conf.algo=1;
-    sd->conf.modName = "vidstabdetect";
+    sd->conf.algo     = 1;
+    sd->conf.modName  = "vidstabdetect";
     if(vsMotionDetectInit(md, &sd->conf, &fi) != VS_OK){
         av_log(ctx, AV_LOG_ERROR, "initialization of Motion Detection failed, please report a BUG");
         return AVERROR(EINVAL);

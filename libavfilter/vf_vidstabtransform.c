@@ -62,7 +62,7 @@ static const AVOption vidstabtransform_options[]= {
                    AV_OPT_TYPE_CONST,  {.i64 = VSCropBorder }, 0, 0, FLAGS, "crop"},
     {"invert",    "1: invert transforms (def: 0)",                                  OFFSETC(invert),
                    AV_OPT_TYPE_INT,    {.i64 = 0},        0, 1,    FLAGS},
-    {"relative",  "consider transforms as 0: absolute, 1: relative (def)",          OFFSETC(relative),
+    {"relative",  "consider transforms as 0: abslute, 1: relative (def)",          OFFSETC(relative),
                    AV_OPT_TYPE_INT,    {.i64 = 1},        0, 1,    FLAGS},
     {"zoom",      "percentage to zoom >0: zoom in, <0 zoom out (def: 0)",           OFFSETC(zoom),
                    AV_OPT_TYPE_DOUBLE, {.dbl = 0},        0, 100,  FLAGS},
@@ -98,14 +98,13 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     TransformContext *tc = ctx->priv;
 
-    av_opt_free(tc);
-
     vsTransformDataCleanup(&tc->td);
     vsTransformationsCleanup(&tc->trans);
 }
 
 static int query_formats(AVFilterContext *ctx)
 {
+    // If you add something here also add it in vidstabutils.c
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
@@ -154,7 +153,7 @@ static int config_input(AVFilterLink *inlink)
 
     // set values that are not initializes by the options
     tc->conf.modName = "vidstabtransform";
-    tc->conf.verbose=1;
+    tc->conf.verbose =1;
     if(tc->tripod){
         av_log(ctx, AV_LOG_INFO, "Virtual tripod mode: relative=0, smoothing=0");
         tc->conf.relative=0;
@@ -162,8 +161,8 @@ static int config_input(AVFilterLink *inlink)
     }
 
     if(vsTransformDataInit(td, &tc->conf, &fi_src, &fi_dest) != VS_OK){
-      av_log(ctx, AV_LOG_ERROR, "initialization of vid.stab transform failed, please report a BUG\n");
-      return AVERROR(EINVAL);
+        av_log(ctx, AV_LOG_ERROR, "initialization of vid.stab transform failed, please report a BUG\n");
+        return AVERROR(EINVAL);
     }
 
     vsTransformGetConfig(&tc->conf,td);

@@ -2,6 +2,7 @@
 #How to work in the ffmpeg git (or in any other one actually)
 #Create a new branch
 git branch "BRANCHNAME"
+git checkout "BRANCHNAME"
 #do you stuff
 git commit
 #rebase to master such that your changes only against the master branch and can be squashed
@@ -16,3 +17,4 @@ git rebase -i 39423.....
 git format-patch -s 3969b4b861ce8152e3195e8f8c3437abd2..
 
 
+007989c7a2215f54aeaf2393ab3aff0c208e862f

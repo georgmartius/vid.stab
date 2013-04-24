@@ -1,32 +1,8 @@
-These are filters for the libavfilter framework.
+These are filters for the libavfilter framework which are now in the 
+ ffmpeg source tree (as of 25.04.2013).
 
-Hopefully they get integrated into ffmpeg but until then you have
- to do the following to get it working:
-
-- install the vidstab lib from src/cmake with e.g.
-cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local ../
-make
-make install
-
-link/copy the vf_vidstabdetect.c and vf_vidstabtransform.c files to your
-ffmpeg/libavfilter/
-
-add the following lines to the files in libavfilter/
-allfilters.c
-
-    REGISTER_FILTER (STABILIZE,   vidstabdetect,   vf);
-    REGISTER_FILTER (TRANSFORM,   vidstabtransform,   vf);
-
-Makefile
-
-and
-OBJS-$(CONFIG_STABILIZE_FILTER)              += vf_vidstabdetect.o
-OBJS-$(CONFIG_TRANSFORM_FILTER)              += vf_vidstabtransform.o
-
-and
-configure ffmpeg with
-
---extra-libs="-lvidstab"
+Make sure you configure ffmpeg with
+--enable-vidstab
 
 
 

@@ -70,9 +70,9 @@ typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
  *            def: default value if coordinates are out of range
  * Return value:  None
  */
-typedef void (*vsInterpolateFun)(unsigned char *rv, int32_t x, int32_t y,
-                               unsigned char* img, int width, int height,
-                               unsigned char def);
+typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
+                                 uint8_t *img, int width, int height,
+                                 uint8_t def);
 
 typedef struct _VSTransformConfig {
 

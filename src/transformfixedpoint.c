@@ -57,9 +57,9 @@
 
 /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
     This is used by many other interpolation methods at and outsize the border, see interpolate */
-inline void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y,
-                                   unsigned char* img, int32_t width, int32_t height,
-                                   unsigned char def)
+inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
+                                   uint8_t *img, int32_t width, int32_t height,
+                                   uint8_t def)
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
@@ -109,8 +109,8 @@ inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3)
 }
 
 /** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
-inline void interpolateBiCub(unsigned char *rv, fp16 x, fp16 y,
-                             unsigned char* img, int width, int height, unsigned char def)
+inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
+                             uint8_t *img, int width, int height, uint8_t def)
 {
   // do a simple linear interpolation at the border
   int32_t ix_f = fp16ToI(x);
@@ -148,9 +148,9 @@ inline void interpolateBiCub(unsigned char *rv, fp16 x, fp16 y,
 
 
 /** interpolateBiLin: bi-linear interpolation function, see interpolate */
-inline void interpolateBiLin(unsigned char *rv, fp16 x, fp16 y,
-                             unsigned char* img, int32_t width, int32_t height,
-                             unsigned char def)
+inline void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
+                             uint8_t *img, int32_t width, int32_t height,
+                             uint8_t def)
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
@@ -176,9 +176,9 @@ inline void interpolateBiLin(unsigned char *rv, fp16 x, fp16 y,
 }
 
 /** interpolateLin: linear (only x) interpolation function, see interpolate */
-inline void interpolateLin(unsigned char *rv, fp16 x, fp16 y,
-                           unsigned char* img, int width, int height,
-                           unsigned char def)
+inline void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
+                           uint8_t *img, int width, int height,
+                           uint8_t def)
 {
   int32_t ix_f = fp16ToI(x);
   int32_t ix_c = ix_f + 1;
@@ -194,12 +194,12 @@ inline void interpolateLin(unsigned char *rv, fp16 x, fp16 y,
 }
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */
-inline void interpolateZero(unsigned char *rv, fp16 x, fp16 y,
-                            unsigned char* img, int width, int height, unsigned char def)
+inline void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
+                            uint8_t *img, int width, int height, uint8_t def)
 {
   int32_t ix_n = fp16ToIRound(x);
   int32_t iy_n = fp16ToIRound(y);
-  *rv = (unsigned char) PIXEL(img, ix_n, iy_n, width, height, def);
+  *rv = (uint8_t) PIXEL(img, ix_n, iy_n, width, height, def);
 }
 
 
@@ -217,10 +217,10 @@ inline void interpolateZero(unsigned char *rv, fp16 x, fp16 y,
  *            def: default value if coordinates are out of range
  * Return value:  None
  */
-inline void interpolateN(unsigned char *rv, fp16 x, fp16 y,
-                         unsigned char* img, int width, int height,
-                         unsigned char N, unsigned char channel,
-                         unsigned char def)
+inline void interpolateN(uint8_t *rv, fp16 x, fp16 y,
+                         uint8_t *img, int width, int height,
+                         uint8_t N, uint8_t channel,
+                         uint8_t def)
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
@@ -288,7 +288,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
       fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
 
       for (k = 0; k < channels; k++) { // iterate over colors
-        unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+k];
+        uint8_t *dest = &D_2[x + y * td->destbuf.linesize[0]+k];
         interpolateN(dest, x_s, y_s, D_1,
                      td->fiSrc.width, td->fiSrc.height,
                      channels, k, td->conf.crop ? 16 : *dest);
@@ -365,7 +365,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         int32_t x_d1 = (x - c_d_x);
         fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
         fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
-        unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
+        uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         // inlining the interpolation function would bring 10%
         //  (but then we cannot use the function pointer anymore...)
         td->interpolate(dest, x_s, y_s, dat_1,
@@ -398,7 +398,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
 /* int transformPlanar_orc(VSTransformData* td, VSTransform t) */
 /* { */
 /*     int32_t x = 0, y = 0; */
-/*     unsigned char *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */
+/*     uint8_t *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */
 
 /*     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return VS_OK; // noop */
 
@@ -451,7 +451,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
 /*       //             c_tx, c_ty, zcos_a, zsin_a, td->fiDest.width); */
 
 /*       for (x = 0; x < td->fiDest.width; x++) { */
-/*   unsigned char* dest = &Y_2[x + y * td->fiDest.width]; */
+/*   uint8_t *dest = &Y_2[x + y * td->fiDest.width]; */
 /*   td->interpolate(dest, x_ss[x], y_ss[x], Y_1,  */
 /*         td->fiSrc.width, td->fiSrc.height,  */
 /*         td->crop ? 16 : *dest); */
@@ -472,7 +472,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
 /*   int32_t x_d1 = x - (c_d_x)/2; */
 /*   fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2; */
 /*   fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2;  */
-/*   unsigned char* dest = &Cr_2[x + y * wd2]; */
+/*   uint8_t *dest = &Cr_2[x + y * wd2]; */
 /*   td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2,  */
 /*         td->crop ? 128 : *dest); */
 /*   dest = &Cb_2[x + y * wd2]; */

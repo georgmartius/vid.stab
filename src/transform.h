@@ -71,7 +71,7 @@ typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
  * Return value:  None
  */
 typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
-                                 uint8_t *img, int width, int height,
+                                 const uint8_t *img, int width, int height,
                                  uint8_t def);
 
 typedef struct _VSTransformConfig {

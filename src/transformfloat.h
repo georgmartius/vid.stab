@@ -60,22 +60,22 @@ int _FLT(transformPlanar)(struct _VSTransformData* td, VSTransform t);
  * Return value:  None
  */
 typedef void (*_FLT(vsInterpolateFun))(uint8_t *rv, float x, float y,
-                                       uint8_t *img, int width, int height,
+                                       const uint8_t *img, int width, int height,
                                        uint8_t def);
 
 /* forward deklarations, please look in the .c file for documentation*/
 void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
-                                  uint8_t *img, int w, int h, uint8_t def);
+                                  const uint8_t *img, int w, int h, uint8_t def);
 void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
-                            uint8_t *img, int width, int height, uint8_t def);
+                            const uint8_t *img, int width, int height, uint8_t def);
 void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
-                            uint8_t *img, int w, int h, uint8_t def);
+                            const uint8_t *img, int w, int h, uint8_t def);
 void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
-                          uint8_t *img, int w, int h, uint8_t def);
+                          const uint8_t *img, int w, int h, uint8_t def);
 void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
-                           uint8_t *img, int w, int h, uint8_t def);
+                           const uint8_t *img, int w, int h, uint8_t def);
 void _FLT(interpolateN)(uint8_t *rv, float x, float y,
-                        uint8_t *img, int width, int height,
+                        const uint8_t *img, int width, int height,
                         uint8_t N, uint8_t channel, uint8_t def);
 
 #endif

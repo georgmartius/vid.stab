@@ -31,7 +31,7 @@
 /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
     This is used by many other interpolation methods at and outsize the border, see interpolate */
 void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
-                                  uint8_t *img, int width, int height,
+                                  const uint8_t *img, int width, int height,
                                   uint8_t def)
 {
   int x_f = myfloor(x);
@@ -62,7 +62,8 @@ static short _FLT(bicub_kernel)(float t, short a0, short a1, short a2, short a3)
 
 /** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
 void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
-                            uint8_t *img, int width, int height, uint8_t def)
+                            const uint8_t *img, int width, int height,
+                            uint8_t def)
 {
   // do a simple linear interpolation at the border
   if (x < 1 || x > width - 2 || y < 1 || y > height - 2) {
@@ -98,7 +99,7 @@ void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
 
 /** interpolateBiLin: bi-linear interpolation function, see interpolate */
 void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
-                            uint8_t *img, int width, int height,
+                            const uint8_t *img, int width, int height,
                             uint8_t def)
 {
   if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
@@ -121,7 +122,7 @@ void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
 
 /** interpolateLin: linear (only x) interpolation function, see interpolate */
 void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
-                          uint8_t *img, int width, int height,
+                          const uint8_t *img, int width, int height,
                           uint8_t def)
 {
   int x_f = myfloor(x);
@@ -135,7 +136,8 @@ void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */
 void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
-                           uint8_t *img, int width, int height, uint8_t def)
+                           const uint8_t *img, int width, int height,
+                           uint8_t def)
 {
   int x_n = myround(x);
   int y_n = myround(y);
@@ -158,7 +160,7 @@ void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
  * Return value:  None
  */
 void _FLT(interpolateN)(uint8_t *rv, float x, float y,
-                        uint8_t *img, int width, int height,
+                        const uint8_t *img, int width, int height,
                         uint8_t N, uint8_t channel,
                         uint8_t def)
 {

@@ -43,7 +43,7 @@
 //#define fp16To8(v) ( (v) && 0x80 == 1 ? ((v)>>8 + 1) : ((v)>>8) )
 #define fp24To8(v) ((v)>>16)
 
-#define fp8ToI(v)  ((v)>>8))
+#define fp8ToI(v)  ((v)>>8)
 #define fp16ToI(v) ((v)>>16)
 #define fp8ToF(v)  ((v)/((double)(1<<8)))
 #define fp16ToF(v) ((v)/((double)(1<<16)))

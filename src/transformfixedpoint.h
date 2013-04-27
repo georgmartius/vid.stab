@@ -52,17 +52,23 @@ int transformPlanar_orc(struct _VSTransformData* td, VSTransform t);
 
 /* forward deklarations, please see .c file for documentation*/
 void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
-                            const uint8_t *img, int w, int h, uint8_t def);
+                            const uint8_t *img, int img_linesize,
+                            int w, int h, uint8_t def);
 void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
-                      const uint8_t *img, int width, int height, uint8_t def);
+                      const uint8_t *img, int img_linesize,
+                      int width, int height, uint8_t def);
 void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
-                      const uint8_t *img, int w, int h, uint8_t def);
+                      const uint8_t *img, int img_linesize,
+                      int w, int h, uint8_t def);
 void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
-                    const uint8_t *img, int w, int h, uint8_t def);
+                    const uint8_t *img, int img_linesize,
+                    int w, int h, uint8_t def);
 void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
-                     const uint8_t *img, int w, int h, uint8_t def);
+                     const uint8_t *img, int img_linesize,
+                     int w, int h, uint8_t def);
 void interpolateN(uint8_t *rv, fp16 x, fp16 y,
-                  const uint8_t *img, int width, int height,
+                  const uint8_t *img, int img_linesize,
+                  int width, int height,
                   uint8_t N, uint8_t channel, uint8_t def);
 
 #endif

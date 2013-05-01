@@ -26,3 +26,6 @@ cd transcode/cmake
 make
 . install.sh
 
+*** FFMPEG ***
+
+You need to configure ffmpeg with --enable-vidstab

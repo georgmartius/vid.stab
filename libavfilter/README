@@ -1,5 +1,4 @@
-These are filters for the libavfilter framework which are now in the 
- ffmpeg source tree (as of 25.04.2013).
+These files are now in the ffmpeg source tree (as of 25.04.2013). They will be removed here at some point.
 
 Make sure you configure ffmpeg with
 --enable-vidstab

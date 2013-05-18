@@ -1,9 +1,7 @@
 ***  LIBRARY ***
 To compile the library do:
 
-cd src/cmake
-
-cmake ../
+cmake .
 make
 sudo make install
 

@@ -1,11 +1,11 @@
-*.o
-*~
-*.so
 *.a
-*.so.*
+*.o
 *.pc
-CMakeFiles
+*.so
+*.so.*
+*~
 CMakeCache.txt
+CMakeFiles
 Makefile
 cmake_install.cmake
 install_manifest.txt

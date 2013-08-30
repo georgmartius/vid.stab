@@ -58,7 +58,6 @@ vs_free_t vs_free       = free;
 vs_zalloc_t vs_zalloc   = _zalloc;
 
 vs_strdup_t vs_strdup   = strdup;
-vs_strndup_t vs_strndup = strndup;
 
 vs_log_t vs_log         = _vs_log;
 int VS_ERROR_TYPE = 0;

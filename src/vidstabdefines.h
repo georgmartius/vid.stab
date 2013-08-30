@@ -57,7 +57,6 @@ typedef void* (*vs_zalloc_t) (size_t size);
 typedef int (*vs_log_t) (int type, const char* tag, const char* format, ...);
 
 typedef char* (*vs_strdup_t) (const char* s);
-typedef char* (*vs_strndup_t) (const char* s, size_t len);
 
 extern vs_log_t vs_log;
 
@@ -67,7 +66,6 @@ extern vs_free_t vs_free;
 extern vs_zalloc_t vs_zalloc;
 
 extern vs_strdup_t vs_strdup;
-extern vs_strndup_t vs_strndup;
 
 extern int VS_ERROR_TYPE;
 extern int VS_WARN_TYPE;

@@ -337,6 +337,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     int dh = CHROMA_SIZE(td->fiDest.height, hsub);
     int sw = CHROMA_SIZE(td->fiSrc.width  , wsub);
     int sh = CHROMA_SIZE(td->fiSrc.height , hsub);
+    uint8_t black = plane==0 ? 0 : 0x80;
 
     fp16 c_s_x = iToFp16(sw / 2);
     fp16 c_s_y = iToFp16(sh / 2);
@@ -369,7 +370,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         //  (but then we cannot use the function pointer anymore...)
         td->interpolate(dest, x_s, y_s, dat_1,
                         td->src.linesize[plane], sh,
-                        td->conf.crop ? 16 : *dest);
+                        td->conf.crop ? black : *dest);
       }
     }
   }

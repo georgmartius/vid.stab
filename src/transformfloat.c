@@ -290,6 +290,7 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
     float c_s_y = (td->fiSrc.height >> hsub)/2.0;
     float c_d_x = (td->fiDest.width >> wsub)/2.0;
     float c_d_y = (td->fiDest.height>> hsub)/2.0;
+    uint8_t black = plane==0 ? 0 : 0x80;
 
     float z = 1.0-t.zoom/100;
     float zcos_a = z*cos(-t.alpha); // scaled cos
@@ -318,7 +319,7 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
         unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         td->_FLT(interpolate)(dest, x_s, y_s, dat_1,
                               td->src.linesize[plane], td->fiSrc.height>>hsub,
-                              crop ? 16 : *dest);
+                              crop ? black : *dest);
       }
     }
   }

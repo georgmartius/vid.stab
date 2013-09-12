@@ -3,7 +3,7 @@ project (vid.stab)
 
 SET(CMAKE_BUILTTYPE None)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 
@@ -32,12 +32,14 @@ if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 endif()
 
-set(SOURCES frameinfo.c transformtype.c libvidstab.c transform.c transformfixedpoint.c
-  motiondetect.c motiondetect_opt.c serialize.c
-	localmotion2transform.c boxblur.c vsvector.c orc/motiondetectorc.c)
+set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
+  src/transform.c src/transformfixedpoint.c src/motiondetect.c
+  src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
+  src/boxblur.c src/vsvector.c src/orc/motiondetectorc.c)
 
-set(HEADERS frameinfo.h transformtype.h libvidstab.h transform.h
-  motiondetect.h serialize.h localmotion2transform.h boxblur.h vsvector.h )
+set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
+  src/transform.h src/motiondetect.h src/serialize.h
+  src/localmotion2transform.h src/boxblur.h src/vsvector.h )
 
 
 # Create the vidstab library
@@ -58,7 +60,7 @@ endif()
 
 
 #if(!NOHEADERS)
-FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
 INSTALL(FILES ${HEADERS} DESTINATION include/vid.stab)
 #endif()
 

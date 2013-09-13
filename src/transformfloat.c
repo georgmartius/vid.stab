@@ -30,21 +30,21 @@
 
 /** interpolateBiLinBorder: bi-linear interpolation function that also works at the border.
     This is used by many other interpolation methods at and outsize the border, see interpolate */
-void _FLT(interpolateBiLinBorder)(unsigned char *rv, float x, float y,
-                                  unsigned char* img, int width, int height,
-                                  unsigned char def)
+void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
+                                  const uint8_t *img, int img_linesize,
+                                  int width, int height, uint8_t def)
 {
   int x_f = myfloor(x);
   int x_c = x_f+1;
   int y_f = myfloor(y);
   int y_c = y_f+1;
-  short v1 = PIXEL(img, x_c, y_c, width, height, def);
-  short v2 = PIXEL(img, x_c, y_f, width, height, def);
-  short v3 = PIXEL(img, x_f, y_c, width, height, def);
-  short v4 = PIXEL(img, x_f, y_f, width, height, def);
+  short v1 = PIXEL(img, img_linesize, x_c, y_c, width, height, def);
+  short v2 = PIXEL(img, img_linesize, x_c, y_f, width, height, def);
+  short v3 = PIXEL(img, img_linesize, x_f, y_c, width, height, def);
+  short v4 = PIXEL(img, img_linesize, x_f, y_f, width, height, def);
   float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
     (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-  *rv = (unsigned char)s;
+  *rv = (uint8_t)s;
 }
 
 /** taken from http://en.wikipedia.org/wiki/Bicubic_interpolation for alpha=-0.5
@@ -61,85 +61,87 @@ static short _FLT(bicub_kernel)(float t, short a0, short a1, short a2, short a3)
 }
 
 /** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
-void _FLT(interpolateBiCub)(unsigned char *rv, float x, float y,
-                            unsigned char* img, int width, int height, unsigned char def)
+void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
+                            const uint8_t *img, int img_linesize,
+                            int width, int height, uint8_t def)
 {
   // do a simple linear interpolation at the border
   if (x < 1 || x > width - 2 || y < 1 || y > height - 2) {
-    _FLT(interpolateBiLinBorder)(rv, x,y,img,width,height,def);
+    _FLT(interpolateBiLinBorder)(rv, x, y, img, img_linesize, width, height, def);
   } else {
     int x_f = myfloor(x);
     int y_f = myfloor(y);
     float tx = x-x_f;
     short v1 = _FLT(bicub_kernel)(tx,
-                                  PIX(img, x_f-1, y_f-1, width, height),
-                                  PIX(img, x_f,   y_f-1, width, height),
-                                  PIX(img, x_f+1, y_f-1, width, height),
-                                  PIX(img, x_f+2, y_f-1, width, height));
+                                  PIX(img, img_linesize, x_f-1, y_f-1),
+                                  PIX(img, img_linesize, x_f,   y_f-1),
+                                  PIX(img, img_linesize, x_f+1, y_f-1),
+                                  PIX(img, img_linesize, x_f+2, y_f-1));
     short v2 = _FLT(bicub_kernel)(tx,
-                                  PIX(img, x_f-1, y_f, width, height),
-                                  PIX(img, x_f,   y_f, width, height),
-                                  PIX(img, x_f+1, y_f, width, height),
-                                  PIX(img, x_f+2, y_f, width, height));
+                                  PIX(img, img_linesize, x_f-1, y_f),
+                                  PIX(img, img_linesize, x_f,   y_f),
+                                  PIX(img, img_linesize, x_f+1, y_f),
+                                  PIX(img, img_linesize, x_f+2, y_f));
     short v3 = _FLT(bicub_kernel)(tx,
-                                  PIX(img, x_f-1, y_f+1, width, height),
-                                  PIX(img, x_f,   y_f+1, width, height),
-                                  PIX(img, x_f+1, y_f+1, width, height),
-                                  PIX(img, x_f+2, y_f+1, width, height));
+                                  PIX(img, img_linesize, x_f-1, y_f+1),
+                                  PIX(img, img_linesize, x_f,   y_f+1),
+                                  PIX(img, img_linesize, x_f+1, y_f+1),
+                                  PIX(img, img_linesize, x_f+2, y_f+1));
     short v4 = _FLT(bicub_kernel)(tx,
-                                  PIX(img, x_f-1, y_f+2, width, height),
-                                  PIX(img, x_f,   y_f+2, width, height),
-                                  PIX(img, x_f+1, y_f+2, width, height),
-                                  PIX(img, x_f+2, y_f+2, width, height));
-    *rv = (unsigned char)_FLT(bicub_kernel)(y-y_f, v1, v2, v3, v4);
+                                  PIX(img, img_linesize, x_f-1, y_f+2),
+                                  PIX(img, img_linesize, x_f,   y_f+2),
+                                  PIX(img, img_linesize, x_f+1, y_f+2),
+                                  PIX(img, img_linesize, x_f+2, y_f+2));
+    *rv = (uint8_t)_FLT(bicub_kernel)(y-y_f, v1, v2, v3, v4);
   }
 }
 
 
 /** interpolateBiLin: bi-linear interpolation function, see interpolate */
-void _FLT(interpolateBiLin)(unsigned char *rv, float x, float y,
-                            unsigned char* img, int width, int height,
-                            unsigned char def)
+void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
+                            const uint8_t *img, int img_linesize,
+                            int width, int height, uint8_t def)
 {
   if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
-    _FLT(interpolateBiLinBorder)(rv, x, y, img, width, height, def);
+    _FLT(interpolateBiLinBorder)(rv, x, y, img, img_linesize, width, height, def);
   } else {
     int x_f = myfloor(x);
     int x_c = x_f+1;
     int y_f = myfloor(y);
     int y_c = y_f+1;
-    short v1 = PIX(img, x_c, y_c, width, height);
-    short v2 = PIX(img, x_c, y_f, width, height);
-    short v3 = PIX(img, x_f, y_c, width, height);
-    short v4 = PIX(img, x_f, y_f, width, height);
+    short v1 = PIX(img, img_linesize, x_c, y_c);
+    short v2 = PIX(img, img_linesize, x_c, y_f);
+    short v3 = PIX(img, img_linesize, x_f, y_c);
+    short v4 = PIX(img, img_linesize, x_f, y_f);
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-    *rv = (unsigned char)s;
+    *rv = (uint8_t)s;
   }
 }
 
 
 /** interpolateLin: linear (only x) interpolation function, see interpolate */
-void _FLT(interpolateLin)(unsigned char *rv, float x, float y,
-                          unsigned char* img, int width, int height,
-                          unsigned char def)
+void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
+                          const uint8_t *img, int img_linesize,
+                          int width, int height, uint8_t def)
 {
   int x_f = myfloor(x);
   int x_c = x_f+1;
   int y_n = myround(y);
-  float v1 = PIXEL(img, x_c, y_n, width, height, def);
-  float v2 = PIXEL(img, x_f, y_n, width, height, def);
+  float v1 = PIXEL(img, img_linesize, x_c, y_n, width, height, def);
+  float v2 = PIXEL(img, img_linesize, x_f, y_n, width, height, def);
   float s  = v1*(x - x_f) + v2*(x_c - x);
-  *rv = (unsigned char)s;
+  *rv = (uint8_t)s;
 }
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */
-void _FLT(interpolateZero)(unsigned char *rv, float x, float y,
-                           unsigned char* img, int width, int height, unsigned char def)
+void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
+                           const uint8_t *img, int img_linesize,
+                           int width, int height, uint8_t def)
 {
   int x_n = myround(x);
   int y_n = myround(y);
-  *rv = (unsigned char) PIXEL(img, x_n, y_n, width, height, def);
+  *rv = (uint8_t) PIXEL(img, img_linesize, x_n, y_n, width, height, def);
 }
 
 
@@ -157,10 +159,11 @@ void _FLT(interpolateZero)(unsigned char *rv, float x, float y,
  *            def: default value if coordinates are out of range
  * Return value:  None
  */
-void _FLT(interpolateN)(unsigned char *rv, float x, float y,
-                        unsigned char* img, int width, int height,
-                        unsigned char N, unsigned char channel,
-                        unsigned char def)
+void _FLT(interpolateN)(uint8_t *rv, float x, float y,
+                        const uint8_t *img, int img_linesize,
+                        int width, int height,
+                        uint8_t N, uint8_t channel,
+                        uint8_t def)
 {
   if (x < - 1 || x > width || y < -1 || y > height) {
     *rv = def;
@@ -169,13 +172,13 @@ void _FLT(interpolateN)(unsigned char *rv, float x, float y,
     int x_c = x_f+1;
     int y_f = myfloor(y);
     int y_c = y_f+1;
-    short v1 = PIXELN(img, x_c, y_c, width, height, N, channel, def);
-    short v2 = PIXELN(img, x_c, y_f, width, height, N, channel, def);
-    short v3 = PIXELN(img, x_f, y_c, width, height, N, channel, def);
-    short v4 = PIXELN(img, x_f, y_f, width, height, N, channel, def);
+    short v1 = PIXELN(img, img_linesize, x_c, y_c, width, height, N, channel, def);
+    short v2 = PIXELN(img, img_linesize, x_c, y_f, width, height, N, channel, def);
+    short v3 = PIXELN(img, img_linesize, x_f, y_c, width, height, N, channel, def);
+    short v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-    *rv = (unsigned char)s;
+    *rv = (uint8_t)s;
   }
 }
 
@@ -194,7 +197,7 @@ void _FLT(interpolateN)(unsigned char *rv, float x, float y,
 int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0, z = 0;
-  unsigned char *D_1, *D_2;
+  uint8_t *D_1, *D_2;
   char crop = td->conf.crop;
 
   D_1  = td->src.data[0];
@@ -224,8 +227,8 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
         float y_s  = -sin(-t.alpha) * x_d1
           + cos(-t.alpha) * y_d1 + c_s_y -t.y;
         for (z = 0; z < channels; z++) { // iterate over colors
-          unsigned char* dest = &D_2[x + y * td->destbuf.linesize[0]+z];
-          _FLT(interpolateN)(dest, x_s, y_s, D_1,
+          uint8_t *dest = &D_2[x + y * td->destbuf.linesize[0]+z];
+          _FLT(interpolateN)(dest, x_s, y_s, D_1, td->src.linesize[0],
                              td->fiSrc.width, td->fiSrc.height,
                              channels, z, crop ? 16 : *dest);
         }
@@ -240,13 +243,13 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
         for (z = 0; z < channels; z++) { // iterate over colors
-          short p = PIXELN(D_1, x - round_tx, y - round_ty,
+          short p = PIXELN(D_1, td->src.linesize[0], x - round_tx, y - round_ty,
                            td->fiSrc.width, td->fiSrc.height, channels, z, -1);
           if (p == -1) {
             if (crop == 1)
-              D_2[(x + y * td->fiDest.width)*channels+z] = 16;
+              D_2[(x + y * td->destbuf.linesize[0])*channels+z] = 16;
           } else {
-            D_2[(x + y * td->fiDest.width)*channels+z] = (unsigned char)p;
+            D_2[(x + y * td->destbuf.linesize[0])*channels+z] = (uint8_t)p;
           }
         }
       }
@@ -308,6 +311,8 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
      */
     int w = CHROMA_SIZE(td->fiDest.width,wsub);
     int h = CHROMA_SIZE(td->fiDest.height,hsub);
+    int sw = CHROMA_SIZE(td->fiSrc.width,wsub);
+    int sh = CHROMA_SIZE(td->fiSrc.height,hsub);
     for (x = 0; x < w; x++) {
       for (y = 0; y < h; y++) {
         float x_d1 = (x - c_d_x);
@@ -316,10 +321,9 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
           + zsin_a * y_d1 + c_s_x -tx;
         float y_s  = -zsin_a * x_d1
           + zcos_a * y_d1 + c_s_y -ty;
-        unsigned char* dest = &dat_2[x + y * td->destbuf.linesize[plane]];
-        td->_FLT(interpolate)(dest, x_s, y_s, dat_1,
-                              td->src.linesize[plane], td->fiSrc.height>>hsub,
-                              crop ? black : *dest);
+        uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
+        td->_FLT(interpolate)(dest, x_s, y_s, dat_1, td->src.linesize[plane],
+                              sw, sh, crop ? black : *dest);
       }
     }
   }

@@ -26,4 +26,4 @@ make
 
 *** FFMPEG ***
 
-You need to configure ffmpeg with --enable-vidstab
+You need to configure ffmpeg with --enable-libvidstab

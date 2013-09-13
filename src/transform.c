@@ -155,7 +155,7 @@ int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){
         return VS_ERROR;
       }
       // if we keep borders, save first frame into the background buffer (destbuf)
-      vsFrameCopy(&td->destbuf, src, &td->fiSrc);
+      vsFrameCopy(&td->destbuf, src, &td->fiSrc); // here we have to take care
     }
   }else{ // otherwise we directly operate on the destination
     td->destbuf = *dest;
@@ -339,7 +339,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
    */
   if (td->conf.optZoom != 0 && trans->len > 1){
     VSTransform min_t, max_t;
-    cleanmaxmin_xy_transform(ts, trans->len, 10, &min_t, &max_t);
+    cleanmaxmin_xy_transform(ts, trans->len, 1, &min_t, &max_t);  // 99% of all transformations
     // the zoom value only for x
     double zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
     // the zoom value only for y

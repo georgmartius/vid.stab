@@ -330,14 +330,11 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     for (i = 0; i < trans->len; i++)
       ts[i].alpha = VS_CLAMP(ts[i].alpha, -td->conf.maxAngle, td->conf.maxAngle);
 
-  /* Calc optimal zoom
+  /* Calc optimal zoom (1)
    *  cheap algo is to only consider translations
-   *  uses cleaned max and min
-   * Todo: use sliding average to zoom only as much as needed.
-   *       use also rotation angles (transform all four corners)
-   *       optzoom=2?
+   *  uses cleaned max and min to eliminate 99% of transforms
    */
-  if (td->conf.optZoom != 0 && trans->len > 1){
+  if (td->conf.optZoom == 1 && trans->len > 1){
     VSTransform min_t, max_t;
     cleanmaxmin_xy_transform(ts, trans->len, 1, &min_t, &max_t);  // 99% of all transformations
     // the zoom value only for x
@@ -346,6 +343,36 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     double zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
     td->conf.zoom += 100* VS_MAX(zx,zy); // use maximum
     vs_log_info(td->conf.modName, "Final zoom: %lf\n", td->conf.zoom);
+  }
+  /* Calc optimal zoom (2)
+   *  sliding average to zoom only as much as needed also using rotation angles
+   *  the mean zoom value is allways zoom, in order not to zoom in and out too much
+   */
+  if (td->conf.optZoom == 2 && trans->len > 1){
+    double* zooms=(double*)vs_zalloc(sizeof(double)*trans->len);
+    int w = td->fiSrc.width;
+    int h = td->fiSrc.height;
+    double req;
+    double meanzoom;
+    for (i = 0; i < trans->len; i++) {
+      zooms[i] = transform_get_required_zoom(&ts[i], w, h);
+    }
+    meanzoom = mean(zooms, trans->len);
+    // forward - propagation (to make the zooming smooth)
+    req = meanzoom;
+    for (i = 0; i < trans->len; i++) {
+      req = VS_MAX(req, zooms[i]);
+      ts[i].zoom=VS_MAX(ts[i].zoom,req);
+      req= VS_MAX(meanzoom, req-0.5); // 0.5% zoom-out each frame (at-hoc)
+    }
+    // backward - propagation
+    req = meanzoom;
+    for (i = trans->len-1; i >= 0; i--) {
+      req = VS_MAX(req, zooms[i]);
+      ts[i].zoom=VS_MAX(ts[i].zoom,req);
+      req= VS_MAX(meanzoom, req-0.5); // 0.5% zoom-out each frame
+    }
+    vs_free(zooms);
   }
 
   /* apply global zoom */

@@ -24,6 +24,7 @@
 #define __TRANSFORMTYPE_OPERATIONS_H
 
 #include "transformtype.h"
+#include "vidstabdefines.h"
 
 /// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \
@@ -83,6 +84,9 @@ void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
                               int percentil,
                               VSTransform* min, VSTransform* max);
 
+/* calculates the required zoom value to have no borders visible
+ */
+double transform_get_required_zoom(const VSTransform* transform, int width, int height);
 
 /* helper function to work with local motions */
 

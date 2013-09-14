@@ -247,6 +247,14 @@ void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
   vs_free(ts);
 }
 
+/* calculates the required zoom value to have no borders visible
+ */
+double transform_get_required_zoom(const VSTransform* transform, int width, int height){
+  return 100.0*(2.0*VS_MAX(fabs(transform->x)/width,fabs(transform->y)/height)  // translation part
+                + fabs(sin(transform->alpha)));          // rotation part
+
+}
+
 
 /**
  * media: median of a double array

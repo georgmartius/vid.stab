@@ -177,8 +177,7 @@ static int transform_configure(TCModuleInstance *self,
         tc_log_info(MOD_NAME, "    invert    = %s",
                     conf.invert ? "True" : "False");
         tc_log_info(MOD_NAME, "    zoom      = %f", conf.zoom);
-        tc_log_info(MOD_NAME, "    optzoom   = %s",
-                    conf.optZoom ? "On" : "Off");
+        tc_log_info(MOD_NAME, "    optzoom   = %d", conf.optZoom);
         tc_log_info(MOD_NAME, "    interpol  = %s",
                     getInterpolationTypeName(conf.interpolType));
         tc_log_info(MOD_NAME, "    sharpen   = %f", fd->sharpen);

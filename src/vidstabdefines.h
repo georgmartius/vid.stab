@@ -29,6 +29,14 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#ifdef __GNUC__
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+#define likely(x)        (x)
+#define unlikely(x)      (x)
+#endif
+
 #define VS_MAX(a, b)    (((a) > (b)) ?(a) :(b))
 #define VS_MIN(a, b)    (((a) < (b)) ?(a) :(b))
 /* clamp x between a and b */

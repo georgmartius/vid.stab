@@ -28,7 +28,6 @@
 #include "transform.h"
 #include "transformtype_operations.h"
 
-
 // the orc code does not work at the moment (BUG in ORC?)
 // #include "orc/transformorc.h"
 
@@ -65,8 +64,17 @@ inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
   int32_t iy_f = fp16ToI(y);
   int32_t ix_c = ix_f + 1;
   int32_t iy_c = iy_f + 1;
-  if (ix_f < -1 || ix_c > width || iy_f < -1 || iy_c > height) {
-    *rv=def;
+  if (ix_f < 0 || ix_c >= width || iy_f < 0 || iy_c >= height) {
+    int32_t w  = 10; // number of pixels to blur out the border pixel outwards
+    int32_t xl = - w - ix_f;
+    int32_t yl = - w - iy_f;
+    int32_t xh = ix_c - w - width;
+    int32_t yh = iy_c - w - height;
+    int32_t c = VS_MAX(VS_MIN(VS_MAX(xl, VS_MAX(yl, VS_MAX(xh, yh))),w),0);
+    // pixel at border of source image
+    short val_border = PIX(img, img_linesize, VS_MAX(VS_MIN(ix_f, width-1),0),
+                           VS_MAX(VS_MIN(iy_f, height-1),0));
+    *rv = (def * c + val_border * (w - c)) / w;
   }else{
     short v1 = PIXEL(img, img_linesize, ix_c, iy_c, width, height, def);
     short v2 = PIXEL(img, img_linesize, ix_c, iy_f, width, height, def);
@@ -116,7 +124,7 @@ inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
   // do a simple linear interpolation at the border
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
-  if (ix_f < 1 || ix_f > width - 3 || iy_f < 1 || iy_f > height - 3) {
+  if (unlikely(ix_f < 1 || ix_f > width - 3 || iy_f < 1 || iy_f > height - 3)) {
     interpolateBiLinBorder(rv, x, y, img, img_linesize, width, height, def);
   } else {
     fp16 x_f = iToFp16(ix_f);
@@ -155,7 +163,7 @@ inline void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
-  if (ix_f < 0 || ix_f > width - 2 || iy_f < 0 || iy_f > height - 2) {
+  if (unlikely(ix_f < 0 || ix_f > width - 2 || iy_f < 0 || iy_f > height - 2)) {
     interpolateBiLinBorder(rv, x, y, img, img_linesize, width, height, def);
   } else {
     int32_t ix_c = ix_f + 1;

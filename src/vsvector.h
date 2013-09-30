@@ -23,6 +23,7 @@
 #define VSVECTOR_H
 
 #include <stddef.h>
+#include <stdio.h>
 
 /**
    A vector for arbrary elements that resizes
@@ -166,6 +167,39 @@ void *vs_vector_get(const VSVector *V, int pos);
  */
 //void *vs_vector_pop(VSVector *V, int pos);
 
+
+/**
+   A simple fixed-size double vector
+*/
+typedef struct vsarray_ VSArray;
+struct vsarray_ {
+  double* dat;
+  int len;
+};
+
+/** allocates a new (zero initialized) double array */
+VSArray vs_array_new(int len);
+
+/** adds two vectors ands stores results into c (if zero length then allocated) */
+VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b);
+
+/** scales a vector by a factor and stores results into c (if zero length then allocated) */
+VSArray* vs_array_scale(VSArray* c, VSArray a, double f);
+
+/** create a new deep copy of the vector */
+VSArray vs_array_copy(VSArray a);
+
+/** sets all elements of the vector to 0.0 */
+void vs_array_zero(VSArray* a);
+
+/** swaps the content of the two arrays */
+void vs_array_swap(VSArray* a, VSArray* b);
+
+/** free data */
+void vs_array_free(VSArray a);
+
+/** print array to file */
+void vs_array_print(VSArray a, FILE* f);
 
 #endif /* VSVECTOR_H */
 

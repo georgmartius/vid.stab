@@ -117,7 +117,7 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
 
 
 /* n-dimensional general purpose gradient descent algorithm */
-VSArray gradient_descent(double (*eval)(VSArray, void*),
+VSArray vsGradientDescent(double (*eval)(VSArray, void*),
                          VSArray params, void* dat,
                          int N, double stepsize, double threshold, double* residual){
   int dim=params.len;

@@ -64,7 +64,7 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
  * Return Value:
  *     Optimized parameters
  */
-VSArray gradient_descent(double (*eval)(VSArray, void*),
+VSArray vsGradientDescent(double (*eval)(VSArray, void*),
                          VSArray params, void* dat,
                          int N, double stepsize, double threshold, double* residual);
 

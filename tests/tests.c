@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <limits.h>
+#include <math.h>
 #include <features.h>
 
 #ifdef USE_OMP
@@ -33,6 +34,7 @@
 #include "test_contrast.c"
 #include "test_boxblur.c"
 #include "test_omp.c"
+#include "test_gradientoptimizer.c"
 
 int main(int argc, char** argv){
 
@@ -110,6 +112,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testCT", "contrastImg")){
     UNIT(test_contrastImg(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
+    UNIT(test_gradientoptimizer());
   }
 
   return unittest_summary();

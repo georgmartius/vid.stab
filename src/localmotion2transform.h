@@ -50,4 +50,22 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
 VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions);
 
+
+/** general purpose gradient descent algorithm
+
+ * Parameters:
+ *       eval: evaluation function (value/energy to be minimized)
+ *     params: initial starting parameters
+ *        dat: custom data for eval function
+ *          N: number of iterations (100)
+ *   stepsize: stepsize for gradient (0.1)
+ *  threshold: value below which the value/energy is considered to be minimized (0)
+ *   residual: residual value (call by reference) (can be NULL)
+ * Return Value:
+ *     Optimized parameters
+ */
+VSArray gradient_descent(double (*eval)(VSArray, void*),
+                         VSArray params, void* dat,
+                         int N, double stepsize, double threshold, double* residual);
+
 #endif

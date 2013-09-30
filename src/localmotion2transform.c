@@ -25,6 +25,7 @@
 #include "localmotion2transform.h"
 #include "transformtype_operations.h"
 #include <assert.h>
+#include <string.h>
 
 int vsLocalmotions2TransformsSimple(VSTransformData* td,
                                   const VSManyLocalMotions* motions,
@@ -113,6 +114,45 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
 
   return t;
 }
+
+
+/* n-dimensional general purpose gradient descent algorithm */
+VSArray gradient_descent(double (*eval)(VSArray, void*),
+                         VSArray params, void* dat,
+                         int N, double stepsize, double threshold, double* residual){
+  int dim=params.len;
+  double v = eval(params, dat);
+  double h = 1e-8;
+  VSArray x = vs_array_copy(params);
+  VSArray grad = vs_array_new(dim);
+  int i;
+  for(i=0; i< N && v > threshold; i++){
+    int k=i%dim;
+    VSArray x2 = vs_array_copy(x);
+    x2.dat[k]+=h;
+    double v2 = eval(x2, dat);
+    grad.dat[k] = (v - v2)/h;
+    vs_array_plus(&x2, x, *vs_array_scale(&x2, grad, stepsize));
+    v2 = eval(x2, dat);
+    if(v2 < v){
+      // printf("step: (%lf,%lf) :%g  (%g)\n",x.dat[0],x.dat[1], v, v-v2);
+      vs_array_free(x);
+      x = x2;
+      v = v2;
+      stepsize*=1.05; // increase stepsize slightly in case we are on a plateau
+    }else{ // overshoot: reduce stepsize and reset gradient
+      stepsize*=0.7;
+      vs_array_free(x2);
+      vs_array_zero(&grad);
+      // fprintf(stderr,".");
+    }
+  }
+  vs_array_free(grad);
+  if(residual != NULL) *residual=v;
+  return x;
+}
+
+
 
 /*
  * Local variables:

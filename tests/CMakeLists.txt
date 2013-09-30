@@ -8,7 +8,7 @@ project (vid.stab)
 SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
+add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING  -std=gnu99)
 #add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING )
 find_package(Orc)
 if(ORC_FOUND)

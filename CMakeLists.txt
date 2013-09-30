@@ -12,7 +12,7 @@ set(MINOR_VERSION 9)
 set(PATCH_VERSION 6)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
-add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC )
+add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 
 ### ORC is not used in any active code at the moment  ###

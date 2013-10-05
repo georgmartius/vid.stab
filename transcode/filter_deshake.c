@@ -185,8 +185,8 @@ static int deshake_configure(TCModuleInstance *self,
   vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  VSMotionDetectConfig  mdconf = vsMotionDetectGetDefaulfConfig(MOD_NAME);
-  VSTransformConfig tdconf     = vsTransformGetDefaulfConfig(MOD_NAME);
+  VSMotionDetectConfig  mdconf = vsMotionDetectGetDefaultConfig(MOD_NAME);
+  VSTransformConfig tdconf     = vsTransformGetDefaultConfig(MOD_NAME);
   tdconf.verbose=verbose;
 
   sd->result = tc_malloc(TC_BUF_LINE);

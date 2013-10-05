@@ -35,14 +35,15 @@ int vsLocalmotions2TransformsSimple(VSTransformData* td,
   assert(trans->len==0 && trans->ts == 0);
   trans->ts = vs_malloc(sizeof(VSTransform)*len );
   for(i=0; i< vs_vector_size(motions); i++) {
-    trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+    //   trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+    // TODO: use a flag in td
+    trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i));
     //    vsStoreLocalmotions(stderr,VSMLMGet(motions,i));
     //    storeTransform(stderr,&trans->ts[i]);
   }
   trans->len=len;
   return VS_OK;
 }
-
 
 /* calculates rotation angle for the given transform and
  * field with respect to the given center-point
@@ -116,38 +117,115 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
 }
 
 
+// TODO; optimize
+VSArray vsTransformToArray(const VSTransform* t){
+  VSArray a = vs_array_new(4);
+  a.dat[0] = t->x;
+  a.dat[1] = t->y;
+  a.dat[2] = t->alpha;
+  a.dat[3] = t->zoom;
+  return a;
+}
+// TODO; optimize
+VSTransform vsArrayToTransform(VSArray a){
+  return new_transform(a.dat[0],a.dat[1],a.dat[2],a.dat[3],0,0,0);
+}
+
+double sqr(double x){ return x*x; }
+
+struct VSGradientDat {
+  VSTransformData* td;
+  const LocalMotions* motions;
+};
+
+double calcTransformQuality(VSArray params, void* dat){
+  struct VSGradientDat* gd= (struct VSGradientDat*) dat;
+  const LocalMotions* motions = gd->motions;
+  int num_motions=vs_vector_size(motions);
+  VSTransform t = vsArrayToTransform(params);
+  double error=0;
+
+  double z = 1.0+t.zoom/100.0;
+  double zcos_a = z*cos(t.alpha); // scaled cos
+  double zsin_a = z*sin(t.alpha); // scaled sin
+  double c_x = gd->td->fiSrc.width / 2;
+  double c_y = gd->td->fiSrc.height / 2;
+
+  for (int i = 0; i < num_motions; i++) {
+    LocalMotion* m = LMGet(motions,i);
+    double x = m->f.x-c_x;
+    double y = m->f.y-c_y;
+    double vx =  zcos_a * x + zsin_a * y + t.x  - x;
+    double vy  = -zsin_a * x + zcos_a * y + t.y - y;
+    error += sqr(vx - m->v.x) +  sqr(vy - m->v.y);
+  }
+  return error/(num_motions+1) + t.alpha*t.alpha + t.zoom*t.zoom/10000.0;
+}
+
+VSTransform vsMotionsToTransform(VSTransformData* td,
+                                 const LocalMotions* motions){
+  VSTransform t = vsSimpleMotionsToTransform(td, motions);
+  //VSTransform t = null_transform();
+  if(motions==0) return t;
+
+
+  VSArray params = vsTransformToArray(&t);
+  double residual;
+  struct VSGradientDat dat;
+  dat.motions = motions;
+  dat.td      = td;
+
+  double ss[] = {0.2, 0.2, 0.0001, 0.1};
+  VSArray result = vsGradientDescent(calcTransformQuality, params, &dat,
+                                     20, vs_array(ss,4), 1e-15, &residual);
+  vs_array_free(params);
+
+  // now we need to ignore the fields that don't fit well (moving objects)
+  // TODO
+  vs_log_info(td->conf.modName, "residual(%f)\n",residual);
+
+  t = vsArrayToTransform(result);
+//  storeVSTransform(stderr, &t);
+  vs_array_free(result);
+  return t;
+}
+
+
+
 /* n-dimensional general purpose gradient descent algorithm */
 VSArray vsGradientDescent(double (*eval)(VSArray, void*),
                          VSArray params, void* dat,
-                         int N, double stepsize, double threshold, double* residual){
+                         int N, VSArray stepsizes, double threshold, double* residual){
   int dim=params.len;
   double v = eval(params, dat);
-  double h = 1e-8;
   VSArray x = vs_array_copy(params);
   VSArray grad = vs_array_new(dim);
-  int i;
-  for(i=0; i< N && v > threshold; i++){
+  assert(stepsizes.len == params.len);
+  for(int i=0; i< N*dim && v > threshold; i++){
     int k=i%dim;
     VSArray x2 = vs_array_copy(x);
+    double h = rand()%2 ? 1e-6 : -1e-6;
     x2.dat[k]+=h;
     double v2 = eval(x2, dat);
+    vs_array_zero(&grad);
     grad.dat[k] = (v - v2)/h;
-    vs_array_plus(&x2, x, *vs_array_scale(&x2, grad, stepsize));
+    vs_array_plus(&x2, x, *vs_array_scale(&x2, grad, stepsizes.dat[k]));
     v2 = eval(x2, dat);
+//    printf("step: (%lf,%lf) :%g  \t(%g)\t [%i:%g]\n",x.dat[0],x.dat[1], v, v-v2,k,grad.dat[k]);
     if(v2 < v){
-      // printf("step: (%lf,%lf) :%g  (%g)\n",x.dat[0],x.dat[1], v, v-v2);
+      fprintf(stderr,"+");
       vs_array_free(x);
       x = x2;
       v = v2;
-      stepsize*=1.05; // increase stepsize slightly in case we are on a plateau
-    }else{ // overshoot: reduce stepsize and reset gradient
-      stepsize*=0.7;
+      stepsizes.dat[k]*=1.2; // increase stepsize (4 successful steps will double it)
+    }else{ // overshoot: reduce stepsize and don't do the step
+      stepsizes.dat[k]/=2.0;
       vs_array_free(x2);
-      vs_array_zero(&grad);
-      // fprintf(stderr,".");
+      fprintf(stderr,".");
     }
   }
   vs_array_free(grad);
+  vs_array_free(stepsizes);
   if(residual != NULL) *residual=v;
   return x;
 }

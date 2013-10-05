@@ -35,6 +35,7 @@
 #include "test_boxblur.c"
 #include "test_omp.c"
 #include "test_gradientoptimizer.c"
+#include "test_localmotion2transform.c"
 
 int main(int argc, char** argv){
 
@@ -104,6 +105,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testMD", "motionDetect")){
     UNIT(test_motionDetect(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testLM", "localmotion2transform")){
+    UNIT(test_localmotion2transform(&testdata));
   }
 
   if(all || contains(argv,argc,"--testSR", "store_restore")){

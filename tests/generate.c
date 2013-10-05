@@ -22,7 +22,7 @@ void generateFrames(TestData* testdata, int num){
 
   }
 
-  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_generate");
+  VSTransformConfig conf = vsTransformGetDefaultConfig("test_generate");
   conf.interpolType=VS_Zero;
   VSTransformData td;
   test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
@@ -31,8 +31,8 @@ void generateFrames(TestData* testdata, int num){
 
   for(i=1; i<num; i++){
     VSTransform t = getTestFrameTransform(i);
-    fprintf(stderr, "%i, %6.4lf %6.4lf %8.5lf %6.4lf %i\n",
-            i, t.x, t.y, t.alpha, t.zoom, t.extra);
+    fprintf(stderr,"%i: ",i);
+    storeVSTransform(stderr,&t);
 
     test_bool(vsTransformPrepare(&td,&testdata->frames[i-1],&testdata->frames[i])== VS_OK);
     test_bool(transformPlanar_float(&td, t)== VS_OK);

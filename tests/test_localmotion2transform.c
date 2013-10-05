@@ -1,9 +1,9 @@
-void test_motionDetect(TestData* testdata){
-  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("test_motionDetect");
+void test_localmotion2transform(TestData* testdata){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("test_localmotion2transform");
   VSMotionDetect md;
   test_bool(vsMotionDetectInit(&md, &mdconf, &testdata->fi) == VS_OK);
 
-  VSTransformConfig tdconf = vsTransformGetDefaultConfig("test_motionDetect-trans");
+  VSTransformConfig tdconf = vsTransformGetDefaultConfig("test_localmotion2transform-trans");
   VSTransformData td;
 
   test_bool(vsTransformDataInit(&td, &tdconf, &testdata->fi, &testdata->fi) == VS_OK);
@@ -23,19 +23,19 @@ void test_motionDetect(TestData* testdata){
     /* for(k=0; k < vs_vector_size(&localmotions); k++){ */
     /*   localmotion_print(LMGet(&localmotions,k),stderr); */
     /* } */
-    t = vsSimpleMotionsToTransform(&td, &localmotions);
+    t = vsMotionsToTransform(&td, &localmotions);
 
     vs_vector_del(&localmotions);
     fprintf(stderr,"%i: ",i);
     storeVSTransform(stderr,&t);
     VSTransform orig = mult_transform_(getTestFrameTransform(i),-1.0);
     VSTransform diff = sub_transforms(&t,&orig);
-    int success = fabs(diff.x)<2 && fabs(diff.y)<2 && fabs(diff.alpha)<0.005;
-    if(!success){
+    int tolerance = fabs(diff.x)<1 && fabs(diff.y)<1 && fabs(diff.alpha)<0.001;
+    if(!tolerance){
       fprintf(stderr,"Difference: ");
       storeVSTransform(stderr,&diff);
     }
-    test_bool(success);
+    test_bool(tolerance);
   }
   int end = timeOfDayinMS();
 

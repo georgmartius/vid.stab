@@ -114,7 +114,7 @@ static int transform_configure(TCModuleInstance *self,
     vsFrameInfoInit(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
                   transcode2ourPF(fd->vob->im_v_codec));
 
-    VSTransformConfig conf = vsTransformGetDefaulfConfig(MOD_NAME);
+    VSTransformConfig conf = vsTransformGetDefaultConfig(MOD_NAME);
     conf.verbose = verbose;
     fd->sharpen  = 0.8;
 

@@ -45,7 +45,7 @@ const char* getInterpolationTypeName(VSInterpolType type){
     return "unknown";
 }
 
-VSTransformConfig vsTransformGetDefaulfConfig(const char* modName){
+VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   VSTransformConfig conf;
   /* Options */
   conf.maxShift           = -1;

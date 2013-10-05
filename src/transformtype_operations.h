@@ -45,7 +45,7 @@ VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2);
 VSTransform mult_transform(const VSTransform* t1, double f);
 VSTransform mult_transform_(const VSTransform t1, double f);
 
-void storeTransform(FILE* f, const VSTransform* t);
+void storeVSTransform(FILE* f, const VSTransform* t);
 
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2);

@@ -30,7 +30,7 @@ void test_transform_implementation(const TestData* testdata){
   VSFrame cfinal;
   vsFrameAllocate(&cfinal,&fi);
   VSTransformData td;
-  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_transform_implementation");
+  VSTransformConfig conf = vsTransformGetDefaultConfig("test_transform_implementation");
 
   fprintf(stderr,"--- Validate Interpolations ----\n");
 
@@ -79,7 +79,7 @@ void test_transform_implementation(const TestData* testdata){
 void test_transform_performance(const TestData* testdata){
 
 
-  VSTransformConfig conf = vsTransformGetDefaulfConfig("test_transform_performance");
+  VSTransformConfig conf = vsTransformGetDefaultConfig("test_transform_performance");
   fprintf(stderr,"--- Performance of Transforms ----\n");
   VSFrame dest;
   VSFrame cfinal;

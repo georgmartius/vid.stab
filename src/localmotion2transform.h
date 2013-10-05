@@ -37,7 +37,6 @@ int vsLocalmotions2TransformsSimple(VSTransformData* td,
                                   const VSManyLocalMotions* motions,
                                   VSTransformations* trans );
 
-
 /** calculates rotation angle for the given transform and
  * field with respect to the given center-point
  */
@@ -51,6 +50,14 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions);
 
 
+/** calculates the transformation that caused the observed motions.
+    Using a gradient descent algorithm. Outliers are removed by repeated cross-validation.
+*/
+VSTransform vsMotionsToTransform(VSTransformData* td,
+                                 const LocalMotions* motions);
+
+
+
 /** general purpose gradient descent algorithm
 
  * Parameters:
@@ -58,7 +65,7 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
  *     params: initial starting parameters
  *        dat: custom data for eval function
  *          N: number of iterations (100)
- *   stepsize: stepsize for gradient (0.1)
+ *  stepsizes: stepsizes for each dimension of the gradient {0.1,0.1...} (will be deleted)
  *  threshold: value below which the value/energy is considered to be minimized (0)
  *   residual: residual value (call by reference) (can be NULL)
  * Return Value:
@@ -66,6 +73,6 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
  */
 VSArray vsGradientDescent(double (*eval)(VSArray, void*),
                          VSArray params, void* dat,
-                         int N, double stepsize, double threshold, double* residual);
+                         int N, VSArray stepsizes, double threshold, double* residual);
 
 #endif

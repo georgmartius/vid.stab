@@ -106,7 +106,7 @@ static const char vs_motiondetect_help[] = ""
 
 /** returns the default config
  */
-VSMotionDetectConfig vsMotionDetectGetDefaulfConfig(const char* modName);
+VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName);
 
 /** initialized the VSMotionDetect structure and allocates memory
  *  for the frames and stuff

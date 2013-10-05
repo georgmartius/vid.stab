@@ -152,7 +152,7 @@ static int stabilize_configure(TCModuleInstance *self,
     vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                   transcode2ourPF(vob->im_v_codec));
 
-    VSMotionDetectConfig conf = vsMotionDetectGetDefaulfConfig(MOD_NAME);
+    VSMotionDetectConfig conf = vsMotionDetectGetDefaultConfig(MOD_NAME);
 
     sd->result = tc_malloc(TC_BUF_LINE);
     filenamecopy = tc_strdup(sd->vob->video_in_file);

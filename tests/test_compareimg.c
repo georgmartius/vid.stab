@@ -24,7 +24,7 @@ int checkCompareImg(VSMotionDetect* md, const VSFrame* frame){
 
 void test_checkCompareImg(const TestData* testdata){
   VSMotionDetect md;
-  VSMotionDetectConfig conf = vsMotionDetectGetDefaulfConfig("test_checkCompareImg");
+  VSMotionDetectConfig conf = vsMotionDetectGetDefaultConfig("test_checkCompareImg");
   conf.shakiness=6;
   conf.accuracy=12;
   test_bool(vsMotionDetectInit(&md, &conf, &testdata->fi) == VS_OK);

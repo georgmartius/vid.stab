@@ -16,10 +16,13 @@ void test_gradientoptimizer(){
   for(int i=0; i<numruns; i++){
     double residual;
     VSArray params = vs_array_new(i+1);
-    for(int k=1; k<i+1; k++)
-      params.dat[i]= 20-k;
+    VSArray stepsizes = vs_array_new(i+1);
+    for(int k=0; k<i+1; k++){
+      params.dat[k]= 20-k;
+      stepsizes.dat[k]= 0.1;
+    }
 
-    VSArray result = vsGradientDescent(square_test, params, NULL, 200, 0.1, 1e-15, &residual);
+    VSArray result = vsGradientDescent(square_test, params, NULL, 50, stepsizes, 1e-15, &residual);
     fprintf(stderr,"** %iD: residual %lg :", i+1, residual);
     vs_array_print(result, stderr);
     fprintf(stderr,"***\n");

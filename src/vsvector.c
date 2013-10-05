@@ -157,6 +157,12 @@ VSArray vs_array_new(int len){
   return a;
 }
 
+VSArray vs_array(double vals[],int len){
+  VSArray a = vs_array_new(len);
+  memcpy(a.dat,vals, sizeof(double)*len);
+  return a;
+}
+
 VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b){
   int i;
   assert(a.len == b.len);

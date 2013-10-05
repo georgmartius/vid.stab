@@ -153,7 +153,7 @@ static const char vs_transform_help[] = ""
 
 /** returns the default config
  */
-VSTransformConfig vsTransformGetDefaulfConfig(const char* modName);
+VSTransformConfig vsTransformGetDefaultConfig(const char* modName);
 
 /** initialized the VSTransformData structure using the config and allocates memory
  *  for the frames and stuff

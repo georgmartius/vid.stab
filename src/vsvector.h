@@ -177,6 +177,9 @@ struct vsarray_ {
   int len;
 };
 
+/** creates an VSArray from a double array */
+VSArray vs_array(double vals[], int len);
+
 /** allocates a new (zero initialized) double array */
 VSArray vs_array_new(int len);
 

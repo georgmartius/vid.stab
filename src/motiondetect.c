@@ -54,11 +54,11 @@ typedef struct _contrast_idx {
 } contrast_idx;
 
 
-VSMotionDetectConfig vsMotionDetectGetDefaulfConfig(const char* modName){
+VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName){
   VSMotionDetectConfig conf;
   conf.stepSize          = 6;
   conf.algo              = 1;
-  conf.accuracy          = 9;
+  conf.accuracy          = 15;
   conf.shakiness         = 5;
   conf.virtualTripod     = 0;
   conf.contrastThreshold = 0.25;

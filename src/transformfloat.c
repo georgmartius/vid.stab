@@ -217,7 +217,7 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
    */
   int channels = td->fiSrc.bytesPerPixel;
   /* All channels */
-  if (fabs(t.alpha) > td->rotationThreshhold) {
+  if (fabs(t.alpha) > 0.1*M_PI/180.0) { // 0.1 deg
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
         float x_d1 = (x - c_d_x);

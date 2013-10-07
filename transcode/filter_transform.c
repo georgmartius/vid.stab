@@ -191,7 +191,7 @@ static int transform_configure(TCModuleInstance *self,
         VSManyLocalMotions mlms;
         if(vsReadLocalMotionsFile(f,&mlms)==VS_OK){
             // calculate the actual transforms from the localmotions
-            if(vsLocalmotions2TransformsSimple(td, &mlms,&fd->trans)!=VS_OK)
+            if(vsLocalmotions2Transforms(td, &mlms,&fd->trans)!=VS_OK)
                 tc_log_error(MOD_NAME, "calculating transformations failed!\n");
         }else{ // try to read old format
             if (!vsReadOldTransforms(td, f, &fd->trans)) { /* read input file */

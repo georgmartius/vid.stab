@@ -32,10 +32,17 @@
 
 
 /** converts for each frame the localmotions into a transform
+    @deprecated!
  */
 int vsLocalmotions2TransformsSimple(VSTransformData* td,
-                                  const VSManyLocalMotions* motions,
-                                  VSTransformations* trans );
+                                    const VSManyLocalMotions* motions,
+                                    VSTransformations* trans );
+
+/** converts for each frame the localmotions into a transform
+ */
+int vsLocalmotions2Transforms(VSTransformData* td,
+                              const VSManyLocalMotions* motions,
+                              VSTransformations* trans );
 
 /** calculates rotation angle for the given transform and
  * field with respect to the given center-point

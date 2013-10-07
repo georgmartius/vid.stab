@@ -59,6 +59,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.interpolType       = VS_BiLinear;
   conf.verbose            = 0;
   conf.modName            = modName;
+  conf.simpleMotionCalculation = 0;
   return conf;
 }
 
@@ -88,9 +89,6 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
 
   vsFrameNull(&td->destbuf);
   vsFrameNull(&td->dest);
-
-  td->maxAngleVariation  = 1;
-  td->rotationThreshhold = 0.25/(180/M_PI);
 
   if (td->conf.maxShift > td->fiDest.width/2)
     td->conf.maxShift = td->fiDest.width/2;

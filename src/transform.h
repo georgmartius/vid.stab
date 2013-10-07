@@ -86,12 +86,14 @@ typedef struct _VSTransformConfig {
     VSBorderType   crop;        // 1: black bg, 0: keep border from last frame(s)
     int            invert;      // 1: invert transforms, 0: nothing
     double         zoom;        // percentage to zoom: 0->no zooming 10:zoom in 10%
-    int            optZoom;     // 1: determine optimal zoom, 0: nothing
+    int            optZoom;     // 2: optimal adaptive zoom 1: optimal static zoom, 0: nothing
     VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
     int            maxShift;    // maximum number of pixels we will shift
     double         maxAngle;    // maximum angle in rad
     const char*    modName;     // module name (used for logging)
     int            verbose;     // level of logging
+    // if 1 then the simple but fast method to termine the global motion is used
+    int            simpleMotionCalculation;
 } VSTransformConfig;
 
 typedef struct _VSTransformData {
@@ -112,11 +114,6 @@ typedef struct _VSTransformData {
 
     /* Options */
     VSTransformConfig conf;
-
-    /* maximal difference in angles of fields */
-    double maxAngleVariation;
-    /* threshhold below which no rotation is performed */
-    double         rotationThreshhold;
 
     int initialized; // 1 if initialized and 2 if configured
 } VSTransformData;

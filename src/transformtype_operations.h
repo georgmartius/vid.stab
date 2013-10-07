@@ -59,6 +59,9 @@ int cmp_double(const void *t1, const void* t2);
 int cmp_int(const void *t1, const void* t2);
 
 
+/** square of a number */
+double sqr(double x);
+
 /* calculates the median of an array of transforms,
  * considering only x and y
  */
@@ -67,6 +70,8 @@ VSTransform median_xy_transform(const VSTransform* transforms, int len);
 double median(double* ds, int len);
 /* mean of a double array */
 double mean(const double* ds, int len);
+/* standard deviation of a double array */
+double stddev(const double* ds, int len, double mean);
 /* mean with cutted upper and lower pentile
  * (min and max are optionally returned)
  */

@@ -274,6 +274,10 @@ double median(double* ds, int len)
   return len % 2 == 0 ? ds[half] : (ds[half] + ds[half+1])/2;
 }
 
+
+/** square of a number */
+double sqr(double x){ return x*x; }
+
 /**
  * mean: mean of a double array
  *
@@ -291,6 +295,26 @@ double mean(const double* ds, int len)
   for (i = 0; i < len; i++)
     sum += ds[i];
   return sum / len;
+}
+
+/**
+ * stddev: standard deviation of a double array
+ *
+ * Parameters:
+ *            ds: array of values
+ *           len: length  of array
+ *          mean: mean of the array (@see mean())
+ * Return value: the standard deviation value of the array
+ * Preconditions: len>0
+ * Side effects:  None
+ */
+double stddev(const double* ds, int len, double mean)
+{
+  double sum=0;
+  int i = 0;
+  for (i = 0; i < len; i++)
+    sum += sqr(ds[i]-mean);
+  return sqrt(sum / len);
 }
 
 /**

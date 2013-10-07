@@ -136,27 +136,29 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
   dat.td      = td;
   dat.missmatches = missmatches;
 
+  VSArray result;
   double ss[] = {0.2, 0.2, 0.00005, 0.1};
-  // optimize params to minimize transform quality (12 steps per dimension)
-  VSArray result1 = vsGradientDescent(calcTransformQuality, params, &dat,
-                                      12, vs_array(ss,4), 1e-15, &residual);
-  vs_array_free(params);
-
-  // now we need to ignore the fields that don't fit well (e.g. moving objects)
-  // cut off everthing above 1 std. dev. for skewed distributions this will cut off the tail
-  double mean_   = mean(missmatches.dat, missmatches.len);
-  double stddev_ = stddev(missmatches.dat, missmatches.len, mean_);
-  double thresh = mean_+stddev_;
-  for(int i=0; i< missmatches.len; i++){
-    if(missmatches.dat[i]>thresh) missmatches.dat[i]=-1.0; // disable field
+  int k;
+  for(k=0; k<3; k++){
+    // optimize params to minimize transform quality (12 steps per dimension)
+    result = vsGradientDescent(calcTransformQuality, params, &dat,
+                                        12, vs_array(ss,4), 1, &residual);
+    vs_array_free(params);
+    // now we need to ignore the fields that don't fit well (e.g. moving objects)
+    // cut off everthing above 1 std. dev. for skewed distributions this will cut off the tail
+    // do this only two times (3 gradient optimizations in total)
+    if((k==0 && residual>2) || (k==1 && residual>100)){
+      double mean_   = mean(missmatches.dat, missmatches.len);
+      double stddev_ = stddev(missmatches.dat, missmatches.len, mean_);
+      double thresh = mean_+stddev_;
+      for(int i=0; i< missmatches.len; i++){
+        if(missmatches.dat[i]>thresh) missmatches.dat[i]=-1.0; // disable field
+      }
+      params = result;
+    } else break;
   }
-  // and do a gradient step again
-  VSArray result = vsGradientDescent(calcTransformQuality, result1, &dat,
-                                     16, vs_array(ss,4), 1e-15, &residual);
-  vs_array_free(result1);
-
-  if(td->conf.verbose  & VS_DEBUG) vs_log_info(td->conf.modName, "residual(%f)\n",residual);
-
+  if(td->conf.verbose  & VS_DEBUG)
+    vs_log_info(td->conf.modName, "residual: %f (%i)\n",residual,k);
   t = vsArrayToTransform(result);
   vs_array_free(result);
   return t;

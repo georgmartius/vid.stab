@@ -361,14 +361,15 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     for (i = 0; i < trans->len; i++) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
-      req= VS_MAX(meanzoom, req-0.5); // 0.5% zoom-out each frame (at-hoc)
+      req= VS_MAX(meanzoom, req-0.25); // 0.25% zoom-out each frame (at-hoc)
+      // Todo: use framerate....
     }
     // backward - propagation
     req = meanzoom;
     for (i = trans->len-1; i >= 0; i--) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
-      req= VS_MAX(meanzoom, req-0.5); // 0.5% zoom-out each frame
+      req= VS_MAX(meanzoom, req-0.25);
     }
     vs_free(zooms);
   }

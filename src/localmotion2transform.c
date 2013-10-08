@@ -103,7 +103,7 @@ double calcTransformQuality(VSArray params, void* dat){
   return error/num + t.alpha*t.alpha + t.zoom*t.zoom/10000.0;
 }
 
-double int_mean(const int* ds, int len) {
+double intMean(const int* ds, int len) {
   double sum=0;
   for (int i = 0; i < len; i++) sum += ds[i];
   return sum / len;
@@ -116,11 +116,42 @@ VSTransform meanMotions(VSTransformData* td, const LocalMotions* motions){
   int* ys = localmotions_gety(motions);
   VSTransform t = null_transform();
   if(motions==0 || len==0) return t;
-  t.x = int_mean(xs,len);
-  t.y = int_mean(ys,len);
+  t.x = intMean(xs,len);
+  t.y = intMean(ys,len);
   vs_free(xs);
   vs_free(ys);
   return t;
+}
+
+VSArray localmotionsGetMatch(const LocalMotions* localmotions){
+  VSArray m = vs_array_new(vs_vector_size(localmotions));
+  for (int i=0; i<m.len; i++){
+    m.dat[i]=LMGet(localmotions,i)->match;
+  }
+  return m;
+}
+
+/* Disables those fields (mask = -1) whose (miss)quality is high.
+   @param mask: fields masks (<0 means disabled)
+   @param missqualities: measure for each field (larger is worse)
+   @param stddevs: x standard deviations to exclude
+   Both array have to be of the same length.
+   @return number of disabled fields
+*/
+int disableFields(VSArray mask, VSArray missqualities, double stddevs){
+  assert(mask.len == missqualities.len);
+  // first we throw away those fields that match badely (during motion detection)
+  double mu   = mean(missqualities.dat, missqualities.len);
+  double sigma = stddev(missqualities.dat, missqualities.len, mu);
+  double thresh = mu + stddevs * sigma;
+  int cnt=0;
+  for(int i=0; i< mask.len; i++){
+    if(missqualities.dat[i]>thresh){
+      mask.dat[i]=-1.0; // disable field
+      cnt++;
+    }
+  }
+  return cnt;
 }
 
 VSTransform vsMotionsToTransform(VSTransformData* td,
@@ -136,29 +167,30 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
   dat.td      = td;
   dat.missmatches = missmatches;
 
+  // first we throw away those fields that match badely (during motion detection)
+  int dis1=disableFields(missmatches, localmotionsGetMatch(motions), 1.5);
+
   VSArray result;
   double ss[] = {0.2, 0.2, 0.00005, 0.1};
   int k;
+  int dis2=0;
   for(k=0; k<3; k++){
     // optimize params to minimize transform quality (12 steps per dimension)
     result = vsGradientDescent(calcTransformQuality, params, &dat,
-                                        12, vs_array(ss,4), 1, &residual);
+                                        12, vs_array(ss,4), 0.1, &residual);
     vs_array_free(params);
     // now we need to ignore the fields that don't fit well (e.g. moving objects)
-    // cut off everthing above 1 std. dev. for skewed distributions this will cut off the tail
+    // cut off everthing above 1 std. dev. for skewed distributions
+    // this will cut off the tail
     // do this only two times (3 gradient optimizations in total)
     if((k==0 && residual>2) || (k==1 && residual>100)){
-      double mean_   = mean(missmatches.dat, missmatches.len);
-      double stddev_ = stddev(missmatches.dat, missmatches.len, mean_);
-      double thresh = mean_+stddev_;
-      for(int i=0; i< missmatches.len; i++){
-        if(missmatches.dat[i]>thresh) missmatches.dat[i]=-1.0; // disable field
-      }
+      dis2 += disableFields(missmatches, missmatches, 1.0);
       params = result;
     } else break;
   }
   if(td->conf.verbose  & VS_DEBUG)
-    vs_log_info(td->conf.modName, "residual: %f (%i)\n",residual,k);
+    vs_log_info(td->conf.modName, "disabled (%i+%i)/%i, residual: %f (%i)\n",
+                dis1, dis2, vs_vector_size(motions), residual,k);
   t = vsArrayToTransform(result);
   vs_array_free(result);
   return t;

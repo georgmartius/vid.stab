@@ -33,6 +33,13 @@ int vsLocalmotions2TransformsSimple(VSTransformData* td,
   return vsLocalmotions2Transforms(td,motions,trans);
 }
 
+/* #include <sys/time.h> */
+/* long timeOfDayinMS() { */
+/*   struct timeval t; */
+/*   gettimeofday(&t, 0); */
+/*   return t.tv_sec*1000 + t.tv_usec/1000; */
+/* } */
+
 int vsLocalmotions2Transforms(VSTransformData* td,
                               const VSManyLocalMotions* motions,
                               VSTransformations* trans ){
@@ -40,7 +47,8 @@ int vsLocalmotions2Transforms(VSTransformData* td,
   int len = vs_vector_size(motions);
   assert(trans->len==0 && trans->ts == 0);
   trans->ts = vs_malloc(sizeof(VSTransform)*len );
-  if(td->conf.simpleMotionCalculation){
+  /* long start= timeOfDayinMS(); */
+  if(td->conf.simpleMotionCalculation!=0){
     for(i=0; i< vs_vector_size(motions); i++) {
       trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
     }
@@ -49,12 +57,13 @@ int vsLocalmotions2Transforms(VSTransformData* td,
       trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i));
     }
   }
+  /* long end = timeOfDayinMS(); */
+  /* vs_log_info(td->conf.modName, "Localmotions2Transform (%i) with %i frames took %i ms\n", */
+  /*             td->conf.simpleMotionCalculation, len, end-start); */
   trans->len=len;
   return VS_OK;
 }
 
-
-// TODO; optimize
 VSArray vsTransformToArray(const VSTransform* t){
   VSArray a = vs_array_new(4);
   a.dat[0] = t->x;
@@ -63,7 +72,7 @@ VSArray vsTransformToArray(const VSTransform* t){
   a.dat[3] = t->zoom;
   return a;
 }
-// TODO; optimize
+
 VSTransform vsArrayToTransform(VSArray a){
   return new_transform(a.dat[0],a.dat[1],a.dat[2],a.dat[3],0,0,0);
 }

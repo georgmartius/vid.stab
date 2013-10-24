@@ -52,16 +52,24 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
 /** calculates the transformation that caused the observed motions.
     Using a simple cleaned-means approach to eliminate outliers.
     translation and rotation is calculated.
+    calculate shift as cleaned mean of all local motions
+    calculate rotation angle of each field in respect to center of fields
+    after shift removal
+    calculate rotation angle as cleaned mean of all angles
+    compensate for possibly off-center rotation
 */
 VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
                                    const LocalMotions* motions);
 
 
 /** calculates the transformation that caused the observed motions.
-    Using a gradient descent algorithm. Outliers are removed by repeated cross-validation.
+    Using a gradient descent algorithm.
+    Outliers are removed by repeated gaussianizing error distribution.
+    (File for exporting transforms)
 */
 VSTransform vsMotionsToTransform(VSTransformData* td,
-                                 const LocalMotions* motions);
+                                 const LocalMotions* motions,
+                                 FILE* f;);
 
 
 

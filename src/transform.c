@@ -45,6 +45,7 @@ const char* getInterpolationTypeName(VSInterpolType type){
     return "unknown";
 }
 
+// default initialization: attention the ffmpeg filter cannot call it
 VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   VSTransformConfig conf;
   /* Options */
@@ -60,6 +61,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.verbose            = 0;
   conf.modName            = modName;
   conf.simpleMotionCalculation = 0;
+  conf.storeTransforms    = 0;
   return conf;
 }
 
@@ -251,9 +253,9 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
        around the current point */
     VSTransform avg;
     /* avg2 is a sliding average over the filtered signal! (only to past)
-     *  with smoothing * 10 horizont to kill offsets */
+     *  with smoothing * 5 horizon to kill offsets */
     VSTransform avg2 = null_transform();
-    double tau = 1.0/(3 * s);
+    double tau = 1.0/(5 * s);
     /* initialise sliding sum with hypothetic sum centered around
      * -1st element. We have two choices:
      * a) assume the camera is not moving at the beginning

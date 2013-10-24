@@ -94,6 +94,7 @@ typedef struct _VSTransformConfig {
     int            verbose;     // level of logging
     // if 1 then the simple but fast method to termine the global motion is used
     int            simpleMotionCalculation;
+    int            storeTransforms; // stores calculated transforms to file
 } VSTransformConfig;
 
 typedef struct _VSTransformData {

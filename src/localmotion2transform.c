@@ -43,24 +43,30 @@ int vsLocalmotions2TransformsSimple(VSTransformData* td,
 int vsLocalmotions2Transforms(VSTransformData* td,
                               const VSManyLocalMotions* motions,
                               VSTransformations* trans ){
-  int i;
   int len = vs_vector_size(motions);
   assert(trans->len==0 && trans->ts == 0);
   trans->ts = vs_malloc(sizeof(VSTransform)*len );
   /* long start= timeOfDayinMS(); */
-  if(td->conf.simpleMotionCalculation!=0){
-    for(i=0; i< vs_vector_size(motions); i++) {
-      trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+  FILE *f=0;
+  if(td->conf.storeTransforms){
+    f = fopen("global_motions.trf","w");
+  }
+
+  if(td->conf.simpleMotionCalculation==0){
+    for(int i=0; i< vs_vector_size(motions); i++) {
+      trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i), f);
     }
   }else{
-    for(i=0; i< vs_vector_size(motions); i++) {
-      trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i));
+    for(int i=0; i< vs_vector_size(motions); i++) {
+      trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
     }
   }
+  trans->len=len;
+
   /* long end = timeOfDayinMS(); */
   /* vs_log_info(td->conf.modName, "Localmotions2Transform (%i) with %i frames took %i ms\n", */
   /*             td->conf.simpleMotionCalculation, len, end-start); */
-  trans->len=len;
+  if(f) fclose(f);
   return VS_OK;
 }
 
@@ -164,7 +170,8 @@ int disableFields(VSArray mask, VSArray missqualities, double stddevs){
 }
 
 VSTransform vsMotionsToTransform(VSTransformData* td,
-                                 const LocalMotions* motions){
+                                 const LocalMotions* motions,
+                                 FILE* f){
   VSTransform t = meanMotions(td, motions);
   if(motions==0 || vs_vector_size(motions)==0) return t;
 
@@ -186,13 +193,13 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
   for(k=0; k<3; k++){
     // optimize params to minimize transform quality (12 steps per dimension)
     result = vsGradientDescent(calcTransformQuality, params, &dat,
-                                        12, vs_array(ss,4), 0.1, &residual);
+                                        16, vs_array(ss,4), 0.01, &residual);
     vs_array_free(params);
     // now we need to ignore the fields that don't fit well (e.g. moving objects)
     // cut off everthing above 1 std. dev. for skewed distributions
     // this will cut off the tail
     // do this only two times (3 gradient optimizations in total)
-    if((k==0 && residual>2) || (k==1 && residual>100)){
+    if((k==0 && residual>0.1) || (k==1 && residual>100)){
       dis2 += disableFields(missmatches, missmatches, 1.0);
       params = result;
     } else break;
@@ -202,6 +209,9 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
                 dis1, dis2, vs_vector_size(motions), residual,k);
   t = vsArrayToTransform(result);
   vs_array_free(result);
+  if(f){
+    fprintf(f,"0 %f %f %f %f 0\n# %f %i\n", t.x, t.y, t.alpha, t.zoom, residual,k);
+  }
   return t;
 }
 

@@ -742,11 +742,6 @@ VSVector selectfields(VSMotionDetect* md, contrastSubImgFunc contrastfunc) {
  *   select maxfields fields according to their contrast
  *   check theses fields for vertical and horizontal transformation
  *   use minimal difference of all possible positions
- *   calculate shift as cleaned mean of all remaining fields
- *   calculate rotation angle of each field in respect to center of fields
- *   after shift removal
- *   calculate rotation angle as cleaned mean of all angles
- *   compensate for possibly off-center rotation
  */
 LocalMotions calcTransFields(VSMotionDetect* md,
                              calcFieldTransFunc fieldfunc,
@@ -777,9 +772,7 @@ LocalMotions calcTransFields(VSMotionDetect* md,
     fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
             m.f.x + m.v.x, m.f.y + m.v.y, m.match, m.contrast);
 #endif
-    //if (t.match > somethreshold) { // ignore if too bad
     vs_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
-      //}
   }
 
   num_motions = vs_vector_size(&localmotions); // amount of transforms we actually have

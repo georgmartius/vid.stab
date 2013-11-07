@@ -25,6 +25,8 @@
 
 #include "transformtype.h"
 #include "vidstabdefines.h"
+#include "vsvector.h"
+#include "frameinfo.h"
 
 /// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \
@@ -46,6 +48,22 @@ VSTransform mult_transform(const VSTransform* t1, double f);
 VSTransform mult_transform_(const VSTransform t1, double f);
 
 void storeVSTransform(FILE* f, const VSTransform* t);
+
+
+typedef struct _preparedtransform {
+  const VSTransform* t;
+  double zcos_a;
+  double zsin_a;
+  double c_x;
+  double c_y;
+} PreparedTransform;
+
+// transforms vector
+PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
+// transforms vector
+Vec transform_vec(const PreparedTransform* t, const Vec* v);
+// subtract two vectors
+Vec sub_vec(Vec v1, Vec v2);
 
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2);
@@ -108,7 +126,7 @@ LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2);
  */
 LocalMotion cleanmean_localmotions(const LocalMotions* localmotions);
 
-
+VSArray localmotionsGetMatch(const LocalMotions* localmotions);
 
 /* helper functions */
 

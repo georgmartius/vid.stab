@@ -37,6 +37,8 @@
 #include "test_gradientoptimizer.c"
 #include "test_localmotion2transform.c"
 
+#define FRAMENUM 5
+
 int main(int argc, char** argv){
 
   if(contains(argv,argc,"-h", "help")!=0){
@@ -57,7 +59,7 @@ int main(int argc, char** argv){
     FILE* file;
     char name[128];
     int i;
-    for(i=0; i<5; i++){
+    for(i=0; i<FRAMENUM; i++){
       vsFrameAllocate(&testdata.frames[i],&testdata.fi);
       sprintf(name,"../frames/frame%03i.raw",i+4);
       fprintf(stderr, "load file %s\n", name);
@@ -69,7 +71,7 @@ int main(int argc, char** argv){
       fclose(file);
     }
   }else{
-    UNIT(generateFrames(&testdata, 5));
+    UNIT(generateFrames(&testdata, FRAMENUM));
   }
   if(contains(argv,argc,"--store", "Store frames to files")!=0){
     storePGMImage("test1.pgm", testdata.frames[0].data[0], testdata.fi);
@@ -122,6 +124,10 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
   }
+
+  // free
+  for(int i=0; i<FRAMENUM; i++)
+    vsFrameFree(&testdata.frames[i]);
 
   return unittest_summary();
 }

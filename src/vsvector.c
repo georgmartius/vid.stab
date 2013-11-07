@@ -150,6 +150,30 @@ int vs_vector_resize(VSVector *V, int newsize){
     return VS_OK;
 }
 
+VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param){
+  VSVector result;
+  assert(V);
+  vs_vector_init(&result, V->nelems);
+  for(int i=0; i< V->nelems; i++){
+    if(pred(param, V->data[i]))
+      vs_vector_append(&result, V->data[i]);
+  }
+  return result;
+}
+
+VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2){
+  VSVector result;
+  assert(V1 && V2);
+  vs_vector_init(&result, V1->nelems + V2->nelems);
+  memcpy(result.data, V1->data, sizeof(void*)* V1->nelems);
+  memcpy(result.data+V1->nelems, V2->data, sizeof(void*)* V2->nelems);
+  result.nelems=V1->nelems+V2->nelems;
+  return result;
+}
+
+
+/* ARRAY */
+
 VSArray vs_array_new(int len){
   VSArray a;
   a.dat = (double*)vs_zalloc(sizeof(double)*len);

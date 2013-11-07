@@ -23,7 +23,7 @@ void test_motionDetect(TestData* testdata){
     /* for(k=0; k < vs_vector_size(&localmotions); k++){ */
     /*   localmotion_print(LMGet(&localmotions,k),stderr); */
     /* } */
-    t = vsSimpleMotionsToTransform(&td, &localmotions);
+    t = vsSimpleMotionsToTransform(td.fiSrc, td.conf.modName, &localmotions);
 
     vs_vector_del(&localmotions);
     fprintf(stderr,"%i: ",i);

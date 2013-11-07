@@ -58,8 +58,8 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
     calculate rotation angle as cleaned mean of all angles
     compensate for possibly off-center rotation
 */
-VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
-                                   const LocalMotions* motions);
+VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modname,
+                                       const LocalMotions* motions);
 
 
 /** calculates the transformation that caused the observed motions.
@@ -69,7 +69,7 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
 */
 VSTransform vsMotionsToTransform(VSTransformData* td,
                                  const LocalMotions* motions,
-                                 FILE* f;);
+                                 FILE* f);
 
 
 

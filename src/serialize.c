@@ -104,7 +104,6 @@ int vsPrepareFile(const VSMotionDetect* md, FILE* f){
     fprintf(f, "#      accuracy = %d\n", md->conf.accuracy);
     fprintf(f, "#     shakiness = %d\n", md->conf.shakiness);
     fprintf(f, "#      stepsize = %d\n", md->conf.stepSize);
-    fprintf(f, "#          algo = %d\n", md->conf.algo);
     fprintf(f, "#   mincontrast = %f\n", md->conf.contrastThreshold);
     return VS_OK;
 }

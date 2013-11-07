@@ -111,6 +111,32 @@ void storeVSTransform(FILE* f, const VSTransform* t){
   fprintf(f,"Trans %lf %lf %lf %lf\n", t->x, t->y, t->alpha, t->zoom);
 }
 
+
+PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi){
+  PreparedTransform pt;
+  pt.t = t;
+  double z = 1.0+t->zoom/100.0;
+  pt.zcos_a = z*cos(t->alpha); // scaled cos
+  pt.zsin_a = z*sin(t->alpha); // scaled sin
+  pt.c_x    = fi->width / 2;
+  pt.c_y    = fi->height / 2;
+  return pt;
+}
+
+Vec transform_vec(const PreparedTransform* pt, const Vec* v){
+  double x = v->x - pt->c_x;
+  double y = v->y - pt->c_y;
+  Vec res;
+  res.x =  pt->zcos_a * x + pt->zsin_a * y + pt->t->x + pt->c_x;
+  res.y = -pt->zsin_a * x + pt->zcos_a * y + pt->t->y + pt->c_y;
+  return res;
+}
+
+Vec sub_vec(Vec v1, Vec v2){
+  Vec r = {v1.x - v2.x, v1.y - v2.y};
+  return r;
+}
+
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2)
 {
@@ -420,6 +446,14 @@ LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
   vs_free(ys);
   m.v.x/=(len - (2.0 * cut));
   m.v.y/=(len - (2.0 * cut));
+  return m;
+}
+
+VSArray localmotionsGetMatch(const LocalMotions* localmotions){
+  VSArray m = vs_array_new(vs_vector_size(localmotions));
+  for (int i=0; i<m.len; i++){
+    m.dat[i]=LMGet(localmotions,i)->match;
+  }
   return m;
 }
 

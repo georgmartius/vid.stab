@@ -58,7 +58,7 @@ int vsLocalmotions2Transforms(VSTransformData* td,
     }
   }else{
     for(int i=0; i< vs_vector_size(motions); i++) {
-      trans->ts[i]=vsSimpleMotionsToTransform(td,VSMLMGet(motions,i));
+      trans->ts[i]=vsSimpleMotionsToTransform(td->fiSrc, td->conf.modName,VSMLMGet(motions,i));
     }
   }
   trans->len=len;
@@ -96,20 +96,15 @@ double calcTransformQuality(VSArray params, void* dat){
   VSTransform t = vsArrayToTransform(params);
   double error=0;
 
-  double z = 1.0+t.zoom/100.0;
-  double zcos_a = z*cos(t.alpha); // scaled cos
-  double zsin_a = z*sin(t.alpha); // scaled sin
-  double c_x = gd->td->fiSrc.width / 2;
-  double c_y = gd->td->fiSrc.height / 2;
+  PreparedTransform pt= prepare_transform(&t, &gd->td->fiSrc);
   int num = 1; // we start with 1 to avoid div by zero
   for (int i = 0; i < num_motions; i++) {
     if(gd->missmatches.dat[i]>=0){
       LocalMotion* m = LMGet(motions,i);
-      double x = m->f.x-c_x;
-      double y = m->f.y-c_y;
-      double vx =  zcos_a * x + zsin_a * y + t.x  - x;
-      double vy  = -zsin_a * x + zcos_a * y + t.y - y;
-      double e   = sqr(vx - m->v.x) +  sqr(vy - m->v.y);
+      Vec v = transform_vec(&pt, (Vec*)&m->f);
+      v.x = v.x - m->f.x;
+      v.y = v.y - m->f.y;
+      double e   = sqr(v.x - m->v.x) +  sqr(v.y - m->v.y);
       gd->missmatches.dat[i]=e;
       error += e;
       num++;
@@ -136,14 +131,6 @@ VSTransform meanMotions(VSTransformData* td, const LocalMotions* motions){
   vs_free(xs);
   vs_free(ys);
   return t;
-}
-
-VSArray localmotionsGetMatch(const LocalMotions* localmotions){
-  VSArray m = vs_array_new(vs_vector_size(localmotions));
-  for (int i=0; i<m.len; i++){
-    m.dat[i]=LMGet(localmotions,i)->match;
-  }
-  return m;
 }
 
 /* Disables those fields (mask = -1) whose (miss)quality is high.
@@ -184,7 +171,9 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
   dat.missmatches = missmatches;
 
   // first we throw away those fields that match badely (during motion detection)
-  int dis1=disableFields(missmatches, localmotionsGetMatch(motions), 1.5);
+  VSArray matchQualities = localmotionsGetMatch(motions);
+  int dis1=disableFields(missmatches, matchQualities, 1.5);
+  vs_array_free(matchQualities);
 
   VSArray result;
   double ss[] = {0.2, 0.2, 0.00005, 0.1};
@@ -209,8 +198,9 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
                 dis1, dis2, vs_vector_size(motions), residual,k);
   t = vsArrayToTransform(result);
   vs_array_free(result);
+  vs_array_free(missmatches);
   if(f){
-    fprintf(f,"0 %f %f %f %f 0\n# %f %i\n", t.x, t.y, t.alpha, t.zoom, residual,k);
+    fprintf(f,"0 %f %f %f %f 0\n# %f %i\n", t.x, t.y, t.alpha, t.zoom, residual, k);
   }
   return t;
 }
@@ -277,8 +267,8 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y){
 }
 
 
-VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
-                                   const LocalMotions* motions){
+VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modName,
+                                       const LocalMotions* motions){
   int center_x = 0;
   int center_y = 0;
   VSTransform t = null_transform();
@@ -315,14 +305,14 @@ VSTransform vsSimpleMotionsToTransform(VSTransformData* td,
     t.alpha = -cleanmean(angles, num_motions, &min, &max);
     if (max - min > 1.0) {
       t.alpha = 0;
-      vs_log_info(td->conf.modName, "too large variation in angle(%f)\n",
+      vs_log_info(modName, "too large variation in angle(%f)\n",
       max-min);
     }
   }
   vs_free(angles);
   // compensate for off-center rotation
-  double p_x = (center_x - td->fiSrc.width / 2);
-  double p_y = (center_y - td->fiSrc.height / 2);
+  double p_x = (center_x - fi.width / 2);
+  double p_y = (center_y - fi.height / 2);
   t.x = meanmotion.v.x + (cos(t.alpha) - 1) * p_x - sin(t.alpha) * p_y;
   t.y = meanmotion.v.y + sin(t.alpha) * p_x + (cos(t.alpha) - 1) * p_y;
 

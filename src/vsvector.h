@@ -26,7 +26,7 @@
 #include <stdio.h>
 
 /**
-   A vector for arbrary elements that resizes
+   A vector for arbitrary elements that resizes
 */
 typedef struct vsvector_ VSVector;
 struct vsvector_ {
@@ -132,15 +132,6 @@ void* vs_vector_set(VSVector *V, int pos, void *data);
  */
 void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
 
-
-/* (to be implemented)
- * vs_vector_insert:
- *      the newly-inserted elements BECOMES the position `pos' on the vector.
- *      Position after the last -> the last.
- *      Position before the first -> the first.
- */
-//int vs_vector_insert(VSVector *V, int pos, void *data);
-
 /*
  * vs_vector_get:
  *     gives access to the data pointed by the element in the given position.
@@ -154,18 +145,18 @@ void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
  */
 void *vs_vector_get(const VSVector *V, int pos);
 
-/* to be implemented
- * vs_vector_pop:
- *     removes the element in the given position.
- *
- * Parameters:
- *       V: vector to be accessed.
- *     pos: position of the element on which the data will be returned.
- * Return Value:
- *     NULL on error (requested element doesn't exist)
- *     a pointer to the data assigned to the requested vector item.
+/*
+ * vs_vector_filter:
+ *      returns a new vector with elements that fulfill predicate
+ *      pred(param, elem)
  */
-//void *vs_vector_pop(VSVector *V, int pos);
+VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param);
+
+/*
+ * vs_vector_concat:
+ *      returns a new vector with elements of vector V1 and V2 after another
+ */
+VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2);
 
 
 /**

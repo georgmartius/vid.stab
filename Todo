@@ -1,8 +1,7 @@
 
 Some things that could be done
 
-- optimal zoom detection with sliding average
-- transform calculation in motiondetect with full matrix estimation (pseudoinverse)
+- scene detection, bad chunk detection: No stabilization of new scene begins or no good match can be found
 
-- make transform stage work with fifo file for transforms, such that streaming is also possible with 2-stage version.
+- make transform stage work with fifo file for transforms, such that streaming is also possible with 2-stage version - does not really work because if synchronization need other way of IPC
 

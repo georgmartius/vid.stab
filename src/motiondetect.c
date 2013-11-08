@@ -239,6 +239,8 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
         drawFieldTrans(md, LMGet(&motionsfinefiltered,i));
     }
     *motions = vs_vector_concat(&motionscoarse,&motionsfinefiltered);
+    //*motions = motionscoarse;
+    //*motions = motionsfinefiltered;
   } else {
     vs_vector_init(motions,1); // dummy vector
     md->hasSeenOneFrame = 1;
@@ -753,10 +755,14 @@ void drawField(VSMotionDetect* md, const LocalMotion* lm) {
 void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm) {
   if (md->fi.pFormat > PF_PACKED)
     return;
+  Vec end = add_vec(field_to_vec(lm->f),lm->v);
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
-          lm->f.x, lm->f.y, 5, 5, 128); // draw center
+          lm->f.x, lm->f.y, 5, 5, 0); // draw center
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
-          lm->f.x + lm->v.x, lm->f.y + lm->v.y, 8, 8, 250); // draw translation
+          lm->f.x + lm->v.x, lm->f.y + lm->v.y, 5, 5, 250); // draw translation
+  drawLine(md->currorig.data[0], md->currorig.linesize[0],  md->fi.height, 1,
+           (Vec*)&lm->f, &end, 3, 180);
+
 }
 
 /**
@@ -795,6 +801,40 @@ void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel, i
   for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // left line
   p = I + ((x + sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
   for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // right line
+}
+
+/**
+ * draws a line from a to b with given thickness(not filled) at the given position x,y (center) in the given color
+ at the first channel
+*/
+void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
+              Vec* a, Vec* b, int thickness, unsigned char color) {
+  unsigned char* p;
+  Vec div = sub_vec(*b,*a);
+  if(div.y==0){ // horizontal line
+    if(div.x<0) {*a=*b; div.x*=-1;}
+    for(int r=-thickness/2; r<=thickness/2; r++){
+      p = I + ((a->x) + (a->y+r) * width) * bytesPerPixel;
+      for (int k = 0; k <= div.x; k++) { *p = color; p+= bytesPerPixel; }
+    }
+  }else{
+    if(div.x==0){ // vertical line
+      if(div.y<0) {*a=*b; div.y*=-1;}
+      for(int r=-thickness/2; r<=thickness/2; r++){
+        p = I + ((a->x+r) + (a->y) * width) * bytesPerPixel;
+        for (int k = 0; k <= div.y; k++) { *p = color; p+= width * bytesPerPixel; }
+      }
+    }else{
+      double m = (double)div.x/(double)div.y;
+      int horlen = thickness + fabs(m);
+      for( int c=0; c<= abs(div.y); c++){
+        int dy = div.y<0 ? -c : c;
+        int x = a->x + m*dy - horlen/2;
+        p = I + (x + (a->y+dy) * width) * bytesPerPixel;
+        for( int k=0; k<= horlen; k++){ *p = color; p+= bytesPerPixel; }
+      }
+    }
+  }
 }
 
 

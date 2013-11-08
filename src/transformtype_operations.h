@@ -60,10 +60,15 @@ typedef struct _preparedtransform {
 
 // transforms vector
 PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
-// transforms vector
+// transforms vector (attention, only integer)
 Vec transform_vec(const PreparedTransform* t, const Vec* v);
+void transform_vec_double(double *x, double* y, const PreparedTransform* t, const Vec* v);
+
 // subtract two vectors
 Vec sub_vec(Vec v1, Vec v2);
+// adds two vectors
+Vec add_vec(Vec v1, Vec v2);
+Vec field_to_vec(Field f);
 
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2);

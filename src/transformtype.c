@@ -124,16 +124,29 @@ PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi)
 }
 
 Vec transform_vec(const PreparedTransform* pt, const Vec* v){
-  double x = v->x - pt->c_x;
-  double y = v->y - pt->c_y;
-  Vec res;
-  res.x =  pt->zcos_a * x + pt->zsin_a * y + pt->t->x + pt->c_x;
-  res.y = -pt->zsin_a * x + pt->zcos_a * y + pt->t->y + pt->c_y;
+  double x,y;
+  transform_vec_double(&x, &y, pt, v);
+  Vec res = {x,y};
   return res;
+}
+
+void transform_vec_double(double* x, double* y, const PreparedTransform* pt, const Vec* v){
+  double rx = v->x - pt->c_x;
+  double ry = v->y - pt->c_y;
+  *x =  pt->zcos_a * rx + pt->zsin_a * ry + pt->t->x + pt->c_x;
+  *y = -pt->zsin_a * rx + pt->zcos_a * ry + pt->t->y + pt->c_y;
 }
 
 Vec sub_vec(Vec v1, Vec v2){
   Vec r = {v1.x - v2.x, v1.y - v2.y};
+  return r;
+}
+Vec add_vec(Vec v1, Vec v2){
+  Vec r = {v1.x + v2.x, v1.y + v2.y};
+  return r;
+}
+Vec field_to_vec(Field f){
+  Vec r = {f.x , f.y};
   return r;
 }
 

@@ -70,6 +70,8 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
 void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,
                    int x, int y, int sizex, int sizey, unsigned char color);
 
+void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
+              Vec* a, Vec* b, int thickness, unsigned char color);
 
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width1, int width2, int height,

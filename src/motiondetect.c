@@ -130,7 +130,7 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
     return VS_ERROR;
   }
   // for the fine check we use the same a smaller size and maximal shift
-  if (!initFields(md, &md->fieldsfine, fieldSizeFine, fieldSizeFine, 2, 1, 2*fieldSizeFine)) {
+  if (!initFields(md, &md->fieldsfine, fieldSizeFine, fieldSizeFine, 2, 1, fieldSizeFine)) {
     return VS_ERROR;
   }
 
@@ -187,8 +187,8 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
 
   if (md->hasSeenOneFrame) {
     LocalMotions motionscoarse;
-    LocalMotions motionsfinefiltered;
-    vs_vector_init(&motionsfinefiltered,0);
+    LocalMotions motionsfine;
+    vs_vector_init(&motionsfine,0);
     //    md->curr = frame;
     if (md->fi.pFormat > PF_PACKED) {
       motionscoarse = calcTransFields(md, &md->fieldscoarse,
@@ -206,13 +206,13 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
       VSTransform t = vsSimpleMotionsToTransform(md->fi, md->conf.modName, &motionscoarse);
       md->fieldsfine.offset    = t;
       md->fieldsfine.useOffset = 1;
-      LocalMotions motionsfine;
+      LocalMotions motions2;
       if (md->fi.pFormat > PF_PACKED) {
-        motionsfine = calcTransFields(md, &md->fieldsfine,
-                                      calcFieldTransPacked, contrastSubImgPacked);
+        motions2 = calcTransFields(md, &md->fieldsfine,
+                                   calcFieldTransPacked, contrastSubImgPacked);
       } else { // PLANAR
-        motionsfine = calcTransFields(md, &md->fieldsfine,
-                                      calcFieldTransPlanar, contrastSubImgPlanar);
+        motions2 = calcTransFields(md, &md->fieldsfine,
+                                   calcFieldTransPlanar, contrastSubImgPlanar);
       }
       // through out those with bad match
       VSArray matchQualities1 = localmotionsGetMatch(&motionscoarse);
@@ -223,24 +223,27 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
       VSArray matchQualities2 = localmotionsGetMatch(&motionsfine);
       vs_array_print(matchQualities2, stdout);
       printf("\n");
-      motionsfinefiltered = vs_vector_filter(&motionsfine, lm_match_better, &meanMatch);
+      motionsfine = vs_vector_filter(&motions2, lm_match_better, &meanMatch);
     }
     if (md->conf.show) { // draw fields and transforms into frame.
+      int num_motions_fine = vs_vector_size(&motionsfine);
       // this has to be done one after another to handle possible overlap
       if (md->conf.show > 1) {
         for (int i = 0; i < num_motions; i++)
           drawFieldScanArea(md, LMGet(&motionscoarse,i), md->fieldscoarse.maxShift);
       }
       for (int i = 0; i < num_motions; i++)
-        drawField(md, LMGet(&motionscoarse,i));
+        drawField(md, LMGet(&motionscoarse,i), 1);
+      for (int i = 0; i < num_motions_fine; i++)
+        drawField(md, LMGet(&motionsfine,i), 0);
       for (int i = 0; i < num_motions; i++)
-        drawFieldTrans(md, LMGet(&motionscoarse,i));
-      for (int i = 0; i < vs_vector_size(&motionsfinefiltered); i++)
-        drawFieldTrans(md, LMGet(&motionsfinefiltered,i));
+        drawFieldTrans(md, LMGet(&motionscoarse,i),180);
+      for (int i = 0; i < num_motions_fine; i++)
+        drawFieldTrans(md, LMGet(&motionsfine,i), 64);
     }
-    *motions = vs_vector_concat(&motionscoarse,&motionsfinefiltered);
+    *motions = vs_vector_concat(&motionscoarse,&motionsfine);
     //*motions = motionscoarse;
-    //*motions = motionsfinefiltered;
+    //*motions = motionsfine;
   } else {
     vs_vector_init(motions,1); // dummy vector
     md->hasSeenOneFrame = 1;
@@ -744,15 +747,19 @@ void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* lm, int maxShift) 
 }
 
 /** draws the field */
-void drawField(VSMotionDetect* md, const LocalMotion* lm) {
+void drawField(VSMotionDetect* md, const LocalMotion* lm, short box) {
   if (md->fi.pFormat > PF_PACKED)
     return;
-  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
-          lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
+  if(box)
+    drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+            lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
+  else
+    drawRectangle(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+                  lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
 }
 
 /** draws the transform data of this field */
-void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm) {
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm, int color) {
   if (md->fi.pFormat > PF_PACKED)
     return;
   Vec end = add_vec(field_to_vec(lm->f),lm->v);
@@ -761,7 +768,7 @@ void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm) {
   drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
           lm->f.x + lm->v.x, lm->f.y + lm->v.y, 5, 5, 250); // draw translation
   drawLine(md->currorig.data[0], md->currorig.linesize[0],  md->fi.height, 1,
-           (Vec*)&lm->f, &end, 3, 180);
+           (Vec*)&lm->f, &end, 3, color);
 
 }
 

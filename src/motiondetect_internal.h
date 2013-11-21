@@ -63,8 +63,8 @@ LocalMotions calcTransFields(VSMotionDetect* md, VSMotionDetectFields* fields,
 
 
 void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion, int maxShift);
-void drawField(VSMotionDetect* md, const LocalMotion* motion);
-void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion);
+void drawField(VSMotionDetect* md, const LocalMotion* motion, short box);
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, int color);
 void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
 void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,

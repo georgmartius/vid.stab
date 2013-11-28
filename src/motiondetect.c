@@ -219,13 +219,15 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
       // through out those with bad match (worse than mean of coarse scan)
       VSArray matchQualities1 = localmotionsGetMatch(&motionscoarse);
       double meanMatch = cleanmean(matchQualities1.dat, matchQualities1.len, NULL, NULL);
-      printf("\nMatches: mean:  %f | ", meanMatch);
-      vs_array_print(matchQualities1, stdout);
-      printf("\n         fine: ");
-      VSArray matchQualities2 = localmotionsGetMatch(&motions2);
-      vs_array_print(matchQualities2, stdout);
-      printf("\n");
-      motionsfine = vs_vector_filter(&motions2, lm_match_better, &meanMatch);
+      motionsfine      = vs_vector_filter(&motions2, lm_match_better, &meanMatch);
+      if(0){
+        printf("\nMatches: mean:  %f | ", meanMatch);
+        vs_array_print(matchQualities1, stdout);
+        printf("\n         fine: ");
+        VSArray matchQualities2 = localmotionsGetMatch(&motions2);
+        vs_array_print(matchQualities2, stdout);
+        printf("\n");
+      }
     }
     if (md->conf.show) { // draw fields and transforms into frame.
       int num_motions_fine = vs_vector_size(&motionsfine);
@@ -523,7 +525,7 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fs,
   lm.f = *field;
   lm.v.x = tx + offset.x;
   lm.v.y = ty + offset.y;
-  lm.match = minerror/(field->size*field->size);
+  lm.match = ((double) minerror)/(field->size*field->size);
   return lm;
 }
 
@@ -602,7 +604,7 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
   lm.f = *field;
   lm.v.x = tx + offset.x;
   lm.v.y = ty + offset.y;
-  lm.match = minerror/(field->size*field->size);
+  lm.match = ((double)minerror)/(field->size*field->size);
   return lm;
 }
 

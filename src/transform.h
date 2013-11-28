@@ -87,6 +87,7 @@ typedef struct _VSTransformConfig {
     int            invert;      // 1: invert transforms, 0: nothing
     double         zoom;        // percentage to zoom: 0->no zooming 10:zoom in 10%
     int            optZoom;     // 2: optimal adaptive zoom 1: optimal static zoom, 0: nothing
+    double         zoomSpeed;   // for adaptive zoom: zoom per frame in percent
     VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
     int            maxShift;    // maximum number of pixels we will shift
     double         maxAngle;    // maximum angle in rad
@@ -141,6 +142,7 @@ static const char vs_transform_help[] = ""
     "                2: determine optimal adaptive zoom\n"
     "                Note that the value given at 'zoom' is added to the \n"
     "                here calculated one\n"
+    "    'zoomspeed' for adaptive zoom: zoom per frame in percent \n"
     "    'interpol'  type of interpolation: 0: no interpolation, \n"
     "                1: linear (horizontal), 2: bi-linear (def), \n"
     "                3: bi-cubic\n"

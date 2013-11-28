@@ -57,6 +57,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.smoothing          = 10;
   conf.zoom               = 0;
   conf.optZoom            = 1;
+  conf.zoomSpeed          = 0.25;
   conf.interpolType       = VS_BiLinear;
   conf.verbose            = 0;
   conf.modName            = modName;
@@ -346,7 +347,8 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
   }
   /* Calc optimal zoom (2)
    *  sliding average to zoom only as much as needed also using rotation angles
-   *  the mean zoom value is allways zoom, in order not to zoom in and out too much
+   *  the baseline zoom is the mean required zoom + global zoom
+   *  in order to avoid too much zooming in and out
    */
   if (td->conf.optZoom == 2 && trans->len > 1){
     double* zooms=(double*)vs_zalloc(sizeof(double)*trans->len);
@@ -357,27 +359,23 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     for (i = 0; i < trans->len; i++) {
       zooms[i] = transform_get_required_zoom(&ts[i], w, h);
     }
-    meanzoom = mean(zooms, trans->len);
+    meanzoom = mean(zooms, trans->len) + td->conf.zoom; // add global zoom
     // forward - propagation (to make the zooming smooth)
     req = meanzoom;
     for (i = 0; i < trans->len; i++) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
-      req= VS_MAX(meanzoom, req-0.25); // 0.25% zoom-out each frame (at-hoc)
-      // Todo: use framerate....
+      req= VS_MAX(meanzoom, req - td->conf.zoomSpeed); // zoom-out each frame
     }
     // backward - propagation
     req = meanzoom;
     for (i = trans->len-1; i >= 0; i--) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
-      req= VS_MAX(meanzoom, req-0.25);
+      req= VS_MAX(meanzoom, req - td->conf.zoomSpeed);
     }
     vs_free(zooms);
-  }
-
-  /* apply global zoom */
-  if (td->conf.zoom != 0){
+  }else if (td->conf.zoom != 0){ /* apply global zoom */
     for (i = 0; i < trans->len; i++)
       ts[i].zoom += td->conf.zoom;
   }

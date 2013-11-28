@@ -27,12 +27,6 @@
 #include <assert.h>
 #include <string.h>
 
-int vsLocalmotions2TransformsSimple(VSTransformData* td,
-                                    const VSManyLocalMotions* motions,
-                                    VSTransformations* trans ){
-  return vsLocalmotions2Transforms(td,motions,trans);
-}
-
 /* #include <sys/time.h> */
 /* long timeOfDayinMS() { */
 /*   struct timeval t; */

@@ -41,7 +41,8 @@ typedef double (*contrastSubImgFunc)(VSMotionDetect*, const Field*);
 
 
 int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
-               int fieldSize, int maxShift, int stepSize, short border, int spacing);
+               int fieldSize, int maxShift, int stepSize, short border,
+               int spacing, double contrastThreshold );
 
 double contrastSubImgPlanar(VSMotionDetect* md, const Field* field);
 double contrastSubImgPacked(VSMotionDetect* md, const Field* field);

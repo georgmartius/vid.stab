@@ -126,11 +126,13 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
   fieldSize     = (fieldSize / 16 + 1) * 16;
   fieldSizeFine = (fieldSizeFine / 16 + 1) * 16;
 #endif
-  if (!initFields(md, &md->fieldscoarse, fieldSize, maxShift, md->conf.stepSize, 1, 0)) {
+  if (!initFields(md, &md->fieldscoarse, fieldSize, maxShift, md->conf.stepSize,
+                  1, 0, md->conf.contrastThreshold)) {
     return VS_ERROR;
   }
-  // for the fine check we use the same a smaller size and maximal shift
-  if (!initFields(md, &md->fieldsfine, fieldSizeFine, fieldSizeFine, 2, 1, fieldSizeFine)) {
+  // for the fine check we use a smaller size and smaller maximal shift (=size)
+  if (!initFields(md, &md->fieldsfine, fieldSizeFine, fieldSizeFine,
+                  2, 1, fieldSizeFine, md->conf.contrastThreshold/2)) {
     return VS_ERROR;
   }
 
@@ -214,13 +216,13 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
         motions2 = calcTransFields(md, &md->fieldsfine,
                                    calcFieldTransPlanar, contrastSubImgPlanar);
       }
-      // through out those with bad match
+      // through out those with bad match (worse than mean of coarse scan)
       VSArray matchQualities1 = localmotionsGetMatch(&motionscoarse);
       double meanMatch = cleanmean(matchQualities1.dat, matchQualities1.len, NULL, NULL);
       printf("\nMatches: mean:  %f | ", meanMatch);
       vs_array_print(matchQualities1, stdout);
-      printf("\n");
-      VSArray matchQualities2 = localmotionsGetMatch(&motionsfine);
+      printf("\n         fine: ");
+      VSArray matchQualities2 = localmotionsGetMatch(&motions2);
       vs_array_print(matchQualities2, stdout);
       printf("\n");
       motionsfine = vs_vector_filter(&motions2, lm_match_better, &meanMatch);
@@ -265,11 +267,13 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
 */
 
 int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
-               int size, int maxShift, int stepSize, short keepBorder, int spacing) {
+               int size, int maxShift, int stepSize,
+               short keepBorder, int spacing, double contrastThreshold) {
   fs->fieldSize = size;
   fs->maxShift  = maxShift;
   fs->stepSize  = stepSize;
   fs->useOffset = 0;
+  fs->contrastThreshold = contrastThreshold;
 
   int rows = VS_MAX(3,(md->fi.height - fs->maxShift*2)/(size+spacing)-1);
   int cols = VS_MAX(3,(md->fi.width - fs->maxShift*2)/(size+spacing)-1);
@@ -386,7 +390,6 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fs,
                 fieldpos.x+offset.x+s2+maxShift+stepSize >= md->fi.width ||
                 fieldpos.y+offset.y-s2-maxShift-stepSize < 0 ||
                 fieldpos.y+offset.y+s2+maxShift+stepSize >= md->fi.height)){
-      printf("kick out: %i %i -> %i %i\t", field->x, field->y, offset.x, offset.y);
       lm.match=-1;
       return lm;
     }
@@ -638,7 +641,7 @@ VSVector selectfields(VSMotionDetect* md, VSMotionDetectFields* fs,
   for (i = 0; i < fs->fieldNum; i++) {
     ci[i].contrast = contrastfunc(md, &fs->fields[i]);
     ci[i].index = i;
-    if (ci[i].contrast < md->conf.contrastThreshold)
+    if (ci[i].contrast < fs->contrastThreshold)
       ci[i].contrast = 0;
     // else printf("%i %lf\n", ci[i].index, ci[i].contrast);
   }

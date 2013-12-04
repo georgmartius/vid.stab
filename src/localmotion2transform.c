@@ -104,7 +104,9 @@ double calcTransformQuality(VSArray params, void* dat){
       num++;
     }
   }
-  return error/num + t.alpha*t.alpha + t.zoom*t.zoom/10000.0;
+  // 1 pixel translation missmatch is roughly (with size 500):
+  // alpha=0.11 (degree), zoom=0.2; The zoom is however often much larger, so less penalty.
+  return error/num + fabs(t.alpha)/5.0 + fabs(t.zoom)/500.0;
 }
 
 double intMean(const int* ds, int len) {
@@ -119,7 +121,10 @@ VSTransform meanMotions(VSTransformData* td, const LocalMotions* motions){
   int* xs = localmotions_getx(motions);
   int* ys = localmotions_gety(motions);
   VSTransform t = null_transform();
-  if(motions==0 || len==0) return t;
+  if(motions==0 || len==0) {
+    t.extra = 1; // prob. blank frame or too low contrast, ignore later
+    return t;
+  }
   t.x = intMean(xs,len);
   t.y = intMean(ys,len);
   vs_free(xs);
@@ -154,8 +159,10 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
                                  const LocalMotions* motions,
                                  FILE* f){
   VSTransform t = meanMotions(td, motions);
-  if(motions==0 || vs_vector_size(motions)==0) return t;
-
+  if(motions==0 || vs_vector_size(motions)==0){
+    if (f) fprintf(f,"0 0 0 0 0 %i\n# no fields\n", t.extra);
+    return t;
+  }
   VSArray missmatches = vs_array_new(vs_vector_size(motions));
   VSArray params = vsTransformToArray(&t);
   double residual;
@@ -182,20 +189,28 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
     // cut off everthing above 1 std. dev. for skewed distributions
     // this will cut off the tail
     // do this only two times (3 gradient optimizations in total)
-    if((k==0 && residual>0.1) || (k==1 && residual>100)){
+    if((k==0 && residual>0.1) || (k==1 && residual>20)){
       dis2 += disableFields(missmatches, missmatches, 1.0);
       params = result;
     } else break;
   }
+
   if(td->conf.verbose  & VS_DEBUG)
-    vs_log_info(td->conf.modName, "disabled (%i+%i)/%i, residual: %f (%i)\n",
-                dis1, dis2, vs_vector_size(motions), residual,k);
+    vs_log_info(td->conf.modName, "disabled (%i+%i)/%i,\tresidual: %f (%i)\n",
+                dis1, dis2, vs_vector_size(motions), residual, k+1);
   t = vsArrayToTransform(result);
   vs_array_free(result);
   vs_array_free(missmatches);
-  if(f){
-    fprintf(f,"0 %f %f %f %f 0\n# %f %i\n", t.x, t.y, t.alpha, t.zoom, residual, k);
+  // check if sufficiently good match was achieved:
+  if(residual>100){ // test threshold.
+    t.extra=1;
   }
+  if(f){
+    fprintf(f,"0 %f %f %f %f %i\n#\t\t\t\t\t %f %i\n", t.x, t.y, t.alpha, t.zoom, t.extra,
+            residual, k + 1);
+  }
+  if(!td->conf.smoothZoom)
+    t.zoom=0;
   return t;
 }
 

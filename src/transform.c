@@ -63,6 +63,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.modName            = modName;
   conf.simpleMotionCalculation = 0;
   conf.storeTransforms    = 0;
+  conf.smoothZoom         = 0;
   return conf;
 }
 

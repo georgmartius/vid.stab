@@ -96,6 +96,7 @@ typedef struct _VSTransformConfig {
     // if 1 then the simple but fast method to termine the global motion is used
     int            simpleMotionCalculation;
     int            storeTransforms; // stores calculated transforms to file
+    int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
 } VSTransformConfig;
 
 typedef struct _VSTransformData {

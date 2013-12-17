@@ -1,8 +1,9 @@
 0.98...
 	small measurement fields added that only scan around mean
 	diagnostics in show=1 and show=2 use lines now.
-	Todo: fix zoom detection/treatment
-	Todo: params for optzoom....
+	fix zoom detection/treatment
+	zoomspeed param for optzoom
+	gaussian filter for cam path optimization
 0.97
 	optzoom = 2: adaptive zooming added
 	border bluring for interpolation>=bilinear

@@ -63,7 +63,7 @@ VSTransform add_transforms(const VSTransform* t1, const VSTransform* t2)
   t.zoom     = t1->zoom + t2->zoom;
   t.barrel   = t1->barrel + t2->barrel;
   t.rshutter = t1->rshutter + t2->rshutter;
-  t.extra    = 0;
+  t.extra    = t1->extra || t2->extra;
   return t;
 }
 
@@ -83,7 +83,7 @@ VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2)
   t.zoom     = t1->zoom - t2->zoom;
   t.barrel   = t1->barrel - t2->barrel;
   t.rshutter = t1->rshutter - t2->rshutter;
-  t.extra    = 0;
+  t.extra    = t1->extra || t2->extra;
   return t;
 }
 
@@ -97,7 +97,7 @@ VSTransform mult_transform(const VSTransform* t1, double f)
   t.zoom     = t1->zoom     * f;
   t.barrel   = t1->barrel   * f;
   t.rshutter = t1->rshutter * f;
-  t.extra    = 0;
+  t.extra    = t1->extra;
   return t;
 }
 
@@ -108,7 +108,7 @@ VSTransform mult_transform_(const VSTransform t1, double f)
 }
 
 void storeVSTransform(FILE* f, const VSTransform* t){
-  fprintf(f,"Trans %lf %lf %lf %lf\n", t->x, t->y, t->alpha, t->zoom);
+  fprintf(f,"Trans %lf %lf %lf %lf %i\n", t->x, t->y, t->alpha, t->zoom, t->extra);
 }
 
 

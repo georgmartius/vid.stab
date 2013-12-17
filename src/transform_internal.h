@@ -34,6 +34,15 @@
 /// name of the interpolation type
 const char* getInterpolationTypeName(VSInterpolType type);
 
+/** performs the smoothing of the camera path and modifies the transforms
+    to compensate for the jiggle
+    */
+int cameraPathOptimization(VSTransformData* td, VSTransformations* trans);
+
+int cameraPathAvg(VSTransformData* td, VSTransformations* trans);
+int cameraPathGaussian(VSTransformData* td, VSTransformations* trans);
+int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans);
+
 #endif
 
 /*

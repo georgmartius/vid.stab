@@ -56,6 +56,7 @@ typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} 
 const char* getInterpolationTypeName(VSInterpolType type);
 
 typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
+typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
 
 /**
  * interpolate: general interpolation function pointer for one channel image data
@@ -97,6 +98,7 @@ typedef struct _VSTransformConfig {
     int            simpleMotionCalculation;
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
+    VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
 } VSTransformConfig;
 
 typedef struct _VSTransformData {

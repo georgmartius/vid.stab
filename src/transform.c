@@ -54,7 +54,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.crop               = VSKeepBorder;
   conf.relative           = 1;
   conf.invert             = 0;
-  conf.smoothing          = 10;
+  conf.smoothing          = 15;
   conf.zoom               = 0;
   conf.optZoom            = 1;
   conf.zoomSpeed          = 0.25;
@@ -64,6 +64,7 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.simpleMotionCalculation = 0;
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
+  conf.camPathAlgo        = VSOptimalL1;
   return conf;
 }
 
@@ -100,6 +101,9 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
     td->conf.maxShift = td->fiDest.height/2;
 
   td->conf.interpolType = VS_MAX(VS_MIN(td->conf.interpolType,VS_BiCubic),VS_Zero);
+
+  // not yet implemented
+  if(td->conf.camPathAlgo==VSOptimalL1) td->conf.camPathAlgo=VSGaussian;
 
   switch(td->conf.interpolType){
    case VS_Zero:     td->interpolate = &interpolateZero; break;
@@ -211,33 +215,106 @@ void vsTransformationsCleanup(VSTransformations* trans){
   trans->len=0;
 }
 
-
-/**
- * vsPreprocessTransforms: does smoothing, relative to absolute conversion,
- *  and cropping of too large transforms.
+/*
  *  This is actually the core algorithm for canceling the jiggle in the
- *  movie. We perform a low-pass filter in terms of transformation size.
- *  This supports slow camera movement (low frequency), but in a smooth fasion.
- *
- * Parameters:
- *            td: transform private data structure
- *         trans: list of transformations (changed)
- * Return value:
- *     1 for success and 0 for failure
- * Preconditions:
- *     None
- * Side effects:
- *     td->trans will be modified
+ *  movie. We have different implementations which are patched here.
  */
-int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
-{
-  VSTransform* ts = trans->ts;
-  int i;
+int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
+  switch(td->conf.camPathAlgo){
+   case VSAvg: return cameraPathAvg(td,trans);
+   case VSOptimalL1: // not yet implenented
+   case VSGaussian: return cameraPathGaussian(td,trans);
+//   case VSOptimalL1: return cameraPathOptimalL1(td,trans);
+  }
+  return VS_ERROR;
+}
 
+/*
+ *  We perform a low-pass filter on the camera path.
+ *  This supports slow camera movemen, but in a smooth fasion.
+ *  Here we use gaussian filter (gaussian kernel) lowpass filter
+ */
+int cameraPathGaussian(VSTransformData* td, VSTransformations* trans){
+  VSTransform* ts = trans->ts;
   if (trans->len < 1)
-    return 0;
+    return VS_ERROR;
   if (td->conf.verbose & VS_DEBUG) {
     vs_log_msg(td->conf.modName, "Preprocess transforms:");
+  }
+
+  /* relative to absolute (integrate transformations) */
+  if (td->conf.relative) {
+    VSTransform t = ts[0];
+    for (int i = 1; i < trans->len; i++) {
+      ts[i] = add_transforms(&ts[i], &t);
+      t = ts[i];
+    }
+  }
+
+  if (td->conf.smoothing>0) {
+    VSTransform* ts2 = vs_malloc(sizeof(VSTransform) * trans->len);
+    memcpy(ts2, ts, sizeof(VSTransform) * trans->len);
+    int s = td->conf.smoothing * 2 + 1;
+    VSArray kernel = vs_array_new(s);
+    // initialize gaussian kernel
+    int mu        = td->conf.smoothing;
+    double sigma2 = sqr(mu/2.0);
+    for(int i=0; i<=mu; i++){
+      kernel.dat[i] = kernel.dat[s-i-1] = exp(-sqr(i-mu)/sigma2);
+    }
+    // vs_array_print(kernel, stdout);
+
+    for (int i = 0; i < trans->len; i++) {
+      // make a convolution:
+      double weightsum=0;
+      VSTransform avg = null_transform();
+      for(int k=0; k<s; k++){
+        int idx = i+k-mu;
+        if(idx>=0 && idx<trans->len){
+          if(unlikely(0 && ts2[idx].extra==1)){ // deal with scene cuts or bad frames
+            if(k<mu) { // in the past of our frame: ignore everthing before
+              avg=null_transform();
+              weightsum=0;
+              continue;
+            }else{           //current frame or in future: stop here
+              if(k==mu)      //for current frame: ignore completely
+                weightsum=0;
+              break;
+            }
+          }
+          weightsum+=kernel.dat[k];
+          avg=add_transforms_(avg, mult_transform(&ts2[idx], kernel.dat[k]));
+        }
+      }
+      if(weightsum>0){
+        avg = mult_transform(&avg, 1.0/weightsum);
+
+        // high frequency must be transformed away
+        ts[i] = sub_transforms(&ts[i], &avg);
+      }
+      if (td->conf.verbose & VS_DEBUG) {
+        vs_log_msg(td->conf.modName,
+                   " avg: %5lf, %5lf, %5lf extra: %i weightsum %5lf",
+                   avg.x, avg.y, avg.alpha, ts[i].extra, weightsum
+                  );
+      }
+    }
+  }
+  return VS_OK;
+}
+
+/*
+ *  We perform a low-pass filter in terms of transformations.
+ *  This supports slow camera movement (low frequency), but in a smooth fasion.
+ *  Here a simple average based filter
+ */
+int cameraPathAvg(VSTransformData* td, VSTransformations* trans){
+  VSTransform* ts = trans->ts;
+
+  if (trans->len < 1)
+    return VS_ERROR;
+  if (td->conf.verbose & VS_DEBUG) {
+   vs_log_msg(td->conf.modName, "Preprocess transforms:");
   }
   if (td->conf.smoothing>0) {
     /* smoothing */
@@ -255,21 +332,21 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
        around the current point */
     VSTransform avg;
     /* avg2 is a sliding average over the filtered signal! (only to past)
-     *  with smoothing * 5 horizon to kill offsets */
+     *  with smoothing * 2 horizon to kill offsets */
     VSTransform avg2 = null_transform();
-    double tau = 1.0/(5 * s);
+    double tau = 1.0/(2 * s);
     /* initialise sliding sum with hypothetic sum centered around
      * -1st element. We have two choices:
      * a) assume the camera is not moving at the beginning
      * b) assume that the camera moves and we use the first transforms
      */
     VSTransform s_sum = null;
-    for (i = 0; i < td->conf.smoothing; i++){
+    for (int i = 0; i < td->conf.smoothing; i++){
       s_sum = add_transforms(&s_sum, i < trans->len ? &ts2[i]:&null);
     }
     mult_transform(&s_sum, 2); // choice b (comment out for choice a)
 
-    for (i = 0; i < trans->len; i++) {
+    for (int i = 0; i < trans->len; i++) {
       VSTransform* old = ((i - td->conf.smoothing - 1) < 0)
         ? &null : &ts2[(i - td->conf.smoothing - 1)];
       VSTransform* new = ((i + td->conf.smoothing) >= trans->len)
@@ -301,35 +378,52 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     }
     vs_free(ts2);
   }
-
-
-  /*  invert? */
-  if (td->conf.invert) {
-    for (i = 0; i < trans->len; i++) {
-      ts[i] = mult_transform(&ts[i], -1);
-    }
-  }
-
   /* relative to absolute */
   if (td->conf.relative) {
     VSTransform t = ts[0];
-    for (i = 1; i < trans->len; i++) {
-      if (td->conf.verbose  & VS_DEBUG) {
-        vs_log_msg(td->conf.modName, "shift: %5lf   %5lf   %lf \n",
-                   t.x, t.y, t.alpha *180/M_PI);
-      }
+    for (int i = 1; i < trans->len; i++) {
       ts[i] = add_transforms(&ts[i], &t);
       t = ts[i];
     }
   }
+  return VS_OK;
+}
+
+
+/**
+ * vsPreprocessTransforms: camera path optimization, relative to absolute conversion,
+ *  and cropping of too large transforms.
+ *
+ * Parameters:
+ *            td: transform private data structure
+ *         trans: list of transformations (changed)
+ * Return value:
+ *     1 for success and 0 for failure
+ * Preconditions:
+ *     None
+ * Side effects:
+ *     td->trans will be modified
+ */
+int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
+{
+  // works inplace on trans
+  if(cameraPathOptimization(td, trans)!=VS_OK) return VS_ERROR;
+  VSTransform* ts = trans->ts;
+  /*  invert? */
+  if (td->conf.invert) {
+    for (int i = 0; i < trans->len; i++) {
+      ts[i] = mult_transform(&ts[i], -1);
+    }
+  }
+
   /* crop at maximal shift */
   if (td->conf.maxShift != -1)
-    for (i = 0; i < trans->len; i++) {
+    for (int i = 0; i < trans->len; i++) {
       ts[i].x     = VS_CLAMP(ts[i].x, -td->conf.maxShift, td->conf.maxShift);
       ts[i].y     = VS_CLAMP(ts[i].y, -td->conf.maxShift, td->conf.maxShift);
     }
   if (td->conf.maxAngle != - 1.0)
-    for (i = 0; i < trans->len; i++)
+    for (int i = 0; i < trans->len; i++)
       ts[i].alpha = VS_CLAMP(ts[i].alpha, -td->conf.maxAngle, td->conf.maxAngle);
 
   /* Calc optimal zoom (1)
@@ -343,7 +437,8 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     double zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
     // the zoom value only for y
     double zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
-    td->conf.zoom += 100* VS_MAX(zx,zy); // use maximum
+    td->conf.zoom += 100 * VS_MAX(zx,zy); // use maximum
+    td->conf.zoom = VS_CLAMP(td->conf.zoom,-60,60);
     vs_log_info(td->conf.modName, "Final zoom: %lf\n", td->conf.zoom);
   }
   /* Calc optimal zoom (2)
@@ -357,27 +452,27 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     int h = td->fiSrc.height;
     double req;
     double meanzoom;
-    for (i = 0; i < trans->len; i++) {
+    for (int i = 0; i < trans->len; i++) {
       zooms[i] = transform_get_required_zoom(&ts[i], w, h);
     }
     meanzoom = mean(zooms, trans->len) + td->conf.zoom; // add global zoom
     // forward - propagation (to make the zooming smooth)
     req = meanzoom;
-    for (i = 0; i < trans->len; i++) {
+    for (int i = 0; i < trans->len; i++) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
       req= VS_MAX(meanzoom, req - td->conf.zoomSpeed); // zoom-out each frame
     }
     // backward - propagation
     req = meanzoom;
-    for (i = trans->len-1; i >= 0; i--) {
+    for (int i = trans->len-1; i >= 0; i--) {
       req = VS_MAX(req, zooms[i]);
       ts[i].zoom=VS_MAX(ts[i].zoom,req);
       req= VS_MAX(meanzoom, req - td->conf.zoomSpeed);
     }
     vs_free(zooms);
   }else if (td->conf.zoom != 0){ /* apply global zoom */
-    for (i = 0; i < trans->len; i++)
+    for (int i = 0; i < trans->len; i++)
       ts[i].zoom += td->conf.zoom;
   }
 

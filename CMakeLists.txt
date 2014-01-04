@@ -9,7 +9,7 @@ include (FindSSE)
 
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 9)
-set(PATCH_VERSION 6)
+set(PATCH_VERSION 8)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)

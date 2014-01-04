@@ -21,5 +21,5 @@ Cflags: -I\${includedir}
 
 ")
 
-    install(FILES ${_pkgfname} DESTINATION lib/pkgconfig)
+    install(FILES ${_pkgfname} DESTINATION lib${LIB_SUFFIX}/pkgconfig)
 endmacro()

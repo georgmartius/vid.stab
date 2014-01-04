@@ -25,7 +25,7 @@
 #ifndef LIBVIDSTAB_H
 #define LIBVIDSTAB_H
 
-#define LIBVIDSTAB_VERSION "v0.961 (2013-04-16)"
+#define LIBVIDSTAB_VERSION "v0.98 (2014-01-04)"
 
 #include "frameinfo.h"
 #include "motiondetect.h"

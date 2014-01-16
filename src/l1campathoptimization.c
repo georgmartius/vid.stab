@@ -92,6 +92,7 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
   if (td->conf.verbose & VS_DEBUG) {
     vs_log_msg(td->conf.modName, "Optimization of camera path:");
   }
+  fprintf(stderr,"L1Opt\n");
   //assume relative transforms
   if (!td->conf.relative) {
     vs_log_error(td->conf.modName, "require relative transforms\n");

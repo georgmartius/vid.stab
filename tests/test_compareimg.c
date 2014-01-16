@@ -49,7 +49,7 @@ int runcompare( cmpSubImgFunc cmpsubfunc,
   for(i=0; i<numruns; i++){
     diffs[i]=cmpsubfunc(frame1.data[0], frame2.data[0],
                         &f, frame1.linesize[0], frame2.linesize[0], fi.height,
-                        2, i%200, i/200, INT_MAX);
+                        1, i%200, i/200, INT_MAX);
   }
   int end = timeOfDayinMS();
   if(diffsRef)

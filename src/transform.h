@@ -29,34 +29,79 @@
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "vidstabdefines.h"
-#include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
 
-typedef struct transformations {
-    Transform* ts; // array of transformations
+
+typedef struct _vstransformations {
+    VSTransform* ts; // array of transformations
     int current;   // index to current transformation
     int len;       // length of trans array
     short warned_end; // whether we warned that there is no transform left
-} Transformations;
+} VSTransformations;
 
-typedef struct slidingavgtrans {
-    Transform avg; // average transformation
-    Transform accum; // accumulator for relative to absolute conversion
+typedef struct _vsslidingavgtrans {
+    VSTransform avg; // average transformation
+    VSTransform accum; // accumulator for relative to absolute conversion
     double zoomavg;     // average zoom value
     short initialized; // whether it was initialized or not
-} SlidingAvgTrans;
+} VSSlidingAvgTrans;
 
 
 /// interpolation types
-typedef enum { Zero, Linear, BiLinear, BiCubic} InterpolType;
-/// name of the interpolation type
-extern const char* interpolTypes[5];
+typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} VSInterpolType;
 
-typedef enum { KeepBorder = 0, CropBorder } BorderType;
+/// returns a name for the interpolation type
+const char* getInterpolationTypeName(VSInterpolType type);
 
-typedef struct _TransformData {
+typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
+typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
+
+/**
+ * interpolate: general interpolation function pointer for one channel image data
+ *              for fixed point numbers/calculations
+ * Parameters:
+ *             rv: destination pixel (call by reference)
+ *            x,y: the source coordinates in the image img. Note this
+ *                 are real-value coordinates (in fixed point format 24.8),
+ *                 that's why we interpolate
+ *            img: source image
+ *   width,height: dimension of image
+ *            def: default value if coordinates are out of range
+ * Return value:  None
+ */
+typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
+                                 const uint8_t *img, int linesize,
+                                 int width, int height, uint8_t def);
+
+typedef struct _VSTransformConfig {
+
+    /* whether to consider transforms as relative (to previous frame)
+     * or absolute transforms
+     */
+    int            relative;
+    /* number of frames (forward and backward)
+     * to use for smoothing transforms */
+    int            smoothing;
+    VSBorderType   crop;        // 1: black bg, 0: keep border from last frame(s)
+    int            invert;      // 1: invert transforms, 0: nothing
+    double         zoom;        // percentage to zoom: 0->no zooming 10:zoom in 10%
+    int            optZoom;     // 2: optimal adaptive zoom 1: optimal static zoom, 0: nothing
+    double         zoomSpeed;   // for adaptive zoom: zoom per frame in percent
+    VSInterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
+    int            maxShift;    // maximum number of pixels we will shift
+    double         maxAngle;    // maximum angle in rad
+    const char*    modName;     // module name (used for logging)
+    int            verbose;     // level of logging
+    // if 1 then the simple but fast method to termine the global motion is used
+    int            simpleMotionCalculation;
+    int            storeTransforms; // stores calculated transforms to file
+    int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
+    VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
+} VSTransformConfig;
+
+typedef struct _VSTransformData {
     VSFrameInfo fiSrc;
     VSFrameInfo fiDest;
 
@@ -66,44 +111,20 @@ typedef struct _TransformData {
     VSFrame dest;        // pointer to the destination buffer
 
     short srcMalloced;   // 1 if the source buffer was internally malloced
-    const char* modName;
 
-    interpolateFun interpolate; // pointer to interpolation function
+    vsInterpolateFun interpolate; // pointer to interpolation function
 #ifdef TESTING
-    _FLT(interpolateFun) _FLT(interpolate);
+    _FLT(vsInterpolateFun) _FLT(interpolate);
 #endif
 
     /* Options */
-    int maxShift;        // maximum number of pixels we will shift
-    double maxAngle;     // maximum angle in rad
-    /* maximal difference in angles of fields */
-    double maxAngleVariation;
-
-
-    /* whether to consider transforms as relative (to previous frame)
-     * or absolute transforms
-     */
-    int relative;
-    /* number of frames (forward and backward)
-     * to use for smoothing transforms */
-    int smoothing;
-    BorderType crop;  // 1: black bg, 0: keep border from last frame(s)
-    int invert;       // 1: invert transforms, 0: nothing
-    /* constants */
-    /* threshhold below which no rotation is performed */
-    double rotationThreshhold;
-    double zoom;      // percentage to zoom: 0->no zooming 10:zoom in 10%
-    int optZoom;      // 1: determine optimal zoom, 0: nothing
-    InterpolType interpolType; // type of interpolation: 0->Zero,1->Lin,2->BiLin,3->Sqr
-    double sharpen;   // amount of sharpening
-
-    int verbose;     // level of logging
+    VSTransformConfig conf;
 
     int initialized; // 1 if initialized and 2 if configured
-} TransformData;
+} VSTransformData;
 
 
-static const char transform_help[] = ""
+static const char vs_transform_help[] = ""
     "Overview\n"
     "    Reads a file with transform information for each frame\n"
     "     and applies them. See also filter stabilize.\n"
@@ -119,10 +140,12 @@ static const char transform_help[] = ""
     "    'invert'    1: invert transforms(def: 0)\n"
     "    'relative'  consider transforms as 0: absolute, 1: relative (def)\n"
     "    'zoom'      percentage to zoom >0: zoom in, <0 zoom out (def: 0)\n"
-    "    'optzoom'   0: nothing, 1: determine optimal zoom (def)\n"
+    "    'optzoom'   0: nothing, 1: determine optimal static zoom (def)\n"
     "                i.e. no (or only little) border should be visible.\n"
+    "                2: determine optimal adaptive zoom\n"
     "                Note that the value given at 'zoom' is added to the \n"
     "                here calculated one\n"
+    "    'zoomspeed' for adaptive zoom: zoom per frame in percent \n"
     "    'interpol'  type of interpolation: 0: no interpolation, \n"
     "                1: linear (horizontal), 2: bi-linear (def), \n"
     "                3: bi-cubic\n"
@@ -131,51 +154,63 @@ static const char transform_help[] = ""
     "    'tripod'    virtual tripod mode (=relative=0:smoothing=0)\n"
     "    'help'      print this help message\n";
 
-/** initialized the TransformData structure and allocates memory
+/** returns the default config
+ */
+VSTransformConfig vsTransformGetDefaultConfig(const char* modName);
+
+/** initialized the VSTransformData structure using the config and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initTransformData(TransformData* td, const VSFrameInfo* fi_src,
-                      const VSFrameInfo* fi_dest , const char* modName);
+int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
+                        const VSFrameInfo* fi_src, const VSFrameInfo* fi_dest);
 
-/** configures TransformData structure and checks ranges, initializes fields and so on.
- *  @return VS_OK on success otherwise VS_ERROR
- */
-int configureTransformData(TransformData* td);
 
 /** Deletes internal data structures.
- * In order to use the TransformData again, you have to call initTransformData
+ * In order to use the VSTransformData again, you have to call vsTransformDataInit
  */
-void cleanupTransformData(TransformData* td);
+void vsTransformDataCleanup(VSTransformData* td);
+
+/// returns the current config
+void vsTransformGetConfig(VSTransformConfig* conf, const VSTransformData* td);
+
+/// returns the frame info for the src
+const VSFrameInfo* vsTransformGetSrcFrameInfo(const VSTransformData* td);
+/// returns the frame info for the dest
+const VSFrameInfo* vsTransformGetDestFrameInfo(const VSTransformData* td);
 
 
-/// initializes Transformations structure
-void initTransformations(Transformations* trans);
-/// deletes Transformations internal memory
-void cleanupTransformations(Transformations* trans);
+/// initializes VSTransformations structure
+void vsTransformationsInit(VSTransformations* trans);
+/// deletes VSTransformations internal memory
+void vsTransformationsCleanup(VSTransformations* trans);
 
 /// return next Transform and increases internal counter
-Transform getNextTransform(const TransformData* td, Transformations* trans);
+VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
 
 /** preprocesses the list of transforms all at once. Here the deshaking is calculated!
  */
-int preprocessTransforms(TransformData* td, Transformations* trans);
+int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
 
 /**
- * lowPassTransforms: single step smoothing of transforms, using only the past.
- *  see also preprocessTransforms. */
-Transform lowPassTransforms(TransformData* td, SlidingAvgTrans* mem,
-                            const Transform* trans);
+ * vsLowPassTransforms: single step smoothing of transforms, using only the past.
+ *  see also vsPreprocessTransforms. */
+VSTransform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
+                            const VSTransform* trans);
 
-/** call this function to prepare for a next transformation (transformRGB/transformYUV)
+/** call this function to prepare for a next transformation (transformPacked/transformPlanar)
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
-int transformPrepare(TransformData* td, const VSFrame* src, VSFrame* dest);
+int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest);
 
-/** call this function to finish the transformation of a frame (transformRGB/transformYUV)
+/// does the actual transformation
+int vsDoTransform(VSTransformData* td, VSTransform t);
+
+
+/** call this function to finish the transformation of a frame (transformPacked/transformPlanar)
  */
-int transformFinish(TransformData* td);
+int vsTransformFinish(VSTransformData* td);
 
 
 #endif

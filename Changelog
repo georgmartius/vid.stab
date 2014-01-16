@@ -1,3 +1,13 @@
+0.98...
+	small measurement fields added that only scan around mean
+	diagnostics in show=1 and show=2 use lines now.
+	fix zoom detection/treatment
+	zoomspeed param for optzoom
+	gaussian filter for cam path optimization
+0.97
+	optzoom = 2: adaptive zooming added
+	border bluring for interpolation>=bilinear
+	spurious black pixels bug fixed
 0.96
 	libavfilter plugins work
 	flexible support of pixel formats, ala ffmpeg

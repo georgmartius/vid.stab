@@ -8,8 +8,8 @@ project (vid.stab)
 SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING )
-#add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING )
+#add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING  -std=gnu99)
+add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING -std=gnu99)
 find_package(Orc)
 if(ORC_FOUND)
 add_definitions( -DUSE_ORC ${ORC_DEFINITIONS})
@@ -30,7 +30,7 @@ include_directories (../src)
 add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
-	../src/serialize.c ../src/localmotion2transform.c
+  ../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c ../src/boxblur.c)
 
 target_link_libraries(tests m)

@@ -35,51 +35,41 @@
 #include <stdint.h>
 
 typedef int32_t fp8;
-typedef int32_t fp16;
+typedef int32_t fp16; // also ncot definition of interpolFun in transform.h
 
-struct _TransformData;
+struct _VSTransformData;
 
-/// does the actual transformation in RGB space
-int transformRGB(struct _TransformData* td, Transform t);
-/// does the actual transformation in YUV space
-int transformYUV(struct _TransformData* td, Transform t);
+/// does the actual transformation in Packed space
+int transformPacked(struct _VSTransformData* td, VSTransform t);
+
+/// does the actual transformation in Planar space
+int transformPlanar(struct _VSTransformData* td, VSTransform t);
 
 // testing
-/// does the actual transformation in YUV space
-int transformYUV_orc(struct _TransformData* td, Transform t);
+/// does the actual transformation in Planar space
+int transformPlanar_orc(struct _VSTransformData* td, VSTransform t);
 
-
-/**
- * interpolate: general interpolation function pointer for one channel image data
- *
- * Parameters:
- *             rv: destination pixel (call by reference)
- *            x,y: the source coordinates in the image img. Note this
- *                 are real-value coordinates (in fixed point format 24.8),
- *                 that's why we interpolate
- *            img: source image
- *   width,height: dimension of image
- *            def: default value if coordinates are out of range
- * Return value:  None
- */
-typedef void (*interpolateFun)(unsigned char *rv, fp16 x, fp16 y,
-                               unsigned char* img, int width, int height,
-                               unsigned char def);
 
 /* forward deklarations, please see .c file for documentation*/
-void interpolateBiLinBorder(unsigned char *rv, fp16 x, fp16 y,
-                          unsigned char* img, int w, int h, unsigned char def);
-void interpolateBiCub(unsigned char *rv, fp16 x, fp16 y,
-                      unsigned char* img, int width, int height, unsigned char def);
-void interpolateBiLin(unsigned char *rv, fp16 x, fp16 y,
-                      unsigned char* img, int w, int h, unsigned char def);
-void interpolateLin(unsigned char *rv, fp16 x, fp16 y,
-                      unsigned char* img, int w, int h, unsigned char def);
-void interpolateZero(unsigned char *rv, fp16 x, fp16 y,
-                     unsigned char* img, int w, int h, unsigned char def);
-void interpolateN(unsigned char *rv, fp16 x, fp16 y,
-                  unsigned char* img, int width, int height,
-                  unsigned char N, unsigned char channel, unsigned char def);
+void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
+                            const uint8_t *img, int img_linesize,
+                            int w, int h, uint8_t def);
+void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
+                      const uint8_t *img, int img_linesize,
+                      int width, int height, uint8_t def);
+void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
+                      const uint8_t *img, int img_linesize,
+                      int w, int h, uint8_t def);
+void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
+                    const uint8_t *img, int img_linesize,
+                    int w, int h, uint8_t def);
+void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
+                     const uint8_t *img, int img_linesize,
+                     int w, int h, uint8_t def);
+void interpolateN(uint8_t *rv, fp16 x, fp16 y,
+                  const uint8_t *img, int img_linesize,
+                  int width, int height,
+                  uint8_t N, uint8_t channel, uint8_t def);
 
 #endif
 

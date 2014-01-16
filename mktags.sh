@@ -1,3 +1,3 @@
 #!/bin/bash
 
-etags -R
+etags $(find src/ -name "*.h")

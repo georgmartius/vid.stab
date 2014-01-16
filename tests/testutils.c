@@ -2,13 +2,14 @@
 
 #include "testutils.h"
 #include "libvidstab.h"
+#include "transformtype_operations.h"
 
 void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y, int sizex, int sizey, unsigned char color){
   if(x>=0 && x+sizex < fi->width && y>=0 && y+sizey < fi->height){
     int i,j;
     for(j=y; j < y+sizey; j++){
       for(i=x; i<x+sizex; i++){
-	buffer[j*fi->width + i] = color;
+  buffer[j*fi->width + i] = color;
       }
     }
 
@@ -27,8 +28,8 @@ void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
   }
 }
 
-Transform getTestFrameTransform(int i){
-  Transform t = null_transform();
+VSTransform getTestFrameTransform(int i){
+  VSTransform t = null_transform();
   t.x = ( (i%2)==0 ? -1 : 1)  *i*5;
   t.y = ( (i%3)==0 ?  1 : -1) *i*5;
   t.alpha = (i<3 ? 0 : 1) * (i)*1*M_PI/(180.0);
@@ -63,9 +64,9 @@ static void skipWhiteSpace (const char* filename, FILE *f)
     // skip comments
     if (c == '#') {
       do {
-	d = fgetc(f);
-	if (d==EOF)
-	  vs_log_error("TEST", "unexpected end of file in '%s'", filename);
+  d = fgetc(f);
+  if (d==EOF)
+    vs_log_error("TEST", "unexpected end of file in '%s'", filename);
       } while (d != '\n');
       continue;
     }
@@ -117,7 +118,7 @@ int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi)
 
 
   // read in rest of data
-	allocateFrame(frame,fi);
+  vsFrameAllocate(frame,fi);
   if (fread( frame->data[0], fi->width*fi->height, 1, f) != 1){
     vs_log_error("TEST", "Can't read data from image file '%s'", filename);
     return 0;

@@ -39,7 +39,7 @@
 
 #define MOD_FEATURES                                    \
   TC_MODULE_FEATURE_FILTER|TC_MODULE_FEATURE_VIDEO
-#define MOD_FLAGS					\
+#define MOD_FLAGS          \
   TC_MODULE_FLAG_RECONFIGURABLE | TC_MODULE_FLAG_DELAY
 
 #define DEFAULT_TRANS_FILE_NAME     "transforms.dat"
@@ -59,10 +59,11 @@
 
 /* private date structure of this filter*/
 typedef struct _deshake_data {
-  MotionDetect md;
-  TransformData td;
-  SlidingAvgTrans avg;
+  VSMotionDetect md;
+  VSTransformData td;
+  VSSlidingAvgTrans avg;
 
+  double sharpen;     // amount of sharpening
   vob_t* vob;  // pointer to information structure
   char* result;
   FILE* f;
@@ -165,7 +166,7 @@ static int deshake_fini(TCModuleInstance *self)
  * tcmodule-data.h for function details.
  */
 static int deshake_configure(TCModuleInstance *self,
-			     const char *options, vob_t *vob)
+           const char *options, vob_t *vob)
 {
   DeshakeData *sd = NULL;
   TC_MODULE_SELF_CHECK(self, "configure");
@@ -174,20 +175,19 @@ static int deshake_configure(TCModuleInstance *self,
   sd = self->userdata;
 
   /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
-	sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
+  sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
-  MotionDetect* md = &(sd->md);
-  TransformData* td = &(sd->td);
+  VSMotionDetect* md = &(sd->md);
+  VSTransformData* td = &(sd->td);
 
-  // init MotionDetect part
+  // init VSMotionDetect part
   VSFrameInfo fi;
-  initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+  vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
 
-  if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
-    tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
-    return TC_ERROR;
-  }
+  VSMotionDetectConfig  mdconf = vsMotionDetectGetDefaultConfig(MOD_NAME);
+  VSTransformConfig tdconf     = vsTransformGetDefaultConfig(MOD_NAME);
+  tdconf.verbose=verbose;
 
   sd->result = tc_malloc(TC_BUF_LINE);
   filenamecopy = tc_strdup(sd->vob->video_in_file);
@@ -196,21 +196,14 @@ static int deshake_configure(TCModuleInstance *self,
     tc_snprintf(sd->result, TC_BUF_LINE, "%s.trf", filebasename);
   } else {
     tc_log_warn(MOD_NAME, "input name too long, using default `%s'",
-		DEFAULT_TRANS_FILE_NAME);
+    DEFAULT_TRANS_FILE_NAME);
     tc_snprintf(sd->result, TC_BUF_LINE, DEFAULT_TRANS_FILE_NAME);
   }
 
   // init trasform part
   VSFrameInfo fi_dest;
-  initFrameInfo(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
+  vsFrameInfoInit(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
                 transcode2ourPF(sd->vob->im_v_codec));
-
-  if(initTransformData(td, &fi, &fi_dest, MOD_NAME) != VS_OK){
-    tc_log_error(MOD_NAME, "initialization of TransformData failed");
-    return TC_ERROR;
-  }
-  td->verbose=verbose;
-
 
   if (options != NULL) {
     // for some reason this plugin is called in the old fashion
@@ -221,54 +214,57 @@ static int deshake_configure(TCModuleInstance *self,
     }
 
     optstr_get(options, "result",     "%[^:]", sd->result);
-    optstr_get(options, "shakiness",  "%d", &md->shakiness);
-    optstr_get(options, "accuracy",   "%d", &md->accuracy);
-    optstr_get(options, "stepsize",   "%d", &md->stepSize);
-    optstr_get(options, "algo",       "%d", &md->algo);
-    optstr_get(options, "mincontrast","%lf",&md->contrastThreshold);
-    md->show = 0;
+    optstr_get(options, "shakiness",  "%d", &mdconf.shakiness);
+    optstr_get(options, "accuracy",   "%d", &mdconf.accuracy);
+    optstr_get(options, "stepsize",   "%d", &mdconf.stepSize);
+    optstr_get(options, "algo",       "%d", &mdconf.algo);
+    optstr_get(options, "mincontrast","%lf",&mdconf.contrastThreshold);
+    mdconf.show = 0;
 
-    optstr_get(options, "maxshift",  "%d", &td->maxShift);
-    optstr_get(options, "maxangle",  "%lf", &td->maxAngle);
-    optstr_get(options, "smoothing", "%d", &td->smoothing);
-    optstr_get(options, "crop"     , "%d", (int*)&td->crop);
-    optstr_get(options, "zoom"     , "%lf",&td->zoom);
-    optstr_get(options, "optzoom"  , "%d", &td->optZoom);
-    optstr_get(options, "interpol" , "%d", (int*)(&td->interpolType));
-    optstr_get(options, "sharpen"  , "%lf",&td->sharpen);
-    td->relative=1;
-    td->invert=0;
+    optstr_get(options, "maxshift",  "%d", &tdconf.maxShift);
+    optstr_get(options, "maxangle",  "%lf",&tdconf.maxAngle);
+    optstr_get(options, "smoothing", "%d", &tdconf.smoothing);
+    optstr_get(options, "crop"     , "%d", (int*)&tdconf.crop);
+    optstr_get(options, "zoom"     , "%lf",&tdconf.zoom);
+    optstr_get(options, "optzoom"  , "%d", &tdconf.optZoom);
+    optstr_get(options, "interpol" , "%d", (int*)(&tdconf.interpolType));
+    optstr_get(options, "sharpen"  , "%lf",&sd->sharpen);
+    tdconf.relative=1;
+    tdconf.invert=0;
   }
 
-  if(configureMotionDetect(md)!= VS_OK){
-    tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
+  if(vsMotionDetectInit(md, &mdconf, &fi) != VS_OK){
+    tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
     return TC_ERROR;
   }
-  if(configureTransformData(td)!= VS_OK){
-    tc_log_error(MOD_NAME, "configuration of Tranform failed");
+  vsMotionDetectGetConfig(&mdconf,md);
+
+  if(vsTransformDataInit(td, &tdconf, &fi, &fi_dest) != VS_OK){
+    tc_log_error(MOD_NAME, "initialization of VSTransformData failed");
     return TC_ERROR;
   }
+  vsTransformGetConfig(&tdconf, td);
 
   if (verbose) {
     tc_log_info(MOD_NAME, "Video Deshake  Settings:");
-    tc_log_info(MOD_NAME, "    smoothing = %d", td->smoothing);
-    tc_log_info(MOD_NAME, "    shakiness = %d", md->shakiness);
-    tc_log_info(MOD_NAME, "     accuracy = %d", md->accuracy);
-    tc_log_info(MOD_NAME, "     stepsize = %d", md->stepSize);
-    tc_log_info(MOD_NAME, "         algo = %d", md->algo);
-    tc_log_info(MOD_NAME, "  mincontrast = %f", md->contrastThreshold);
-    tc_log_info(MOD_NAME, "         show = %d", md->show);
+    tc_log_info(MOD_NAME, "    smoothing = %d", tdconf.smoothing);
+    tc_log_info(MOD_NAME, "    shakiness = %d", mdconf.shakiness);
+    tc_log_info(MOD_NAME, "     accuracy = %d", mdconf.accuracy);
+    tc_log_info(MOD_NAME, "     stepsize = %d", mdconf.stepSize);
+    tc_log_info(MOD_NAME, "         algo = %d", mdconf.algo);
+    tc_log_info(MOD_NAME, "  mincontrast = %f", mdconf.contrastThreshold);
+    tc_log_info(MOD_NAME, "         show = %d", mdconf.show);
     tc_log_info(MOD_NAME, "       result = %s", sd->result);
-    tc_log_info(MOD_NAME, "    maxshift  = %d", td->maxShift);
-    tc_log_info(MOD_NAME, "    maxangle  = %f", td->maxAngle);
+    tc_log_info(MOD_NAME, "    maxshift  = %d", tdconf.maxShift);
+    tc_log_info(MOD_NAME, "    maxangle  = %f", tdconf.maxAngle);
     tc_log_info(MOD_NAME, "         crop = %s",
-		td->crop ? "Black" : "Keep");
-    tc_log_info(MOD_NAME, "         zoom = %f", td->zoom);
+                tdconf.crop ? "Black" : "Keep");
+    tc_log_info(MOD_NAME, "         zoom = %f", tdconf.zoom);
     tc_log_info(MOD_NAME, "      optzoom = %s",
-		td->optZoom ? "On" : "Off");
+                tdconf.optZoom ? "On" : "Off");
     tc_log_info(MOD_NAME, "     interpol = %s",
-		interpolTypes[td->interpolType]);
-    tc_log_info(MOD_NAME, "      sharpen = %f", td->sharpen);
+                getInterpolationTypeName(tdconf.interpolType));
+    tc_log_info(MOD_NAME, "      sharpen = %f", sd->sharpen);
 
   }
 
@@ -290,7 +286,7 @@ static int deshake_configure(TCModuleInstance *self,
  */
 
 static int deshake_filter_video(TCModuleInstance *self,
-				vframe_list_t *frame)
+                                vframe_list_t *frame)
 {
   DeshakeData *sd = NULL;
 
@@ -298,41 +294,35 @@ static int deshake_filter_video(TCModuleInstance *self,
   TC_MODULE_SELF_CHECK(frame, "filter_video");
 
   sd = self->userdata;
-  MotionDetect* md = &(sd->md);
-  TransformData* td = &(sd->td);
+  VSMotionDetect* md = &(sd->md);
+  VSTransformData* td = &(sd->td);
   LocalMotions localmotions;
-  Transform motion;
+  VSTransform motion;
   VSFrame vsFrame;
-  fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
+  vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
-  if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
+  if(vsMotionDetection(md, &localmotions, &vsFrame)!= VS_OK){
       tc_log_error(MOD_NAME, "motion detection failed");
       return TC_ERROR;
   }
 
-  if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+  if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
       tc_log_error(MOD_NAME, "cannot write to file!");
       return TC_ERROR;
   }
-  motion = simpleMotionsToTransform(td, &localmotions);
+  motion = vsSimpleMotionsToTransform(td, &localmotions);
   vs_vector_del(&localmotions);
 
-  transformPrepare(td, &vsFrame, &vsFrame);
+  vsTransformPrepare(td, &vsFrame, &vsFrame);
 
-  Transform t = lowPassTransforms(td, &sd->avg, &motion);
+  VSTransform t = vsLowPassTransforms(td, &sd->avg, &motion);
   /* tc_log_info(MOD_NAME, "Trans: det: %f %f %f \n\t\t act: %f %f %f %f", */
   /*             motion.x, motion.y, motion.alpha, */
   /*             t.x, t.y, t.alpha, t.zoom); */
 
-  if (sd->vob->im_v_codec == CODEC_RGB) {
-    transformRGB(td, t);
-  } else if (sd->vob->im_v_codec == CODEC_YUV) {
-    transformYUV(td, t);
-  } else {
-    tc_log_error(MOD_NAME, "unsupported Codec: %i\n", sd->vob->im_v_codec);
-    return TC_ERROR;
-  }
-  transformFinish(td);
+  vsDoTransform(td, t);
+
+  vsTransformFinish(td);
   return TC_OK;
 }
 
@@ -352,23 +342,23 @@ static int deshake_stop(TCModuleInstance *self)
     sd->f = NULL;
   }
 
-  cleanupMotionDetection(&sd->md);
+  vsMotionDetectionCleanup(&sd->md);
   if (sd->result) {
     tc_free(sd->result);
     sd->result = NULL;
   }
 
-  cleanupTransformData(&sd->td);
+  vsTransformDataCleanup(&sd->td);
 
   return TC_OK;
 }
 
 /* checks for parameter in function _inspect */
 #define CHECKPARAM(paramname, formatstring, variable)   \
-  if (optstr_lookup(param, paramname)) {		\
-    tc_snprintf(sd->conf_str, sizeof(sd->conf_str),	\
-		formatstring, variable);		\
-    *value = sd->conf_str;				\
+  if (optstr_lookup(param, paramname)) {    \
+    tc_snprintf(sd->conf_str, sizeof(sd->conf_str),  \
+    formatstring, variable);    \
+    *value = sd->conf_str;        \
   }
 
 /**
@@ -377,7 +367,7 @@ static int deshake_stop(TCModuleInstance *self)
  */
 
 static int deshake_inspect(TCModuleInstance *self,
-			   const char *param, const char **value)
+         const char *param, const char **value)
 {
   DeshakeData *sd = NULL;
 
@@ -385,23 +375,27 @@ static int deshake_inspect(TCModuleInstance *self,
   TC_MODULE_SELF_CHECK(param, "inspect");
   TC_MODULE_SELF_CHECK(value, "inspect");
   sd = self->userdata;
-  MotionDetect* md = &(sd->md);
+
+  VSMotionDetectConfig mdconf;
+  vsMotionDetectGetConfig(&mdconf,&(sd->md));
+  VSTransformConfig tdconf;
+  vsTransformGetConfig(&tdconf,&sd->td);
   if (optstr_lookup(param, "help")) {
     *value = deshake_help;
   }
-  CHECKPARAM("shakiness","shakiness=%d", md->shakiness);
-  CHECKPARAM("accuracy", "accuracy=%d",  md->accuracy);
-  CHECKPARAM("stepsize", "stepsize=%d",  md->stepSize);
-  CHECKPARAM("allowmax", "allowmax=%d",  md->allowMax);
-  CHECKPARAM("algo",     "algo=%d",      md->algo);
+
+  CHECKPARAM("shakiness","shakiness=%d", mdconf.shakiness);
+  CHECKPARAM("accuracy", "accuracy=%d",  mdconf.accuracy);
+  CHECKPARAM("stepsize", "stepsize=%d",  mdconf.stepSize);
+  CHECKPARAM("algo",     "algo=%d",      mdconf.algo);
   CHECKPARAM("result",   "result=%s",    sd->result);
-  CHECKPARAM("maxshift", "maxshift=%d",  sd->td.maxShift);
-  CHECKPARAM("maxangle", "maxangle=%f",  sd->td.maxAngle);
-  CHECKPARAM("smoothing","smoothing=%d", sd->td.smoothing);
-  CHECKPARAM("crop",     "crop=%d",      sd->td.crop);
-  CHECKPARAM("optzoom",  "optzoom=%i",   sd->td.optZoom);
-  CHECKPARAM("zoom",     "zoom=%f",      sd->td.zoom);
-  CHECKPARAM("sharpen",  "sharpen=%f",   sd->td.sharpen);
+  CHECKPARAM("maxshift", "maxshift=%d",  tdconf.maxShift);
+  CHECKPARAM("maxangle", "maxangle=%f",  tdconf.maxAngle);
+  CHECKPARAM("smoothing","smoothing=%d", tdconf.smoothing);
+  CHECKPARAM("crop",     "crop=%d",      tdconf.crop);
+  CHECKPARAM("optzoom",  "optzoom=%i",   tdconf.optZoom);
+  CHECKPARAM("zoom",     "zoom=%f",      tdconf.zoom);
+  CHECKPARAM("sharpen",  "sharpen=%f",   sd->sharpen);
 
   return TC_OK;
 }
@@ -437,7 +431,7 @@ static int deshake_get_config(TCModuleInstance *self, char *options)
   TC_MODULE_SELF_CHECK(self, "get_config");
 
   optstr_filter_desc(options, MOD_NAME, MOD_CAP, MOD_VERSION,
-		     MOD_AUTHOR, "VRY4", "1");
+         MOD_AUTHOR, "VRY4", "1");
 
   return TC_OK;
 }

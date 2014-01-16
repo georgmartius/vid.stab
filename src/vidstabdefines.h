@@ -29,23 +29,31 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-#define VS_MAX(a, b)		(((a) > (b)) ?(a) :(b))
-#define VS_MIN(a, b)		(((a) < (b)) ?(a) :(b))
+#ifdef __GNUC__
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+#define likely(x)        (x)
+#define unlikely(x)      (x)
+#endif
+
+#define VS_MAX(a, b)    (((a) > (b)) ?(a) :(b))
+#define VS_MIN(a, b)    (((a) < (b)) ?(a) :(b))
 /* clamp x between a and b */
-#define VS_CLAMP(x, a, b)	VS_MIN(VS_MAX((a), (x)), (b))
+#define VS_CLAMP(x, a, b)  VS_MIN(VS_MAX((a), (x)), (b))
 
 #define VS_DEBUG 2
 
 /// pixel in single layer image
-#define PIXEL(img, x, y, w, h, def) ((x) < 0 || (y) < 0) ? (def)	\
-  : (((x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (w)])
+#define PIXEL(img, linesize, x, y, w, h, def) \
+  (((x) < 0 || (y) < 0 || (x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (linesize)])
 /// pixel in single layer image without rangecheck
-#define PIX(img, x, y, w, h) (img[(x) + (y) * (w)])
+#define PIX(img, linesize, x, y) (img[(x) + (y) * (linesize)])
 /// pixel in N-channel image. channel in {0..N-1}
-#define PIXELN(img, x, y, w, h, N,channel , def) ((x) < 0 || (y) < 0) ? (def) \
-  : (((x) >=(w) || (y) >= (h)) ? (def) : img[((x) + (y) * (w))*(N) + (channel)])
+#define PIXELN(img, linesize, x, y, w, h, N, channel, def) \
+  (((x) < 0 || (y) < 0 || (x) >= (w) || (y) >= (h)) ? (def) : img[((x) + (y) * (linesize))*(N) + (channel)])
 /// pixel in N-channel image without rangecheck. channel in {0..N-1}
-#define PIXN(img, x, y, w, h, N,channel) (img[((x) + (y) * (w))*(N) + (channel)])
+#define PIXN(img, linesize, x, y, N, channel) (img[((x) + (y) * (linesize))*(N) + (channel)])
 
 /**** Configurable memory and logging functions. Defined in libvidstab.c ****/
 
@@ -57,7 +65,6 @@ typedef void* (*vs_zalloc_t) (size_t size);
 typedef int (*vs_log_t) (int type, const char* tag, const char* format, ...);
 
 typedef char* (*vs_strdup_t) (const char* s);
-typedef char* (*vs_strndup_t) (const char* s, size_t len);
 
 extern vs_log_t vs_log;
 
@@ -67,7 +74,6 @@ extern vs_free_t vs_free;
 extern vs_zalloc_t vs_zalloc;
 
 extern vs_strdup_t vs_strdup;
-extern vs_strndup_t vs_strndup;
 
 extern int VS_ERROR_TYPE;
 extern int VS_WARN_TYPE;

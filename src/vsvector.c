@@ -150,6 +150,86 @@ int vs_vector_resize(VSVector *V, int newsize){
     return VS_OK;
 }
 
+VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param){
+  VSVector result;
+  assert(V);
+  vs_vector_init(&result, V->nelems);
+  for(int i=0; i< V->nelems; i++){
+    if(pred(param, V->data[i]))
+      vs_vector_append(&result, V->data[i]);
+  }
+  return result;
+}
+
+VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2){
+  VSVector result;
+  assert(V1 && V2);
+  vs_vector_init(&result, V1->nelems + V2->nelems);
+  memcpy(result.data, V1->data, sizeof(void*)* V1->nelems);
+  memcpy(result.data+V1->nelems, V2->data, sizeof(void*)* V2->nelems);
+  result.nelems=V1->nelems+V2->nelems;
+  return result;
+}
+
+
+/* ARRAY */
+
+VSArray vs_array_new(int len){
+  VSArray a;
+  a.dat = (double*)vs_zalloc(sizeof(double)*len);
+  a.len = len;
+  return a;
+}
+
+VSArray vs_array(double vals[],int len){
+  VSArray a = vs_array_new(len);
+  memcpy(a.dat,vals, sizeof(double)*len);
+  return a;
+}
+
+VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b){
+  int i;
+  assert(a.len == b.len);
+  if(c->len == 0 ) *c = vs_array_new(a.len);
+  for(i=0; i< a.len; i++) c->dat[i]=a.dat[i]+b.dat[i];
+  return c;
+}
+
+VSArray* vs_array_scale(VSArray* c, VSArray a, double f){
+  if(c->len == 0 ) *c = vs_array_new(a.len);
+  for(int i=0; i< a.len; i++) c->dat[i]=a.dat[i]*f;
+  return c;
+}
+
+VSArray vs_array_copy(VSArray a){
+  VSArray c = vs_array_new(a.len);
+  memcpy(c.dat, a.dat, a.len*sizeof(double));
+  return c;
+}
+
+void vs_array_zero(VSArray* a){
+  memset(a->dat,0,sizeof(double)*a->len);
+}
+
+void vs_array_swap(VSArray* a, VSArray* b){
+  VSArray tmp;
+  tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+
+void vs_array_free(VSArray a){
+  vs_free(a.dat);
+  a.dat=0;
+  a.len=0;
+}
+
+void vs_array_print(VSArray a, FILE* f){
+  for(int i=0; i<a.len; i++){
+    fprintf(f, "%g ", a.dat[i]);
+  }
+}
+
 
 /*
  * Local variables:

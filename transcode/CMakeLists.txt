@@ -9,7 +9,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 set(TRANSCODE_ROOT ../../transcode)
 
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE )
+add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE -std=gnu99)
 #add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 # I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)

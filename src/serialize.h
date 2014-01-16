@@ -31,33 +31,33 @@
 
 
 /// Vector of LocalMotions
-typedef VSVector ManyLocalMotions;
+typedef VSVector VSManyLocalMotions;
 /// helper macro to access a localmotions vector in the VSVector of all Frames
-#define MLMGet(manylocalmotions,index) \
+#define VSMLMGet(manylocalmotions,index) \
     ((LocalMotions*)vs_vector_get(manylocalmotions,index))
 
 
 /// stores local motions to file
-int storeLocalmotions(FILE* f, const LocalMotions* lms);
+int vsStoreLocalmotions(FILE* f, const LocalMotions* lms);
 
 /// restores local motions from file
-LocalMotions restoreLocalmotions(FILE* f);
+LocalMotions vsRestoreLocalmotions(FILE* f);
 
 
 /// writes the header to the file that is to be holding the local motions
-int prepareFile(const MotionDetect* td, FILE* f);
+int vsPrepareFile(const VSMotionDetect* td, FILE* f);
 
 /// appends the given localmotions to the file
-int writeToFile(const MotionDetect* td, FILE* f, const LocalMotions* lms);
+int vsWriteToFile(const VSMotionDetect* td, FILE* f, const LocalMotions* lms);
 
 /// reads the header of the file and return the version number (used by readLocalmotionsFile)
-int readFileVersion(FILE* f);
+int vsReadFileVersion(FILE* f);
 
 /*
  * reads the next set of localmotions from the file, return VS_ERROR on error or
  * if nothing is read (used by readLocalmotionsFile)
  */
-int readFromFile(FILE* f, LocalMotions* lms);
+int vsReadFromFile(FILE* f, LocalMotions* lms);
 
 /*
  * reads the entire file of localmotions, return VS_ERROR on error or if nothing is read
@@ -68,10 +68,10 @@ int readFromFile(FILE* f, LocalMotions* lms);
  *   Data lines have the structure: Frame NUM (<LocalMotions>)
  *   where LocalMotions ::= List [(LM v.x v.y f.x f.y f.size contrast match),...]
  */
-int readLocalMotionsFile(FILE* f, ManyLocalMotions* lms);
+int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* lms);
 
 // read the transformations from the given file (Deprecated format)
-int readOldTransforms(const TransformData* td, FILE* f , Transformations* trans);
+int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* trans);
 
 
 #endif

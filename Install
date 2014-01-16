@@ -1,9 +1,7 @@
 ***  LIBRARY ***
 To compile the library do:
 
-cd src/cmake
-
-cmake ../
+cmake .
 make
 sudo make install
 
@@ -13,7 +11,19 @@ cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local
 
 *** TRANSCODE plugins ***
 
+You need to have the transcode sources installed. The best
+choice it to download the same version you have in your distribution.
+Youi don't need to compile transcode itself.
+Download from http://tcforge.berlios.de/ or
+ http://developer.berlios.de/project/showfiles.php?group_id=10094.
+Then you need to adapt the transcode/CMakeLists.txt and change
+ the variable
+> set(TRANSCODE_ROOT path/to/transcode)
+
 cd transcode/cmake
 make
 . install.sh
 
+*** FFMPEG ***
+
+You need to configure ffmpeg with --enable-libvidstab

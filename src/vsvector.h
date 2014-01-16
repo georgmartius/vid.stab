@@ -23,15 +23,16 @@
 #define VSVECTOR_H
 
 #include <stddef.h>
+#include <stdio.h>
 
 /**
-   A vector for arbrary elements that resizes
+   A vector for arbitrary elements that resizes
 */
 typedef struct vsvector_ VSVector;
 struct vsvector_ {
-  void**	data;
-  int		buffersize;
-  int		nelems;
+  void**  data;
+  int    buffersize;
+  int    nelems;
 };
 
 /**
@@ -131,15 +132,6 @@ void* vs_vector_set(VSVector *V, int pos, void *data);
  */
 void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
 
-
-/* (to be implemented)
- * vs_vector_insert:
- *      the newly-inserted elements BECOMES the position `pos' on the vector.
- *      Position after the last -> the last.
- *      Position before the first -> the first.
- */
-//int vs_vector_insert(VSVector *V, int pos, void *data);
-
 /*
  * vs_vector_get:
  *     gives access to the data pointed by the element in the given position.
@@ -153,19 +145,55 @@ void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
  */
 void *vs_vector_get(const VSVector *V, int pos);
 
-/* to be implemented
- * vs_vector_pop:
- *     removes the element in the given position.
- *
- * Parameters:
- *       V: vector to be accessed.
- *     pos: position of the element on which the data will be returned.
- * Return Value:
- *     NULL on error (requested element doesn't exist)
- *     a pointer to the data assigned to the requested vector item.
+/*
+ * vs_vector_filter:
+ *      returns a new vector with elements that fulfill predicate
+ *      pred(param, elem)
  */
-//void *vs_vector_pop(VSVector *V, int pos);
+VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param);
 
+/*
+ * vs_vector_concat:
+ *      returns a new vector with elements of vector V1 and V2 after another
+ */
+VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2);
+
+
+/**
+   A simple fixed-size double vector
+*/
+typedef struct vsarray_ VSArray;
+struct vsarray_ {
+  double* dat;
+  int len;
+};
+
+/** creates an VSArray from a double array */
+VSArray vs_array(double vals[], int len);
+
+/** allocates a new (zero initialized) double array */
+VSArray vs_array_new(int len);
+
+/** adds two vectors ands stores results into c (if zero length then allocated) */
+VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b);
+
+/** scales a vector by a factor and stores results into c (if zero length then allocated) */
+VSArray* vs_array_scale(VSArray* c, VSArray a, double f);
+
+/** create a new deep copy of the vector */
+VSArray vs_array_copy(VSArray a);
+
+/** sets all elements of the vector to 0.0 */
+void vs_array_zero(VSArray* a);
+
+/** swaps the content of the two arrays */
+void vs_array_swap(VSArray* a, VSArray* b);
+
+/** free data */
+void vs_array_free(VSArray a);
+
+/** print array to file */
+void vs_array_print(VSArray a, FILE* f);
 
 #endif /* VSVECTOR_H */
 

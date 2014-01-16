@@ -25,20 +25,14 @@
 #ifndef LIBVIDSTAB_H
 #define LIBVIDSTAB_H
 
-#define LIBVIDSTAB_VERSION "v0.96 (2013-02-19)"
+#define LIBVIDSTAB_VERSION "v0.98 (2014-01-04)"
 
 #include "frameinfo.h"
 #include "motiondetect.h"
 #include "transform.h"
-#include "boxblur.h"
 #include "vsvector.h"
 #include "serialize.h"
 #include "localmotion2transform.h"
-
-#include "transformfixedpoint.h"
-#ifdef TESTING
-#include "transformfloat.h"
-#endif
 
 #endif  /* LIBVIDSTAB_H_ */
 
@@ -47,6 +41,8 @@
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
+ * vim: expandtab shiftwidth=2:
  */

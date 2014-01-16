@@ -36,58 +36,55 @@
 #include "vsvector.h"
 #include "frameinfo.h"
 
-#define USE_SPIRAL_FIELD_CALC
+typedef struct _vsmotiondetectconfig {
+  /* meta parameter for maxshift and fieldsize between 1 and 15 */
+  int         shakiness;
+  int         accuracy;         // meta parameter for number of fields between 1 and 10
+  int         stepSize;         // stepsize of field transformation detection
+  int         algo;             // deprecated
+  int         virtualTripod;
+  /* if 1 and 2 then the fields and transforms are shown in the frames */
+  int         show;
+  /* measurement fields with lower contrast are discarded */
+  double      contrastThreshold;
+  const char* modName;          // module name (used for logging)
+} VSMotionDetectConfig;
 
-
-/** data structure for motion detection part of deshaking*/
-typedef struct motiondetect {
-  VSFrameInfo fi;
-
-  VSFrame curr;     // blurred version of current frame buffer
-  VSFrame currorig; // current frame buffer (original) (only pointer)
-  VSFrame currtmp;  // temporary buffer for blurring
-  VSFrame prev;     // frame buffer for last frame (copied)
-  short hasSeenOneFrame;   // true if we have a valid previous frame
-
-  const char* modName;
-
-  Field* fields;
-
-  /* Options */
+/** structure for motion detection fields */
+typedef struct _vsmotiondetectfields {
   /* maximum number of pixels we expect the shift of subsequent frames */
   int maxShift;
-  int stepSize; // stepsize of field transformation detection
-  int allowMax; // 1 if maximal shift is allowed
-  int algo;     // algorithm to use
-  int fieldNum;  // number of measurement fields
-  int maxFields;  // maximum number of fields used (selected by contrast)
-  int fieldSize; // size    = min(md->width, md->height)/10;
-  int fieldRows; // number of rows
-  /* if >0 then all the frames are compared with the given frame (1 for first) */
-  int virtualTripod;
-  /* if 1 and 2 then the fields and transforms are shown in the frames */
-  int show;
-  /* measurement fields with lower contrast are discarded */
-  double contrastThreshold;
-  /* meta parameter for maxshift and fieldsize between 1 and 15 */
-  int shakiness;
-  int accuracy;   // meta parameter for number of fields between 1 and 10
+  int stepSize;                 // stepsize for detection
+  int fieldNum;                 // number of measurement fields
+  int maxFields;                // maximum number of fields used (selected by contrast)
+  double contrastThreshold;     // fields with lower contrast are discarded
+  int fieldSize;                // size = min(md->width, md->height)/10;
+  int fieldRows;                // number of rows
+  Field* fields;                // measurement fields
+  short useOffset;              // if true then the offset us used
+  VSTransform offset;           // offset for detection (e.g. known from coarse scan)
+} VSMotionDetectFields;
 
-  int initialized; // 1 if initialized and 2 if configured
+/** data structure for motion detection part of deshaking*/
+typedef struct _vsmotiondetect {
+  VSFrameInfo fi;
+
+  VSMotionDetectConfig conf;
+
+  VSMotionDetectFields fieldscoarse;
+  VSMotionDetectFields fieldsfine;
+
+  VSFrame curr;                 // blurred version of current frame buffer
+  VSFrame currorig;             // current frame buffer (original) (only pointer)
+  VSFrame currtmp;              // temporary buffer for blurring
+  VSFrame prev;                 // frame buffer for last frame (copied)
+  short hasSeenOneFrame;        // true if we have a valid previous frame
+  int initialized;              // 1 if initialized and 2 if configured
 
   int frameNum;
-} MotionDetect;
+} VSMotionDetect;
 
-/* type for a function that calculates the transformation of a certain field
- */
-typedef LocalMotion (*calcFieldTransFunc)(MotionDetect*, const Field*, int);
-
-/* type for a function that calculates the contrast of a certain field
- */
-typedef double (*contrastSubImgFunc)(MotionDetect*, const Field*);
-
-
-static const char motiondetect_help[] = ""
+static const char vs_motiondetect_help[] = ""
     "Overview:\n"
     "    Generates a file with relative transform information\n"
     "     (translation, rotation) about subsequent frames."
@@ -101,8 +98,6 @@ static const char motiondetect_help[] = ""
     "                  1: low (fast) 15: high (slow) (def: 9)\n"
     "    'stepsize'    stepsize of search process, region around minimum \n"
     "                  is scanned with 1 pixel resolution (def: 6)\n"
-    "    'algo'        0: brute force (translation only);\n"
-    "                  1: small measurement fields (def)\n"
     "    'mincontrast' below this contrast a field is discarded (0-1) (def: 0.3)\n"
     "    'tripod'      virtual tripod mode (if >0): motion is compared to a \n"
     "                  reference frame (frame # is the value) (def: 0)\n"
@@ -111,16 +106,16 @@ static const char motiondetect_help[] = ""
     "    'help'        print this help message\n";
 
 
-/** initialized the MotionDetect structure and allocates memory
+/** returns the default config
+ */
+VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName);
+
+/** initialized the VSMotionDetect structure and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int initMotionDetect(MotionDetect* md, const VSFrameInfo* fi, const char* modName);
-
-/** configures MotionDetect structure and checks ranges, initializes fields and so on.
- *  @return VS_OK on success otherwise VS_ERROR
- */
-int configureMotionDetect(MotionDetect* md);
+int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf,
+                       const VSFrameInfo* fi);
 
 /**
  *  Performs a motion detection step
@@ -128,49 +123,18 @@ int configureMotionDetect(MotionDetect* md);
  *  is stored internally
  *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int motionDetection(MotionDetect* md, LocalMotions* motions, VSFrame *frame);
+int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame);
 
 /** Deletes internal data structures.
- * In order to use the MotionDetect again, you have to call initMotionDetect
+ * In order to use the VSMotionDetect again, you have to call vsMotionDetectInit
  */
-void cleanupMotionDetection(MotionDetect* md);
+void vsMotionDetectionCleanup(VSMotionDetect* md);
 
+/// returns the current config
+void vsMotionDetectGetConfig(VSMotionDetectConfig* conf, const VSMotionDetect* md);
 
-int initFields(MotionDetect* md);
-unsigned int compareImg(unsigned char* I1, unsigned char* I2, int width, int height,
-                        int bytesPerPixel, int strive1, int strive2, int d_x, int d_y);
-
-double contrastSubImgYUV(MotionDetect* md, const Field* field);
-double contrastSubImgRGB(MotionDetect* md, const Field* field);
-double contrastSubImg(unsigned char* const I, const Field* field,
-                      int width, int height, int bytesPerPixel);
-
-
-int cmp_contrast_idx(const void *ci1, const void* ci2);
-VSVector selectfields(MotionDetect* md, contrastSubImgFunc contrastfunc);
-
-LocalMotions calcShiftRGBSimple(MotionDetect* md);
-LocalMotions calcShiftYUVSimple(MotionDetect* md);
-
-LocalMotion calcFieldTransYUV(MotionDetect* md, const Field* field,
-                            int fieldnum);
-LocalMotion calcFieldTransRGB(MotionDetect* md, const Field* field,
-                            int fieldnum);
-LocalMotions calcTransFields(MotionDetect* md, calcFieldTransFunc fieldfunc,
-                             contrastSubImgFunc contrastfunc);
-
-
-void drawFieldScanArea(MotionDetect* md, const LocalMotion* motion);
-void drawField(MotionDetect* md, const LocalMotion* motion);
-void drawFieldTrans(MotionDetect* md, const LocalMotion* motion);
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
-             int x, int y, int sizex, int sizey, unsigned char color);
-
-
-unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width1, int width2, int height,
-                               int bytesPerPixel,
-                               int d_x, int d_y, unsigned int threshold);
+/// returns the frame info
+const VSFrameInfo* vsMotionDetectGetFrameInfo(const VSMotionDetect* md);
 
 #endif  /* MOTIONDETECT_H */
 
@@ -179,7 +143,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
  *   c-file-style: "stroustrup"
  *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
  *   indent-tabs-mode: nil
+ *   c-basic-offset: 2 t
  * End:
  *
- * vim: expandtab shiftwidth=4:
+ * vim: expandtab shiftwidth=2:
  */

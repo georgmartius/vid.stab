@@ -39,8 +39,8 @@ typedef enum _BoxBlurColorMode { BoxBlurColor, BoxBlurKeepColor, BoxBlurNoColor}
  * @param size of bluring kernel, (min 3 and it is made odd)
  * @param onlyLumincance if true color planes stay untouched
  */
-void boxblurYUV(VSFrame* dest, const VSFrame* src,
-		VSFrame* buffer, const VSFrameInfo* fi,
-		unsigned int size, BoxBlurColorMode colormode);
+void boxblurPlanar(VSFrame* dest, const VSFrame* src,
+    VSFrame* buffer, const VSFrameInfo* fi,
+    unsigned int size, BoxBlurColorMode colormode);
 
 #endif

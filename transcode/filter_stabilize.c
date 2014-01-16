@@ -66,7 +66,7 @@
 
 /* private date structure of this filter*/
 typedef struct _stab_data {
-    MotionDetect md;
+    VSMotionDetect md;
     vob_t* vob;  // pointer to information structure
 
     char* result;
@@ -147,15 +147,12 @@ static int stabilize_configure(TCModuleInstance *self,
     /*    sd->framesize = sd->vob->im_v_width * MAX_PLANES *
           sizeof(char) * 2 * sd->vob->im_v_height * 2;     */
 
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     VSFrameInfo fi;
-    initFrameInfo(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+    vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
                   transcode2ourPF(vob->im_v_codec));
 
-    if(initMotionDetect(md, &fi, MOD_NAME) != VS_OK){
-        tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
-        return TC_ERROR;
-    }
+    VSMotionDetectConfig conf = vsMotionDetectGetDefaultConfig(MOD_NAME);
 
     sd->result = tc_malloc(TC_BUF_LINE);
     filenamecopy = tc_strdup(sd->vob->video_in_file);
@@ -172,34 +169,35 @@ static int stabilize_configure(TCModuleInstance *self,
         // for some reason this plugin is called in the old fashion
         //  (not with inspect). Anyway we support both ways of getting help.
         if(optstr_lookup(options, "help")) {
-            tc_log_info(MOD_NAME,motiondetect_help);
+            tc_log_info(MOD_NAME,vs_motiondetect_help);
             return(TC_IMPORT_ERROR);
         }
 
         optstr_get(options, "result",     "%[^:]", sd->result);
-        optstr_get(options, "shakiness",  "%d", &md->shakiness);
-        optstr_get(options, "accuracy",   "%d", &md->accuracy);
-        optstr_get(options, "stepsize",   "%d", &md->stepSize);
-        optstr_get(options, "algo",       "%d", &md->algo);
-        optstr_get(options, "mincontrast","%lf",&md->contrastThreshold);
-        optstr_get(options, "tripod",     "%d", &md->virtualTripod);
-        optstr_get(options, "show",       "%d", &md->show);
+        optstr_get(options, "shakiness",  "%d", &conf.shakiness);
+        optstr_get(options, "accuracy",   "%d", &conf.accuracy);
+        optstr_get(options, "stepsize",   "%d", &conf.stepSize);
+        optstr_get(options, "algo",       "%d", &conf.algo);
+        optstr_get(options, "mincontrast","%lf",&conf.contrastThreshold);
+        optstr_get(options, "tripod",     "%d", &conf.virtualTripod);
+        optstr_get(options, "show",       "%d", &conf.show);
     }
 
-    if(configureMotionDetect(md)!= VS_OK){
-    	tc_log_error(MOD_NAME, "configuration of Motion Detection failed");
+    if(vsMotionDetectInit(md, &conf, &fi) != VS_OK){
+        tc_log_error(MOD_NAME, "initialization of Motion Detection failed");
         return TC_ERROR;
     }
+    vsMotionDetectGetConfig(&conf,md);
 
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Stabilization Settings:");
-        tc_log_info(MOD_NAME, "     shakiness = %d", md->shakiness);
-        tc_log_info(MOD_NAME, "      accuracy = %d", md->accuracy);
-        tc_log_info(MOD_NAME, "      stepsize = %d", md->stepSize);
-        tc_log_info(MOD_NAME, "          algo = %d", md->algo);
-        tc_log_info(MOD_NAME, "   mincontrast = %f", md->contrastThreshold);
-        tc_log_info(MOD_NAME, "        tripod = %d", md->virtualTripod);
-        tc_log_info(MOD_NAME, "          show = %d", md->show);
+        tc_log_info(MOD_NAME, "     shakiness = %d", conf.shakiness);
+        tc_log_info(MOD_NAME, "      accuracy = %d", conf.accuracy);
+        tc_log_info(MOD_NAME, "      stepsize = %d", conf.stepSize);
+        tc_log_info(MOD_NAME, "          algo = %d", conf.algo);
+        tc_log_info(MOD_NAME, "   mincontrast = %f", conf.contrastThreshold);
+        tc_log_info(MOD_NAME, "        tripod = %d", conf.virtualTripod);
+        tc_log_info(MOD_NAME, "          show = %d", conf.show);
         tc_log_info(MOD_NAME, "        result = %s", sd->result);
     }
 
@@ -208,21 +206,11 @@ static int stabilize_configure(TCModuleInstance *self,
         tc_log_error(MOD_NAME, "cannot open result file %s!\n", sd->result);
         return TC_ERROR;
     }else{
-        if(prepareFile(md, sd->f) != VS_OK){
+        if(vsPrepareFile(md, sd->f) != VS_OK){
             tc_log_error(MOD_NAME, "cannot write to result file %s", sd->result);
             return TC_ERROR;
         }
     }
-
-    /***** This is now done by boxblur ****/
-    /* /\* load unsharp filter to smooth the frames. This allows larger stepsize.*\/ */
-    /* char unsharp_param[128]; */
-    /* int masksize = TC_MIN(13,md->stepSize*1.5); // only works up to 13. */
-    /* sprintf(unsharp_param,"luma=-1:luma_matrix=%ix%i:pre=1", */
-    /*         masksize, masksize); */
-    /* if (!tc_filter_add("unsharp", unsharp_param)) { */
-    /*     tc_log_warn(MOD_NAME, "cannot load unsharp filter!"); */
-    /* } */
 
     return TC_OK;
 }
@@ -242,16 +230,16 @@ static int stabilize_filter_video(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(frame, "filter_video");
 
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     LocalMotions localmotions;
     VSFrame vsFrame;
-    fillFrameFromBuffer(&vsFrame,frame->video_buf, &md->fi);
+    vsFrameFillFromBuffer(&vsFrame,frame->video_buf, &md->fi);
 
-    if(motionDetection(md, &localmotions, &vsFrame)!= VS_OK){
-    	tc_log_error(MOD_NAME, "motion detection failed");
-    	return TC_ERROR;
+    if(vsMotionDetection(md, &localmotions, &vsFrame)!= VS_OK){
+      tc_log_error(MOD_NAME, "motion detection failed");
+      return TC_ERROR;
     }
-    if(writeToFile(md, sd->f, &localmotions) != VS_OK){
+    if(vsWriteToFile(md, sd->f, &localmotions) != VS_OK){
         vs_vector_del(&localmotions);
         return TC_ERROR;
     } else {
@@ -270,13 +258,13 @@ static int stabilize_stop(TCModuleInstance *self)
     StabData *sd = NULL;
     TC_MODULE_SELF_CHECK(self, "stop");
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     if (sd->f) {
         fclose(sd->f);
         sd->f = NULL;
     }
 
-    cleanupMotionDetection(md);
+    vsMotionDetectionCleanup(md);
     if (sd->result) {
         tc_free(sd->result);
         sd->result = NULL;
@@ -298,7 +286,7 @@ static int stabilize_stop(TCModuleInstance *self)
  */
 
 static int stabilize_inspect(TCModuleInstance *self,
-			     const char *param, const char **value)
+           const char *param, const char **value)
 {
     StabData *sd = NULL;
 
@@ -306,17 +294,19 @@ static int stabilize_inspect(TCModuleInstance *self,
     TC_MODULE_SELF_CHECK(param, "inspect");
     TC_MODULE_SELF_CHECK(value, "inspect");
     sd = self->userdata;
-    MotionDetect* md = &(sd->md);
+    VSMotionDetect* md = &(sd->md);
     if (optstr_lookup(param, "help")) {
-        *value = motiondetect_help;
+        *value = vs_motiondetect_help;
     }
-    CHECKPARAM("shakiness","shakiness=%d", md->shakiness);
-    CHECKPARAM("accuracy", "accuracy=%d",  md->accuracy);
-    CHECKPARAM("stepsize", "stepsize=%d",  md->stepSize);
-    CHECKPARAM("allowmax", "allowmax=%d",  md->allowMax);
-    CHECKPARAM("algo",     "algo=%d",      md->algo);
-    CHECKPARAM("tripod",   "tripod=%d",    md->virtualTripod);
-    CHECKPARAM("show",     "show=%d",      md->show);
+    VSMotionDetectConfig conf;
+    vsMotionDetectGetConfig(&conf,md);
+
+    CHECKPARAM("shakiness","shakiness=%d", conf.shakiness);
+    CHECKPARAM("accuracy", "accuracy=%d",  conf.accuracy);
+    CHECKPARAM("stepsize", "stepsize=%d",  conf.stepSize);
+    CHECKPARAM("algo",     "algo=%d",      conf.algo);
+    CHECKPARAM("tripod",   "tripod=%d",    conf.virtualTripod);
+    CHECKPARAM("show",     "show=%d",      conf.show);
     CHECKPARAM("result",   "result=%s",    sd->result);
     return TC_OK;
 }

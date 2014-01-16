@@ -24,6 +24,7 @@
 #include <math.h>
 #include <string.h>
 #include "transformtype.h"
+#include "transformtype_operations.h"
 #include "vidstabdefines.h"
 
 /***********************************************************************
@@ -32,95 +33,142 @@
  */
 
 /* create an initialized transform*/
-Transform new_transform(double x, double y, double alpha,
-                        double zoom, int extra)
+VSTransform new_transform(double x, double y, double alpha,
+                          double zoom, double barrel, double rshutter, int extra)
 {
-  Transform t;
-  t.x     = x;
-  t.y     = y;
-  t.alpha = alpha;
-  t.zoom  = zoom;
-  t.extra = extra;
+  VSTransform t;
+  t.x        = x;
+  t.y        = y;
+  t.alpha    = alpha;
+  t.zoom     = zoom;
+  t.barrel   = barrel;
+  t.rshutter = rshutter;
+  t.extra    = extra;
   return t;
 }
 
 /* create a zero initialized transform*/
-Transform null_transform(void)
+VSTransform null_transform(void)
 {
-  return new_transform(0, 0, 0, 0, 0);
+  return new_transform(0, 0, 0, 0, 0, 0, 0);
 }
 
 /* adds two transforms */
-Transform add_transforms(const Transform* t1, const Transform* t2)
+VSTransform add_transforms(const VSTransform* t1, const VSTransform* t2)
 {
-  Transform t;
-  t.x     = t1->x + t2->x;
-  t.y     = t1->y + t2->y;
-  t.alpha = t1->alpha + t2->alpha;
-  t.zoom  = t1->zoom + t2->zoom;
-  t.extra = 0;
+  VSTransform t;
+  t.x        = t1->x + t2->x;
+  t.y        = t1->y + t2->y;
+  t.alpha    = t1->alpha + t2->alpha;
+  t.zoom     = t1->zoom + t2->zoom;
+  t.barrel   = t1->barrel + t2->barrel;
+  t.rshutter = t1->rshutter + t2->rshutter;
+  t.extra    = t1->extra || t2->extra;
   return t;
 }
 
 /* like add_transform but with non-pointer signature */
-Transform add_transforms_(const Transform t1, const Transform t2)
+VSTransform add_transforms_(const VSTransform t1, const VSTransform t2)
 {
   return add_transforms(&t1, &t2);
 }
 
 /* subtracts two transforms */
-Transform sub_transforms(const Transform* t1, const Transform* t2)
+VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2)
 {
-  Transform t;
-  t.x     = t1->x - t2->x;
-  t.y     = t1->y - t2->y;
-  t.alpha = t1->alpha - t2->alpha;
-  t.zoom  = t1->zoom - t2->zoom;
-  t.extra = 0;
+  VSTransform t;
+  t.x        = t1->x - t2->x;
+  t.y        = t1->y - t2->y;
+  t.alpha    = t1->alpha - t2->alpha;
+  t.zoom     = t1->zoom - t2->zoom;
+  t.barrel   = t1->barrel - t2->barrel;
+  t.rshutter = t1->rshutter - t2->rshutter;
+  t.extra    = t1->extra || t2->extra;
   return t;
 }
 
 /* multiplies a transforms with a scalar */
-Transform mult_transform(const Transform* t1, double f)
+VSTransform mult_transform(const VSTransform* t1, double f)
 {
-  Transform t;
-  t.x     = t1->x * f;
-  t.y     = t1->y * f;
-  t.alpha = t1->alpha * f;
-  t.zoom  = t1->zoom * f;
-  t.extra = 0;
+  VSTransform t;
+  t.x        = t1->x        * f;
+  t.y        = t1->y        * f;
+  t.alpha    = t1->alpha    * f;
+  t.zoom     = t1->zoom     * f;
+  t.barrel   = t1->barrel   * f;
+  t.rshutter = t1->rshutter * f;
+  t.extra    = t1->extra;
   return t;
 }
 
 /* like mult_transform but with non-pointer signature */
-Transform mult_transform_(const Transform t1, double f)
+VSTransform mult_transform_(const VSTransform t1, double f)
 {
   return mult_transform(&t1,f);
 }
 
-void storeTransform(FILE* f, const Transform* t){
-  fprintf(f,"Trans %lf %lf %lf %lf\n", t->x, t->y, t->alpha, t->zoom);
+void storeVSTransform(FILE* f, const VSTransform* t){
+  fprintf(f,"Trans %lf %lf %lf %lf %i\n", t->x, t->y, t->alpha, t->zoom, t->extra);
+}
+
+
+PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi){
+  PreparedTransform pt;
+  pt.t = t;
+  double z = 1.0+t->zoom/100.0;
+  pt.zcos_a = z*cos(t->alpha); // scaled cos
+  pt.zsin_a = z*sin(t->alpha); // scaled sin
+  pt.c_x    = fi->width / 2;
+  pt.c_y    = fi->height / 2;
+  return pt;
+}
+
+Vec transform_vec(const PreparedTransform* pt, const Vec* v){
+  double x,y;
+  transform_vec_double(&x, &y, pt, v);
+  Vec res = {x,y};
+  return res;
+}
+
+void transform_vec_double(double* x, double* y, const PreparedTransform* pt, const Vec* v){
+  double rx = v->x - pt->c_x;
+  double ry = v->y - pt->c_y;
+  *x =  pt->zcos_a * rx + pt->zsin_a * ry + pt->t->x + pt->c_x;
+  *y = -pt->zsin_a * rx + pt->zcos_a * ry + pt->t->y + pt->c_y;
+}
+
+Vec sub_vec(Vec v1, Vec v2){
+  Vec r = {v1.x - v2.x, v1.y - v2.y};
+  return r;
+}
+Vec add_vec(Vec v1, Vec v2){
+  Vec r = {v1.x + v2.x, v1.y + v2.y};
+  return r;
+}
+Vec field_to_vec(Field f){
+  Vec r = {f.x , f.y};
+  return r;
 }
 
 /* compares a transform with respect to x (for sort function) */
 int cmp_trans_x(const void *t1, const void* t2)
 {
-  double a = ((Transform*)t1)->x;
-  double b = ((Transform*)t2)->x;
+  double a = ((VSTransform*)t1)->x;
+  double b = ((VSTransform*)t2)->x;
   return a < b ? -1 : ( a > b ? 1 : 0 );
 }
 
 /* compares a transform with respect to y (for sort function) */
 int cmp_trans_y(const void *t1, const void* t2)
 {
-  double a = ((Transform*)t1)->y;
-  double b = ((Transform*)t2)->y;
+  double a = ((VSTransform*)t1)->y;
+  double b = ((VSTransform*)t2)->y;
   return a < b ? -1 : ( a > b ? 1: 0 );
 }
 
 /* static int cmp_trans_alpha(const void *t1, const void* t2){ */
-/*   double a = ((Transform*)t1)->alpha; */
-/*   double b = ((Transform*)t2)->alpha; */
+/*   double a = ((VSTransform*)t1)->alpha; */
+/*   double b = ((VSTransform*)t2)->alpha; */
 /*   return a < b ? -1 : ( a > b ? 1 : 0 ); */
 /* } */
 
@@ -156,19 +204,16 @@ int cmp_int(const void *t1, const void* t2)
  * Side effects:
  *     None
  */
-Transform median_xy_transform(const Transform* transforms, int len)
+VSTransform median_xy_transform(const VSTransform* transforms, int len)
 {
-  Transform* ts = vs_malloc(sizeof(Transform) * len);
-  Transform t;
-  memcpy(ts,transforms, sizeof(Transform)*len );
+  VSTransform* ts = vs_malloc(sizeof(VSTransform) * len);
+  VSTransform t   = null_transform();
+  memcpy(ts,transforms, sizeof(VSTransform)*len );
   int half = len/2;
-  qsort(ts, len, sizeof(Transform), cmp_trans_x);
+  qsort(ts, len, sizeof(VSTransform), cmp_trans_x);
   t.x = len % 2 == 0 ? ts[half].x : (ts[half].x + ts[half+1].x)/2;
-  qsort(ts, len, sizeof(Transform), cmp_trans_y);
+  qsort(ts, len, sizeof(VSTransform), cmp_trans_y);
   t.y = len % 2 == 0 ? ts[half].y : (ts[half].y + ts[half+1].y)/2;
-  t.alpha = 0;
-  t.zoom = 0;
-  t.extra = 0;
   vs_free(ts);
   return t;
 }
@@ -189,17 +234,17 @@ Transform median_xy_transform(const Transform* transforms, int len)
  * Side effects:
  *     None
  */
-Transform cleanmean_xy_transform(const Transform* transforms, int len)
+VSTransform cleanmean_xy_transform(const VSTransform* transforms, int len)
 {
-  Transform* ts = vs_malloc(sizeof(Transform) * len);
-  Transform t = null_transform();
+  VSTransform* ts = vs_malloc(sizeof(VSTransform) * len);
+  VSTransform t = null_transform();
   int i, cut = len / 5;
-  memcpy(ts, transforms, sizeof(Transform) * len);
-  qsort(ts,len, sizeof(Transform), cmp_trans_x);
+  memcpy(ts, transforms, sizeof(VSTransform) * len);
+  qsort(ts,len, sizeof(VSTransform), cmp_trans_x);
   for (i = cut; i < len - cut; i++){ // all but cutted
     t.x += ts[i].x;
   }
-  qsort(ts, len, sizeof(Transform), cmp_trans_y);
+  qsort(ts, len, sizeof(VSTransform), cmp_trans_y);
   for (i = cut; i < len - cut; i++){ // all but cutted
     t.y += ts[i].y;
   }
@@ -226,19 +271,27 @@ Transform cleanmean_xy_transform(const Transform* transforms, int len)
  * Side effects:
  *     only on min and max
  */
-void cleanmaxmin_xy_transform(const Transform* transforms, int len,
+void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
                               int percentil,
-                              Transform* min, Transform* max){
-  Transform* ts = vs_malloc(sizeof(Transform) * len);
+                              VSTransform* min, VSTransform* max){
+  VSTransform* ts = vs_malloc(sizeof(VSTransform) * len);
   int cut = len * percentil / 100;
-  memcpy(ts, transforms, sizeof(Transform) * len);
-  qsort(ts,len, sizeof(Transform), cmp_trans_x);
+  memcpy(ts, transforms, sizeof(VSTransform) * len);
+  qsort(ts,len, sizeof(VSTransform), cmp_trans_x);
   min->x = ts[cut].x;
   max->x = ts[len-cut-1].x;
-  qsort(ts, len, sizeof(Transform), cmp_trans_y);
+  qsort(ts, len, sizeof(VSTransform), cmp_trans_y);
   min->y = ts[cut].y;
   max->y = ts[len-cut-1].y;
   vs_free(ts);
+}
+
+/* calculates the required zoom value to have no borders visible
+ */
+double transform_get_required_zoom(const VSTransform* transform, int width, int height){
+  return 100.0*(2.0*VS_MAX(fabs(transform->x)/width,fabs(transform->y)/height)  // translation part
+                + fabs(sin(transform->alpha)));          // rotation part
+
 }
 
 
@@ -260,6 +313,10 @@ double median(double* ds, int len)
   return len % 2 == 0 ? ds[half] : (ds[half] + ds[half+1])/2;
 }
 
+
+/** square of a number */
+double sqr(double x){ return x*x; }
+
 /**
  * mean: mean of a double array
  *
@@ -277,6 +334,26 @@ double mean(const double* ds, int len)
   for (i = 0; i < len; i++)
     sum += ds[i];
   return sum / len;
+}
+
+/**
+ * stddev: standard deviation of a double array
+ *
+ * Parameters:
+ *            ds: array of values
+ *           len: length  of array
+ *          mean: mean of the array (@see mean())
+ * Return value: the standard deviation value of the array
+ * Preconditions: len>0
+ * Side effects:  None
+ */
+double stddev(const double* ds, int len, double mean)
+{
+  double sum=0;
+  int i = 0;
+  for (i = 0; i < len; i++)
+    sum += sqr(ds[i]-mean);
+  return sqrt(sum / len);
 }
 
 /**
@@ -382,6 +459,14 @@ LocalMotion cleanmean_localmotions(const LocalMotions* localmotions)
   vs_free(ys);
   m.v.x/=(len - (2.0 * cut));
   m.v.y/=(len - (2.0 * cut));
+  return m;
+}
+
+VSArray localmotionsGetMatch(const LocalMotions* localmotions){
+  VSArray m = vs_array_new(vs_vector_size(localmotions));
+  for (int i=0; i<m.len; i++){
+    m.dat[i]=LMGet(localmotions,i)->match;
+  }
   return m;
 }
 

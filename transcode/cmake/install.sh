@@ -2,7 +2,7 @@
 
 PATHS="/usr/lib/transcode /usr/local/lib/transcode $HOME/lib/transcode"
 for D in $PATHS; do
-    if [ -d $D ]; then
+    if [ -d "$D" ]; then
         echo -n "Do you want to install the plugins to $D ? [y/N] ";
         read choice
         if [ "$choice" = "y" ]; then

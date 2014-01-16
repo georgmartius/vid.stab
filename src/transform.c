@@ -30,6 +30,7 @@
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
+#include "l1campathoptimization.h"
 
 #include <math.h>
 #include <libgen.h>
@@ -102,8 +103,9 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
 
   td->conf.interpolType = VS_MAX(VS_MIN(td->conf.interpolType,VS_BiCubic),VS_Zero);
 
-  // not yet implemented
+#ifndef USE_GLPK // if not available disable L1 optimization
   if(td->conf.camPathAlgo==VSOptimalL1) td->conf.camPathAlgo=VSGaussian;
+#endif
 
   switch(td->conf.interpolType){
    case VS_Zero:     td->interpolate = &interpolateZero; break;
@@ -222,9 +224,11 @@ void vsTransformationsCleanup(VSTransformations* trans){
 int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
   switch(td->conf.camPathAlgo){
    case VSAvg: return cameraPathAvg(td,trans);
-   case VSOptimalL1: // not yet implenented
+   case VSOptimalL1:
+#ifdef USE_GLPK
+    return cameraPathOptimalL1(td,trans);
+#endif // otherwise use gaussian
    case VSGaussian: return cameraPathGaussian(td,trans);
-//   case VSOptimalL1: return cameraPathOptimalL1(td,trans);
   }
   return VS_ERROR;
 }

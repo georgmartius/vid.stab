@@ -25,6 +25,7 @@
 #ifndef LIBVIDSTAB_H
 #define LIBVIDSTAB_H
 
+#define LIBVIDSTAB_VERSION_NUMBER "0.98"
 #define LIBVIDSTAB_VERSION "v0.98 (2014-01-04)"
 
 #include "frameinfo.h"

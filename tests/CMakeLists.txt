@@ -9,7 +9,7 @@ SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
 #add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING  -std=gnu99)
-add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING -std=gnu99)
+add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING -std=gnu99 -fno-show-column)
 find_package(Orc)
 if(ORC_FOUND)
 add_definitions( -DUSE_ORC ${ORC_DEFINITIONS})
@@ -18,7 +18,20 @@ else()
 add_definitions( -DDISABLE_ORC)
 endif()
 
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math -fno-show-column ) # -DUSE_SSE2_ASM
+include (FindSSE)
+
+if(SSE2_FOUND)
+MESSAGE( STATUS "SSE2 FOUND")
+add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+endif()
+
+include (FindGLPK)
+if(GLPK_FOUND)
+MESSAGE( STATUS "GLPK FOUND")
+add_definitions( -DUSE_GLPK )
+else()
+MESSAGE( STATUS "GLPK NOT FOUND")
+endif()
 
 if(USE_OMP)
 add_definitions(-fopenmp -DUSE_OMP)
@@ -31,7 +44,8 @@ add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
-  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c ../src/boxblur.c)
+  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c
+  ../src/boxblur.c ../src/l1campathoptimization.c)
 
 target_link_libraries(tests m)
 if(ORC_FOUND)
@@ -39,5 +53,8 @@ target_link_libraries(tests ${ORC_LIBRARIES})
 endif()
 if(USE_OMP)
 target_link_libraries(tests gomp)
+endif()
+if(GLPK_FOUND)
+target_link_libraries(tests glpk)
 endif()
 

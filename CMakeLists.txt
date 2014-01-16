@@ -26,16 +26,27 @@ else()
 add_definitions( -DDISABLE_ORC )
 endif()
 
-# here we should check for SSE2
+# here we check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
 if(SSE2_FOUND)
+MESSAGE( STATUS "SSE2 FOUND")
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 endif()
+
+include (FindGLPK)
+if(GLPK_FOUND)
+MESSAGE( STATUS "GLPK FOUND")
+add_definitions( -DUSE_GLPK )
+else()
+MESSAGE( STATUS "GLPK NOT FOUND")
+endif()
+
 
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
-  src/boxblur.c src/vsvector.c src/orc/motiondetectorc.c)
+  src/boxblur.c src/vsvector.c src/orc/motiondetectorc.c
+  src/l1campathoptimization.c)
 
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
@@ -56,6 +67,9 @@ target_link_libraries(vidstab ${ORC_LIBRARIES})
 endif()
 if(USE_OMP)
 target_link_libraries(vidstab gomp)
+endif()
+if(GLPK_FOUND)
+target_link_libraries(vidstab glpk)
 endif()
 
 

@@ -107,6 +107,43 @@ VSTransform mult_transform_(const VSTransform t1, double f)
   return mult_transform(&t1,f);
 }
 
+/* sequentially apply two transforms: t1 then t2*/
+VSTransform concat_transforms(const VSTransform* t1, const VSTransform* t2)
+{
+  VSTransform t;
+  double z1 = zoom2z(t1->zoom);
+  double z2 = zoom2z(t2->zoom);
+  double c2 = cos(t2->alpha);
+  double s2 = sin(t2->alpha);
+  t.x        = t2->x + t1->x*z2*c2 - t1->y*z2*s2;
+  t.y        = t2->y + t1->y*z2*c2 + t1->x*z2*s2;
+  t.alpha    = t1->alpha + t2->alpha;
+  t.zoom     = z2zoom(z1*z2);
+  t.barrel   = t1->barrel + t2->barrel; //?
+  t.rshutter = t1->rshutter + t2->rshutter;//?
+  t.extra    = t1->extra || t2->extra;
+  return t;
+}
+
+
+// returns an inverted transform
+VSTransform invert_transform(const VSTransform* t){
+  VSTransform r;
+  double s = sin(t->alpha);
+  double c = cos(t->alpha);
+  double z = zoom2z(t->zoom);
+  r.x        = -(t->x*c + t->y*s)/z;
+  r.y        = (t->x*s - t->y*c)/z;
+  r.alpha    = -t->alpha;
+  r.zoom     = z2zoom(1.0/z);
+  r.barrel   = -t->barrel;
+  r.rshutter = -t->rshutter;
+  r.extra    = t->extra;
+  return r;
+}
+
+
+
 void storeVSTransform(FILE* f, const VSTransform* t){
   fprintf(f,"Trans %lf %lf %lf %lf %i\n", t->x, t->y, t->alpha, t->zoom, t->extra);
 }
@@ -115,7 +152,7 @@ void storeVSTransform(FILE* f, const VSTransform* t){
 PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi){
   PreparedTransform pt;
   pt.t = t;
-  double z = 1.0+t->zoom/100.0;
+  double z = zoom2z(t->zoom);
   pt.zcos_a = z*cos(t->alpha); // scaled cos
   pt.zsin_a = z*sin(t->alpha); // scaled sin
   pt.c_x    = fi->width / 2;

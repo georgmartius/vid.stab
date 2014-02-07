@@ -28,6 +28,9 @@
 #include "vsvector.h"
 #include "frameinfo.h"
 
+#define zoom2z(zoom) (1.0+(zoom)/100.0)
+#define z2zoom(z)    (((z)-1.0)*100.0)
+
 /// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \
     ((LocalMotion*)vs_vector_get(localmotions,index))
@@ -46,6 +49,9 @@ VSTransform add_transforms_(const VSTransform t1, const VSTransform t2);
 VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2);
 VSTransform mult_transform(const VSTransform* t1, double f);
 VSTransform mult_transform_(const VSTransform t1, double f);
+
+VSTransform invert_transform(const VSTransform* t1);
+VSTransform concat_transforms(const VSTransform* t1, const VSTransform* t2);
 
 void storeVSTransform(FILE* f, const VSTransform* t);
 

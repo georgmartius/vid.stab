@@ -19,6 +19,39 @@ void testImageStripeYUV(int size, VSFrameInfo* fi, VSFrame* img){
   }
 }
 
+int equalTransforms(VSTransform* t1, VSTransform* t2){
+  double eps=1e-10;
+  return (fabs(t1->x-t2->x)<eps && fabs(t1->y-t2->y)<eps
+          && fabs(t1->alpha-t2->alpha)<eps && fabs(t1->zoom-t2->zoom)<eps);
+}
+
+void test_transform_basics(){
+  VSTransform t0 = null_transform(); //ID
+  VSTransform t1 = new_transform(1,2,0.1,5,0,0,0);
+
+  // ID -> G = G
+  VSTransform t1a = concat_transforms(&t0,&t1);
+  test_bool(equalTransforms(&t1a, &t1));
+  // G -> ID = G
+  VSTransform t1b = concat_transforms(&t1,&t0);
+  test_bool(equalTransforms(&t1b, &t1));
+
+
+  // G -> G^-1 = ID
+  VSTransform t2 = invert_transform(&t1);
+  VSTransform id = concat_transforms(&t1,&t2);
+  storeVSTransform(stdout,&t1);
+  storeVSTransform(stdout,&t2);
+  storeVSTransform(stdout,&id);
+  test_bool(equalTransforms(&id, &t0));
+
+  // double inverse yields original
+  VSTransform t3 = new_transform(-5,0,0.2,2,0,0,0);
+  VSTransform t4 = invert_transform(&t3);
+  VSTransform t5 = invert_transform(&t4);
+  test_bool(equalTransforms(&t3, &t5));
+}
+
 
 void test_transform_implementation(const TestData* testdata){
 

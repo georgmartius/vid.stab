@@ -14,6 +14,8 @@
 #include "motiondetect_internal.h"
 #include "motiondetect_opt.h"
 #include "boxblur.h"
+#include "transform.h"
+#include "transform_internal.h"
 #include "transformfixedpoint.h"
 #include "transformfloat.h"
 #include "transformtype_operations.h"
@@ -36,6 +38,7 @@
 #include "test_omp.c"
 #include "test_gradientoptimizer.c"
 #include "test_localmotion2transform.c"
+#include "test_campathopt.c"
 
 #define FRAMENUM 5
 
@@ -87,6 +90,7 @@ int main(int argc, char** argv){
 #endif
 
   if(all || contains(argv,argc,"--testTI", "transform_implementation")){
+    UNIT(test_transform_basics());
     UNIT(test_transform_implementation(&testdata));
   }
 
@@ -124,6 +128,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
+  }
+
+  if(all || contains(argv,argc,"--testCPO", "cam path optimizer")){
+    UNIT(test_campathopt(&testdata));
   }
 
   // free

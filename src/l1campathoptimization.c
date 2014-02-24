@@ -58,18 +58,18 @@ int getRowNum(int e, int t, int param, int upperorlower, int N){
 
 /** return the col number in the LP constraint Matrix (starting with 1)
     @param p_e: P, E1, E2, E3: 0:parameter, 1-3 constraint for first, second or third derivative
-    @param t: 0..N: time // note: for e1 ..N-1, e2 ..N-2 and e3 ..N-3
+    @param t: 0..N-1: time // note: for e1 ..N-1, e2 ..N-2 and e3 ..N-3
     @param param: 0..3: X,Y,A,B
     @param N: number of frame pairs
  */
 int getColNum(int p_e, int t, int param, int N){
-  return 4*((p_e)*N-p_e) + t*4 + param + 1;
+  return 4*((p_e)*N-VS_MAX(p_e-1,0)) + t*4 + param + 1;
 }
 
 // helper macros to make the code below more compact
 #define ROW(e,time,param,upperorlower) row=getRowNum(e, time, param, upperorlower, N);
 #define SET(ep,offset,param,val) ia[idx] = row, ja[idx] = getColNum(ep, t+offset, param, N), ar[idx] =  val; idx++;
-#define F(offset, param) inversetransforms[t+offset].param;
+#define F(offset, param) (inversetransforms[t+(offset)].param)
 
 // 4DOF linear similarity: corresponds to transformation matrix: ((a , b, x),(-b, a, y),(0,0,1))
 typedef struct _frame_pair_transform {
@@ -100,17 +100,17 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
     return VS_ERROR;
   }
 
-  // inclusion constraint
-  // TODO: need more documentation
-  double x2=td->fiSrc.width/2;
-  double y2=td->fiSrc.height/2;
-  // TODO: configurable
-  double maxZoom = 1+(20.0/100.0);
-  // size of crop frame
-  double xI2=td->fiSrc.width/2 / maxZoom;
-  double yI2=td->fiSrc.height/2 / maxZoom;
-  double xO2=td->fiSrc.width/2  * maxZoom; // to outside
-  double yO2=td->fiSrc.height/2 * maxZoom; // to outside
+  /* // inclusion constraint */
+  /* // TODO: need more documentation */
+  /* double x2=td->fiSrc.width/2; */
+  /* double y2=td->fiSrc.height/2; */
+  /* // TODO: configurable */
+  /* double maxZoom = 1+(20.0/100.0); */
+  /* // size of crop frame */
+  /* double xI2=td->fiSrc.width/2 / maxZoom; */
+  /* double yI2=td->fiSrc.height/2 / maxZoom; */
+  /* double xO2=td->fiSrc.width/2  * maxZoom; // to outside */
+  /* double yO2=td->fiSrc.height/2 * maxZoom; // to outside */
 
 
   if (td->conf.smoothing>0) {
@@ -150,28 +150,38 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
     double w3=0; //100;
 
     for(int t=0; t< N; t++){
-      for(int p=X; p<=B; p++){
-        if(t<N-1){
+      if(t<N-1){
+        glp_set_row_bnds(lp, getRowNum(E1,t,X,0,N), GLP_LO, F(1,x), 0.0); // |DW|
+        glp_set_row_bnds(lp, getRowNum(E1,t,X,1,N), GLP_UP, 0.0, F(1,x)); // |DW|
+        glp_set_row_bnds(lp, getRowNum(E1,t,Y,0,N), GLP_LO, F(1,y), 0.0); // |DW|
+        glp_set_row_bnds(lp, getRowNum(E1,t,Y,1,N), GLP_UP, 0.0, F(1,y)); // |DW|
+        for(int p=A; p<=B; p++){
           glp_set_row_bnds(lp, getRowNum(E1,t,p,0,N), GLP_LO, 0.0, 0.0); // |DW|
           glp_set_row_bnds(lp, getRowNum(E1,t,p,1,N), GLP_UP, 0.0, 0.0); // |DW|
         }
-        if(t<N-2){
-          glp_set_row_bnds(lp, getRowNum(E2,t,p,0,N), GLP_LO, 0.0, 0.0); // |D^2W|
-          glp_set_row_bnds(lp, getRowNum(E2,t,p,1,N), GLP_UP, 0.0, 0.0); // |D^2W|
-        }
-        if(t<N-3){
-          glp_set_row_bnds(lp, getRowNum(E3,t,p,0,N), GLP_LO, 0.0, 0.0); // |D^3W|
-          glp_set_row_bnds(lp, getRowNum(E3,t,p,1,N), GLP_UP, 0.0, 0.0); // |D^3W|
-        }
+      }
+      /* for(int p=X; p<=B; p++){ */
+      /*   if(t<N-2){ */
+      /*     glp_set_row_bnds(lp, getRowNum(E2,t,p,0,N), GLP_LO, 0.0, 0.0); // |D^2W| */
+      /*     glp_set_row_bnds(lp, getRowNum(E2,t,p,1,N), GLP_UP, 0.0, 0.0); // |D^2W| */
+      /*   } */
+      /*   if(t<N-3){ */
+      /*     glp_set_row_bnds(lp, getRowNum(E3,t,p,0,N), GLP_LO, 0.0, 0.0); // |D^3W| */
+      /*     glp_set_row_bnds(lp, getRowNum(E3,t,p,1,N), GLP_UP, 0.0, 0.0); // |D^3W| */
+      /*   } */
+      /* } */
+
+      for(int p=X; p<=B; p++){
         /* glp_set_row_bnds(lp, getRowNum(CORNER,t,0,0,N), GLP_DB, -xO2, -xI2); // Corner */
         /* glp_set_row_bnds(lp, getRowNum(CORNER,t,1,0,N), GLP_DB, -yO2, -yI2); // Corner */
         /* glp_set_row_bnds(lp, getRowNum(CORNER,t,2,0,N), GLP_DB,  xI2, xO2); // Corner */
         /* glp_set_row_bnds(lp, getRowNum(CORNER,t,3,0,N), GLP_DB,  yI2, yO2); // Corner */
-
         glp_set_row_bnds(lp, getRowNum(CORNER,t,0,0,N), GLP_DB, -20, 20); // proximity
         glp_set_row_bnds(lp, getRowNum(CORNER,t,1,0,N), GLP_DB, -20, 20); // proximity
         glp_set_row_bnds(lp, getRowNum(CORNER,t,2,0,N), GLP_DB,  0.9, 1.1); // proximity
         glp_set_row_bnds(lp, getRowNum(CORNER,t,3,0,N), GLP_DB, -0.1, 0.1); // proximity
+        //        glp_set_row_bnds(lp, getRowNum(CORNER,t,2,0,N), GLP_FX,  1.0, 1.0); // proximity
+        //        glp_set_row_bnds(lp, getRowNum(CORNER,t,3,0,N), GLP_FX, 0, 0); // proximity
       }
     }
 
@@ -196,7 +206,6 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
         }
       }
     }
-
     int*    ia=vs_malloc(sizeof(int)*20*numrows); // we need not more than 20 entries per row
     int*    ja=vs_malloc(sizeof(int)*20*numrows);
     double* ar=vs_malloc(sizeof(double)*20*numrows);
@@ -214,38 +223,38 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
       // |DW|
       //      printf("1 %i %i\n", t, idx );
       if(t<N-1) {       // |D^2W|
-        //          0 <=   e1X          + w0X            - f1X w1A           - f1Y w1B        - w1X
-        ROW(E1, t, X, 0) SET(E1,0,X,1)  SET(P,0,X,1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y))  SET(P,1,X,-1);
-        //          0 >=  -e1X         + w0X             - f1X w1A            - f1Y w1B      - w1X
-        ROW(E1, t, X, 1) SET(E1,0,X,-1) SET(P,0,X,1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y))  SET(P,1,X,-1);
-        ROW(E1, t, Y, 0) SET(E1,0,Y,1)  SET(P,0,Y,1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x))  SET(P,1,Y,-1);
-        ROW(E1, t, Y, 1) SET(E1,0,Y,-1) SET(P,0,Y,1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x))  SET(P,1,Y,-1);
+        //   f1x <=   e1X          + w0X            - f1a w1X           - f1b w1Y
+        ROW(E1, t, X, 0) SET(E1,0,X,1)  SET(P,0,X,1)  SET(P,1,X,-F(1,a)) SET(P,1,Y,-F(1,b));
+        //   f1x >=  -e1X          + w0X            - f1a w1X           - f1b w1Y
+        ROW(E1, t, X, 1) SET(E1,0,X,-1) SET(P,0,X,1) SET(P,1,X,-F(1,a)) SET(P,1,Y,-F(1,b));
+        ROW(E1, t, Y, 0) SET(E1,0,Y,1)  SET(P,0,Y,1) SET(P,1,X,+F(1,b)) SET(P,1,Y,-F(1,a));
+        ROW(E1, t, Y, 1) SET(E1,0,Y,-1) SET(P,0,Y,1) SET(P,1,X,+F(1,b)) SET(P,1,Y,-F(1,a));
         ROW(E1, t, A, 0) SET(E1,0,A,1)  SET(P,0,A,1) SET(P,1,A,-F(1,a)) SET(P,1,B,+F(1,b));
         ROW(E1, t, A, 1) SET(E1,0,A,-1) SET(P,0,A,1) SET(P,1,A,-F(1,a)) SET(P,1,B,+F(1,b));
         ROW(E1, t, B, 0) SET(E1,0,B,1)  SET(P,0,B,1) SET(P,1,A,-F(1,b)) SET(P,1,B,-F(1,a));
         ROW(E1, t, B, 1) SET(E1,0,B,-1) SET(P,0,B,1) SET(P,1,A,-F(1,b)) SET(P,1,B,-F(1,a));
       }
-      if(t<N-2) {       // |D^2W|
-        ROW(E2, t, X, 0) SET(E2,0,X, 1) SET(P,0,X,-1) SET(P,1,A,+F(2,x)) SET(P,1,B,+F(2,y)) SET(P,1,X, 1) SET(P,2,A,-F(2,x)) SET(P,2,B,-F(2,y)) SET(P,2,X,-1);
-        ROW(E2, t, X, 1) SET(E2,0,X,-1) SET(P,0,X,-1) SET(P,1,A,+F(2,x)) SET(P,1,B,+F(2,y)) SET(P,1,X, 1) SET(P,2,A,-F(2,x)) SET(P,2,B,-F(2,y)) SET(P,2,X,-1);
-        ROW(E2, t, Y, 0) SET(E2,0,Y, 1) SET(P,0,Y,-1) SET(P,1,A,+F(2,y)) SET(P,1,B,-F(2,x)) SET(P,1,Y, 1) SET(P,2,A,-F(2,y)) SET(P,2,B,+F(2,x)) SET(P,2,Y,-1);
-        ROW(E2, t, Y, 1) SET(E2,0,Y,-1) SET(P,0,Y,-1) SET(P,1,A,+F(2,y)) SET(P,1,B,-F(2,x)) SET(P,1,Y, 1) SET(P,2,A,-F(2,y)) SET(P,2,B,+F(2,x)) SET(P,2,Y,-1);
-        ROW(E2, t, A, 0) SET(E2,0,A, 1) SET(P,0,A,-1) SET(P,1,A,1+F(2,a)) SET(P,1,B,-1-F(2,b)) SET(P,2,A,-F(2,a)) SET(P,2,B,+F(2,b));
-        ROW(E2, t, A, 1) SET(E2,0,A,-1) SET(P,0,A,-1) SET(P,1,A,1+F(2,a)) SET(P,1,B,-1-F(2,b)) SET(P,2,A,-F(2,a)) SET(P,2,B,+F(2,b));
-        ROW(E2, t, B, 0) SET(E2,0,B, 1) SET(P,0,B,-1) SET(P,1,A,1+F(2,b)) SET(P,1,B,1+F(2,a)) SET(P,2,A,-F(2,b)) SET(P,2,B,-F(2,a));
-        ROW(E2, t, B, 1) SET(E2,0,B,-1) SET(P,0,B,-1) SET(P,1,A,1+F(2,b)) SET(P,1,B,1+F(2,a)) SET(P,2,A,-F(2,b)) SET(P,2,B,-F(2,a));
-      }
-      //      printf("3 %i %i\n", t, idx );
-      if(t<N-3) {       // |D^3W|
-        ROW(E3, t, X, 0) SET(E3,0,X, 1) SET(P,0,X,+1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y)) SET(P,1,X,-1) SET(P,2,A,+2*F(2,x)) SET(P,2,B,+2*F(2,y)) SET(P,2,X,+1) SET(P,3,A,-F(3,x)) SET(P,3,B,-F(3,y)) SET(P,3,X,-1);
-        ROW(E3, t, X, 1) SET(E3,0,X,-1) SET(P,0,X,+1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y)) SET(P,1,X,-1) SET(P,2,A,+2*F(2,x)) SET(P,2,B,+2*F(2,y)) SET(P,2,X,+1) SET(P,3,A,-F(3,x)) SET(P,3,B,-F(3,y)) SET(P,3,X,-1);
-        ROW(E3, t, Y, 0) SET(E3,0,Y, 1) SET(P,0,Y,+1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x)) SET(P,1,Y,-1) SET(P,2,A,+2*F(2,y)) SET(P,2,B,-2*F(2,x)) SET(P,2,Y,+1) SET(P,3,A,-F(3,y)) SET(P,3,B,+F(3,x)) SET(P,3,Y,-1);
-        ROW(E3, t, Y, 1) SET(E3,0,Y,-1) SET(P,0,Y,+1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x)) SET(P,1,Y,-1) SET(P,2,A,+2*F(2,y)) SET(P,2,B,-2*F(2,x)) SET(P,2,Y,+1) SET(P,3,A,-F(3,y)) SET(P,3,B,+F(3,x)) SET(P,3,Y,-1);
-        ROW(E3, t, A, 0) SET(E3,0,A, 1) SET(P,0,A,+1) SET(P,1,A,-2-F(1,a)) SET(P,1,B,2+F(1,b)) SET(P,2,A,1+2*F(2,a)) SET(P,2,B,-1-2*F(2,b)) SET(P,3,A,-F(3,a)) SET(P,3,B,+F(3,b));
-        ROW(E3, t, A, 1) SET(E3,0,A,-1) SET(P,0,A,+1) SET(P,1,A,-2-F(1,a)) SET(P,1,B,2+F(1,b)) SET(P,2,A,1+2*F(2,a)) SET(P,2,B,-1-2*F(2,b)) SET(P,3,A,-F(3,a)) SET(P,3,B,+F(3,b));
-        ROW(E3, t, B, 0) SET(E3,0,B, 1) SET(P,0,B,+1) SET(P,1,A,-2-F(1,b)) SET(P,1,B,-2-F(1,a)) SET(P,2,A,1+2*F(2,b)) SET(P,2,B,1+2*F(2,a)) SET(P,3,A,-F(3,b)) SET(P,3,B,-F(3,a));
-        ROW(E3, t, B, 1) SET(E3,0,B,-1) SET(P,0,B,+1) SET(P,1,A,-2-F(1,b)) SET(P,1,B,-2-F(1,a)) SET(P,2,A,1+2*F(2,b)) SET(P,2,B,1+2*F(2,a)) SET(P,3,A,-F(3,b)) SET(P,3,B,-F(3,a));
-      }
+      /* if(t<N-2) {       // |D^2W| */
+      /*   ROW(E2, t, X, 0) SET(E2,0,X, 1) SET(P,0,X,-1) SET(P,1,A,+F(2,x)) SET(P,1,B,+F(2,y)) SET(P,1,X, 1) SET(P,2,A,-F(2,x)) SET(P,2,B,-F(2,y)) SET(P,2,X,-1); */
+      /*   ROW(E2, t, X, 1) SET(E2,0,X,-1) SET(P,0,X,-1) SET(P,1,A,+F(2,x)) SET(P,1,B,+F(2,y)) SET(P,1,X, 1) SET(P,2,A,-F(2,x)) SET(P,2,B,-F(2,y)) SET(P,2,X,-1); */
+      /*   ROW(E2, t, Y, 0) SET(E2,0,Y, 1) SET(P,0,Y,-1) SET(P,1,A,+F(2,y)) SET(P,1,B,-F(2,x)) SET(P,1,Y, 1) SET(P,2,A,-F(2,y)) SET(P,2,B,+F(2,x)) SET(P,2,Y,-1); */
+      /*   ROW(E2, t, Y, 1) SET(E2,0,Y,-1) SET(P,0,Y,-1) SET(P,1,A,+F(2,y)) SET(P,1,B,-F(2,x)) SET(P,1,Y, 1) SET(P,2,A,-F(2,y)) SET(P,2,B,+F(2,x)) SET(P,2,Y,-1); */
+      /*   ROW(E2, t, A, 0) SET(E2,0,A, 1) SET(P,0,A,-1) SET(P,1,A,1+F(2,a)) SET(P,1,B,-1-F(2,b)) SET(P,2,A,-F(2,a)) SET(P,2,B,+F(2,b)); */
+      /*   ROW(E2, t, A, 1) SET(E2,0,A,-1) SET(P,0,A,-1) SET(P,1,A,1+F(2,a)) SET(P,1,B,-1-F(2,b)) SET(P,2,A,-F(2,a)) SET(P,2,B,+F(2,b)); */
+      /*   ROW(E2, t, B, 0) SET(E2,0,B, 1) SET(P,0,B,-1) SET(P,1,A,1+F(2,b)) SET(P,1,B,1+F(2,a)) SET(P,2,A,-F(2,b)) SET(P,2,B,-F(2,a)); */
+      /*   ROW(E2, t, B, 1) SET(E2,0,B,-1) SET(P,0,B,-1) SET(P,1,A,1+F(2,b)) SET(P,1,B,1+F(2,a)) SET(P,2,A,-F(2,b)) SET(P,2,B,-F(2,a)); */
+      /* } */
+      /* //      printf("3 %i %i\n", t, idx ); */
+      /* if(t<N-3) {       // |D^3W| */
+      /*   ROW(E3, t, X, 0) SET(E3,0,X, 1) SET(P,0,X,+1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y)) SET(P,1,X,-1) SET(P,2,A,+2*F(2,x)) SET(P,2,B,+2*F(2,y)) SET(P,2,X,+1) SET(P,3,A,-F(3,x)) SET(P,3,B,-F(3,y)) SET(P,3,X,-1); */
+      /*   ROW(E3, t, X, 1) SET(E3,0,X,-1) SET(P,0,X,+1) SET(P,1,A,-F(1,x)) SET(P,1,B,-F(1,y)) SET(P,1,X,-1) SET(P,2,A,+2*F(2,x)) SET(P,2,B,+2*F(2,y)) SET(P,2,X,+1) SET(P,3,A,-F(3,x)) SET(P,3,B,-F(3,y)) SET(P,3,X,-1); */
+      /*   ROW(E3, t, Y, 0) SET(E3,0,Y, 1) SET(P,0,Y,+1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x)) SET(P,1,Y,-1) SET(P,2,A,+2*F(2,y)) SET(P,2,B,-2*F(2,x)) SET(P,2,Y,+1) SET(P,3,A,-F(3,y)) SET(P,3,B,+F(3,x)) SET(P,3,Y,-1); */
+      /*   ROW(E3, t, Y, 1) SET(E3,0,Y,-1) SET(P,0,Y,+1) SET(P,1,A,-F(1,y)) SET(P,1,B,+F(1,x)) SET(P,1,Y,-1) SET(P,2,A,+2*F(2,y)) SET(P,2,B,-2*F(2,x)) SET(P,2,Y,+1) SET(P,3,A,-F(3,y)) SET(P,3,B,+F(3,x)) SET(P,3,Y,-1); */
+      /*   ROW(E3, t, A, 0) SET(E3,0,A, 1) SET(P,0,A,+1) SET(P,1,A,-2-F(1,a)) SET(P,1,B,2+F(1,b)) SET(P,2,A,1+2*F(2,a)) SET(P,2,B,-1-2*F(2,b)) SET(P,3,A,-F(3,a)) SET(P,3,B,+F(3,b)); */
+      /*   ROW(E3, t, A, 1) SET(E3,0,A,-1) SET(P,0,A,+1) SET(P,1,A,-2-F(1,a)) SET(P,1,B,2+F(1,b)) SET(P,2,A,1+2*F(2,a)) SET(P,2,B,-1-2*F(2,b)) SET(P,3,A,-F(3,a)) SET(P,3,B,+F(3,b)); */
+      /*   ROW(E3, t, B, 0) SET(E3,0,B, 1) SET(P,0,B,+1) SET(P,1,A,-2-F(1,b)) SET(P,1,B,-2-F(1,a)) SET(P,2,A,1+2*F(2,b)) SET(P,2,B,1+2*F(2,a)) SET(P,3,A,-F(3,b)) SET(P,3,B,-F(3,a)); */
+      /*   ROW(E3, t, B, 1) SET(E3,0,B,-1) SET(P,0,B,+1) SET(P,1,A,-2-F(1,b)) SET(P,1,B,-2-F(1,a)) SET(P,2,A,1+2*F(2,b)) SET(P,2,B,1+2*F(2,a)) SET(P,3,A,-F(3,b)) SET(P,3,B,-F(3,a)); */
+      /* } */
 
       /* // inclusion and proximity (corners) */
       /* //    -xO2  <= w0X        - w0A x2          - w0B y2 <= -xI2 */
@@ -276,10 +285,10 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
       double b = glp_get_col_prim(lp, getColNum(P,t,B,N));
       printf("%i \t %f %f %f %f (%f)\n", t,x,y,a,b,a*a + b*b);
       double z2 = a*a + b*b;
-      ts[t].zoom  = z2zoom(sqrt(z2));
+      ts[t].alpha = atan2(b,a);
+      ts[t].zoom  = z2zoom(cos(ts[t].alpha)/a);
       ts[t].x     = (-a*x + b*y)/z2;
       ts[t].y     = -(b*x + a*y)/z2;
-      ts[t].alpha = atan2(b,a);
     }
 
     glp_delete_prob(lp);

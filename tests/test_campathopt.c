@@ -31,18 +31,18 @@ VSTransformations genSmoothTransforms(int num){
 double myrand() { return ((double)rand())/RAND_MAX * 2.0 -1.0; }
 
 void perturbTransforms(VSTransformations* trans, double var){
-  //  for(int i=0; i<trans->len; i++){
-  int i = 10;
+  // the 0th transform is 0
+  for(int i=1; i<trans->len; i++){
+    //  int i = 5;
   trans->ts[i].x += myrand()*var;
   trans->ts[i].y += myrand()*var;
   trans->ts[i].alpha += M_PI/180*myrand()*var;
   trans->ts[i].zoom += myrand()*var;
-  trans->ts[i].zoom += myrand()*var;
 
-  i = 11;
-  trans->ts[i] = invert_transform(&trans->ts[i-1]);
+  //  i = 6;
+  //  trans->ts[i] = invert_transform(&trans->ts[i-1]);
 
-  //  }
+    }
 }
 
 VSTransformations integrateTransforms(VSTransformations* trans){
@@ -56,7 +56,9 @@ VSTransformations integrateTransforms(VSTransformations* trans){
 }
 
 VSTransformations derivativeTransforms(VSTransformations* trans){
-  VSTransformations dest = copyTransforms(trans);
+  VSTransformations dest;
+  dest.ts=vs_malloc(sizeof(VSTransform)*trans->len-1);
+  dest.len=trans->len-1;
   dest.ts[0] = null_transform();
   for(int i=0; i<trans->len-1; i++){
     dest.ts[i] = sub_transforms(&(trans->ts[i+1]),&(trans->ts[i]));
@@ -69,6 +71,7 @@ VSTransformations stabilizeTransforms(VSTransformations* trans, VSTransformation
   VSTransformations dest = integrateTransforms(trans);
   for(int i=0; i<trans->len; i++){
     dest.ts[i] = concat_transforms(&(dest.ts[i]), &(transT->ts[i]));
+    // dest.ts[i] = concat_transforms( &(transT->ts[i]), &(dest.ts[i]));
   }
 
   return dest;
@@ -113,13 +116,13 @@ void test_campathopt(TestData* testdata){
   VSTransformData td;
 
   test_bool(vsTransformDataInit(&td, &tdconf, &testdata->fi, &testdata->fi) == VS_OK);
-  int num=30;
+  int num=10;
   VSTransformations trans=genSmoothTransforms(num);
   VSTransformations transP=genSmoothTransforms(num);
   writeTransforms(&trans,"transforms1.log");
 
   test_bool(transformsDifference(&trans,&transP)==0.0);
-  perturbTransforms(&transP,5);
+  perturbTransforms(&transP,1);
   writeTransforms(&transP,"transformsP.log");
 
   VSTransformations beforeD1 = derivativeTransforms(&transP);
@@ -139,6 +142,7 @@ void test_campathopt(TestData* testdata){
 
   VSTransformations afterD1 = derivativeTransforms(&transS);
   VSTransformations afterD2 = derivativeTransforms(&afterD1);
+  writeTransforms(&afterD1,"transformsD1a.log");
 
   double d1_before= totalSumTransforms(&beforeD1);
   double d1_after= totalSumTransforms(&afterD1);

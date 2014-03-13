@@ -23,6 +23,7 @@
 #ifndef __TRANSFORMTYPE_OPERATIONS_H
 #define __TRANSFORMTYPE_OPERATIONS_H
 
+#include "transform.h"
 #include "transformtype.h"
 #include "vidstabdefines.h"
 #include "vsvector.h"
@@ -55,17 +56,57 @@ VSTransform concat_transforms(const VSTransform* t1, const VSTransform* t2);
 
 void storeVSTransform(FILE* f, const VSTransform* t);
 
+// ---------------------
+/** 4DOF linear similarity: corresponds to transformation matrix: ((a , b, x),(-b, a, y),(0,0,c))
+    This is like VSTransform, but in a different parametrization, which is more suitable for smoothing. c is typically 1, but if we add transforms it can differ.
+ */
+typedef struct _vsTransformLS {
+  double x;
+  double y;
+  double a;
+  double b;
+  double c;
+  int extra;
+} VSTransformLS;
+
+typedef struct _vstransformationsLS {
+    VSTransformLS* ts; // array of transformations
+    int current;   // index to current transformation
+    int len;       // length of trans array
+} VSTransformationsLS;
+
+VSTransformationsLS transformationsAZtoLS(const VSTransformations* trans);
+
+/* helper functions to create and operate with transformLSs.
+ *  (same as VSTransform, but differently parametrized)
+ */
+VSTransformLS id_transformLS(void);
+VSTransformLS new_transformLS(double x, double y, double a, double b, double c, int extra);
+
+VSTransformLS add_transformLS_(VSTransformLS t1, VSTransformLS t2);
+VSTransformLS sub_transformLS(const VSTransformLS* t1, const VSTransformLS* t2);
+VSTransformLS sub_transformLS_(VSTransformLS t1, VSTransformLS t2);
+VSTransformLS invert_transformLS(const VSTransformLS* t1);
+VSTransformLS concat_transformLS(const VSTransformLS* t1, const VSTransformLS* t2);
+
+void storeVSTransformLS(FILE* f, const VSTransformLS* t);
+
+VSTransformLS transformAZtoLS(const VSTransform* t);
+VSTransform transformLStoAZ(const VSTransformLS* t);
 
 typedef struct _preparedtransform {
-  const VSTransform* t;
   double zcos_a;
   double zsin_a;
+  double x;
+  double y;
   double c_x;
   double c_y;
 } PreparedTransform;
 
 // transforms vector
 PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
+PreparedTransform prepare_transformLS(const VSTransformLS* t, const VSFrameInfo* fi);
+
 // transforms vector (attention, only integer)
 Vec transform_vec(const PreparedTransform* t, const Vec* v);
 void transform_vec_double(double *x, double* y, const PreparedTransform* t, const Vec* v);

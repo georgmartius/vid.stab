@@ -25,7 +25,7 @@ int equalTransforms(VSTransform* t1, VSTransform* t2){
           && fabs(t1->alpha-t2->alpha)<eps && fabs(t1->zoom-t2->zoom)<eps);
 }
 
-void test_transform_basics(){
+void test_transform_basics(const TestData* testdata){
   VSTransform t0 = null_transform(); //ID
   VSTransform t1 = new_transform(1,2,0.1,5,0,0,0);
 
@@ -50,6 +50,74 @@ void test_transform_basics(){
   VSTransform t4 = invert_transform(&t3);
   VSTransform t5 = invert_transform(&t4);
   test_bool(equalTransforms(&t3, &t5));
+
+  VSTransform t7 = add_transforms(&t3,&t3);
+  VSTransform t8 = mult_transform(&t3,2.0);
+  test_bool(equalTransforms(&t7, &t8));
+  VSTransform t9  = add_transforms(&t3,&t0);
+  VSTransform t10 = add_transforms(&t0,&t3);
+  test_bool(equalTransforms(&t9, &t3));
+  test_bool(equalTransforms(&t9, &t10));
+
+  // in this parametization we no not have a unit (1) transform
+}
+
+int equalTransformLSs(VSTransformLS* t1, VSTransformLS* t2){
+  double eps=1e-10;
+  return (fabs(t1->x-t2->x)<eps && fabs(t1->y-t2->y)<eps
+          && fabs(t1->a-t2->a)<eps && fabs(t1->b-t2->b)<eps);
+}
+
+void test_transformLS_basics(const TestData* testdata){
+  VSTransformLS t0 = id_transformLS(); //ID
+  VSTransformLS t1 = new_transformLS(1,2,1.1*cos(0.1),1.1*sin(0.1),1.0,0);
+
+  // ID -> G = G
+  VSTransformLS t1a = concat_transformLS(&t0,&t1);
+  test_bool(equalTransformLSs(&t1a, &t1));
+  // G -> ID = G
+  VSTransformLS t1b = concat_transformLS(&t1,&t0);
+  test_bool(equalTransformLSs(&t1b, &t1));
+
+
+  // G -> G^-1 = ID
+  VSTransformLS t2 = invert_transformLS(&t1);
+  VSTransformLS id = concat_transformLS(&t1,&t2);
+  storeVSTransformLS(stdout,&t1);
+  storeVSTransformLS(stdout,&t2);
+  storeVSTransformLS(stdout,&id);
+  test_bool(equalTransformLSs(&id, &t0));
+
+  // double inverse yields original
+  VSTransformLS t3 = new_transformLS(-5,0,0.8*cos(0.2),-0.8*sin(0.2),1.0,0);
+  VSTransformLS t4 = invert_transformLS(&t3);
+  VSTransformLS t5 = invert_transformLS(&t4);
+  test_bool(equalTransformLSs(&t3, &t5));
+
+  // conversions
+  VSTransform t7   = transformLStoAZ(&t3);
+  VSTransformLS t8 = transformAZtoLS(&t7);
+  test_bool(equalTransformLSs(&t8, &t3));
+
+  // yield same transforms
+  PreparedTransform pt7 = prepare_transform(&t7, &testdata->fi);
+  PreparedTransform pt8 = prepare_transformLS(&t8, &testdata->fi);
+  Vec p1 = {300,420};
+  Vec p1a = transform_vec(&pt7, &p1);
+  Vec p1b = transform_vec(&pt8, &p1);
+  test_bool(p1a.x==p1b.x && p1a.y==p1b.y);
+
+  // distributive law and identity
+  VSTransformLS t19   = add_transformLS_(id_transformLS(),t3);
+  VSTransformLS t20  = concat_transformLS(&t1,&t19);
+  VSTransformLS t21  = add_transformLS_(concat_transformLS(&t1,&t3),t1);
+  test_bool(equalTransformLSs(&t20, &t21));
+
+  // distributive law and identity
+  VSTransformLS t22  = add_transformLS_(id_transformLS(),t3);
+  VSTransformLS t23  = concat_transformLS(&t22,&t1);
+  VSTransformLS t24  = add_transformLS_(concat_transformLS(&t3,&t1),t1);
+  test_bool(equalTransformLSs(&t23, &t24));
 }
 
 

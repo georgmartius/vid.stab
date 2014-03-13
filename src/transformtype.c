@@ -148,13 +148,148 @@ void storeVSTransform(FILE* f, const VSTransform* t){
   fprintf(f,"Trans %lf %lf %lf %lf %i\n", t->x, t->y, t->alpha, t->zoom, t->extra);
 }
 
+/***********************************************************************
+ * helper functions to create and operate with transformsLS.
+ * all functions are non-destructive
+ */
+
+/* create an initialized transform*/
+VSTransformLS new_transformLS(double x, double y, double a, double b, double c, int extra) {
+  VSTransformLS t;
+  t.x        = x;
+  t.y        = y;
+  t.a        = a;
+  t.b        = b;
+  t.c        = c;
+  t.extra    = extra;
+  return t;
+}
+
+/* create an identity transformLS*/
+VSTransformLS id_transformLS(void) {
+  return new_transformLS(0, 0, 1.0, 0, 1.0, 0);
+}
+
+VSTransformLS sub_transformLS(const VSTransformLS* t1, const VSTransformLS* t2){
+  VSTransformLS t;
+  t.x     = t1->x - t2->x;
+  t.y     = t1->y - t2->y;
+  t.a     = t1->a - t2->a;
+  t.b     = t1->b - t2->b;
+  t.c     = t1->c - t2->c;
+  t.extra = t1->extra || t2->extra;
+  return t;
+}
+
+VSTransformLS sub_transformLS_(VSTransformLS t1, VSTransformLS t2){
+  VSTransformLS t;
+  t.x     = t1.x - t2.x;
+  t.y     = t1.y - t2.y;
+  t.a     = t1.a - t2.a;
+  t.b     = t1.b - t2.b;
+  t.c     = t1.c - t2.c;
+  t.extra = t1.extra || t2.extra;
+  return t;
+}
+VSTransformLS add_transformLS_(VSTransformLS t1, VSTransformLS t2){
+  VSTransformLS t;
+  t.x     = t1.x + t2.x;
+  t.y     = t1.y + t2.y;
+  t.a     = t1.a + t2.a;
+  t.b     = t1.b + t2.b;
+  t.c     = t1.c + t2.c;
+  t.extra = t1.extra || t2.extra;
+  return t;
+}
+
+/* sequentially apply two transformLS: t1 then t2*/
+VSTransformLS concat_transformLS(const VSTransformLS* t1, const VSTransformLS* t2)
+{
+  VSTransformLS t;
+  t.x        = t2->x*t1->c + t1->x*t2->a + t1->y*t2->b;
+  t.y        = t2->y*t1->c + t1->y*t2->a - t1->x*t2->b;
+  t.a        = t1->a*t2->a - t1->b*t2->b;
+  t.b        = t2->a*t1->b + t1->a*t2->b;
+  t.c        = t1->c * t2->c;
+  t.extra    = t1->extra || t2->extra;
+  return t;
+}
+
+// returns an inverted transformLS
+VSTransformLS invert_transformLS(const VSTransformLS* t){
+  VSTransformLS r;
+  double z = t->a*t->a + t->b*t->b;
+  r.x        = (-t->a*t->x + t->b*t->y)/(z*t->c);
+  r.y        = -(t->b*t->x + t->a*t->y)/(z*t->c);
+  r.a        = t->a/z;
+  r.b        = -t->b/z;
+  r.c        = 1/t->c;
+  r.extra    = t->extra;
+  return r;
+}
+
+
+void storeVSTransformLS(FILE* f, const VSTransformLS* t){
+  fprintf(f,"TransLS %lf %lf %lf %lf %i\n", t->x, t->y, t->a, t->b, t->extra);
+}
+
+VSTransformLS transformAZtoLS(const VSTransform* t){
+  VSTransformLS r;
+  r.x      = t->x;
+  r.y      = t->y;
+  double z = zoom2z(t->zoom);
+  r.a      = z*cos(t->alpha);
+  r.b      = -z*sin(t->alpha);
+  r.c      = 1;
+  r.extra  = t->extra;
+  return r;
+}
+
+VSTransform transformLStoAZ(const VSTransformLS* t){
+  VSTransform r;
+  if(t->c!=1.0) {
+    fprintf(stderr,"bad conversion! c=%f!=1\n",t->c);
+  }
+  r.x     = t->x;
+  r.y     = t->y;
+  r.alpha = atan2(-t->b,t->a);
+  r.zoom  = z2zoom(t->a/cos(r.alpha));
+  r.extra = t->extra;
+  return r;
+}
+
+
+VSTransformationsLS transformationsAZtoLS(const VSTransformations* trans){
+  VSTransformationsLS ts;
+  ts.ts=vs_malloc(sizeof(VSTransformLS)*trans->len);
+  ts.len=trans->len;
+  ts.current=trans->current;
+  for(int i=0; i<trans->len; i++){
+    ts.ts[i]=transformAZtoLS(&trans->ts[i]);
+  }
+  return ts;
+}
+
+/* ------------- */
 
 PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi){
   PreparedTransform pt;
-  pt.t = t;
-  double z = zoom2z(t->zoom);
-  pt.zcos_a = z*cos(t->alpha); // scaled cos
-  pt.zsin_a = z*sin(t->alpha); // scaled sin
+  pt.x      = t->x;
+  pt.y      = t->y;
+  double z  = zoom2z(t->zoom);
+  pt.zcos_a = z*cos(t->alpha);  // scaled cos
+  pt.zsin_a = z*sin(t->alpha);  // scaled sin
+  pt.c_x    = fi->width / 2;
+  pt.c_y    = fi->height / 2;
+  return pt;
+}
+
+PreparedTransform prepare_transformLS(const VSTransformLS* t, const VSFrameInfo* fi){
+  PreparedTransform pt;
+  pt.x      = t->x;
+  pt.y      = t->y;
+  pt.zcos_a = t->a;
+  pt.zsin_a = -t->b;
   pt.c_x    = fi->width / 2;
   pt.c_y    = fi->height / 2;
   return pt;
@@ -170,8 +305,8 @@ Vec transform_vec(const PreparedTransform* pt, const Vec* v){
 void transform_vec_double(double* x, double* y, const PreparedTransform* pt, const Vec* v){
   double rx = v->x - pt->c_x;
   double ry = v->y - pt->c_y;
-  *x =  pt->zcos_a * rx + pt->zsin_a * ry + pt->t->x + pt->c_x;
-  *y = -pt->zsin_a * rx + pt->zcos_a * ry + pt->t->y + pt->c_y;
+  *x =  pt->zcos_a * rx + pt->zsin_a * ry + pt->x + pt->c_x;
+  *y = -pt->zsin_a * rx + pt->zcos_a * ry + pt->y + pt->c_y;
 }
 
 Vec sub_vec(Vec v1, Vec v2){

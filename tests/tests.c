@@ -90,7 +90,8 @@ int main(int argc, char** argv){
 #endif
 
   if(all || contains(argv,argc,"--testTI", "transform_implementation")){
-    UNIT(test_transform_basics());
+    UNIT(test_transform_basics(&testdata));
+    UNIT(test_transformLS_basics(&testdata));
     UNIT(test_transform_implementation(&testdata));
   }
 
@@ -131,6 +132,7 @@ int main(int argc, char** argv){
   }
 
   if(all || contains(argv,argc,"--testCPO", "cam path optimizer")){
+    UNIT(test_l1optutils());
     UNIT(test_campathopt(&testdata));
   }
 

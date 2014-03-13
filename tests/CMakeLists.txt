@@ -45,7 +45,7 @@ add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/motiondetect_opt.c ../src/orc/motiondetectorc.c
-  ../src/boxblur.c ../src/l1campathoptimization.c)
+  ../src/boxblur.c ../src/campathoptimization.c ../src/l1campathoptimization.c)
 
 target_link_libraries(tests m)
 if(ORC_FOUND)

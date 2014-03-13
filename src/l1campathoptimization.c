@@ -23,6 +23,7 @@
  */
 
 #include "l1campathoptimization.h"
+#include "campathoptimization.h"
 #include "vidstabdefines.h"
 #include "transformtype_operations.h"
 #include <assert.h>

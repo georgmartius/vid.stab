@@ -21,9 +21,20 @@ else()
 add_definitions( -DDISABLE_ORC )
 endif()
 
-# here we should check for SSE2
+# here we check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
+if(SSE2_FOUND)
+MESSAGE( STATUS "SSE2 FOUND")
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+endif()
+
+include (FindGLPK)
+if(GLPK_FOUND)
+MESSAGE( STATUS "GLPK FOUND")
+add_definitions( -DUSE_GLPK )
+else()
+MESSAGE( STATUS "GLPK NOT FOUND")
+endif()
 
 # Make sure the compiler can find include files from transcode
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ )
@@ -32,16 +43,16 @@ include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ )
 add_library (filter_transform SHARED filter_transform.c
   ../src/transformtype.c ../src/libvidstab.c ../src/transform.c
   ../src/transformfixedpoint.c  ../src/vsvector.c ../src/serialize.c ../src/frameinfo.c
-	../src/localmotion2transform.c) #  orc/transformorc.c)
+  ../src/localmotion2transform.c ../src/campathoptimization.c ../src/l1campathoptimization.c) #  orc/transformorc.c)
 add_library (filter_stabilize SHARED filter_stabilize.c
   ../src/transformtype.c ../src/libvidstab.c ../src/motiondetect.c
-	../src/orc/motiondetectorc.c ../src/motiondetect_opt.c
+  ../src/orc/motiondetectorc.c ../src/motiondetect_opt.c
   ../src/boxblur.c ../src/vsvector.c ../src/serialize.c  ../src/frameinfo.c)
 add_library (filter_deshake SHARED filter_deshake.c
   ../src/transformtype.c ../src/libvidstab.c ../src/motiondetect.c
   ../src/orc/motiondetectorc.c ../src/boxblur.c ../src/transform.c ../src/motiondetect_opt.c
   ../src/transformfixedpoint.c ../src/vsvector.c ../src/serialize.c ../src/frameinfo.c
-	../src/localmotion2transform.c)
+  ../src/localmotion2transform.c  ../src/campathoptimization.c ../src/l1campathoptimization.c)
 
 
 set_target_properties(filter_stabilize PROPERTIES  PREFIX "" )
@@ -61,4 +72,9 @@ if(USE_OMP)
 target_link_libraries(filter_stabilize gomp )
 target_link_libraries(filter_transform gomp )
 target_link_libraries(filter_deshake   gomp )
+endif()
+if(GLPK_FOUND)
+# target_link_libraries(filter_stabilize glpk )
+target_link_libraries(filter_transform glpk )
+target_link_libraries(filter_deshake   glpk )
 endif()

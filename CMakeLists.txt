@@ -7,9 +7,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 
-set(MAJOR_VERSION 0)
-set(MINOR_VERSION 9)
-set(PATCH_VERSION 8)
+set(MAJOR_VERSION 1)
+set(MINOR_VERSION 0)
+set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
@@ -46,7 +46,7 @@ set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
   src/boxblur.c src/vsvector.c src/orc/motiondetectorc.c
-  src/l1campathoptimization.c)
+  src/campathoptimization.c src/l1campathoptimization.c)
 
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h

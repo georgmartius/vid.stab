@@ -19,6 +19,7 @@
 #include "transformfixedpoint.h"
 #include "transformfloat.h"
 #include "transformtype_operations.h"
+#include "campathoptimization.h"
 
 #ifndef TESTING
 #error TESTING must be defined

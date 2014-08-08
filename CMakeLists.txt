@@ -7,9 +7,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 
-set(MAJOR_VERSION 0)
-set(MINOR_VERSION 9)
-set(PATCH_VERSION 8)
+set(MAJOR_VERSION 1)
+set(MINOR_VERSION 0)
+set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)

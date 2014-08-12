@@ -12,6 +12,9 @@ set(MINOR_VERSION 0)
 set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
+option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
+       ON)
+
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
 
@@ -43,8 +46,7 @@ set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
 
 
 # Create the vidstab library
-# add_library (vidstab STATIC ${SOURCES})
-add_library (vidstab SHARED ${SOURCES})
+add_library (vidstab ${SOURCES})
 
 #set version of lib
 set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})

@@ -53,10 +53,15 @@ typedef struct _vsslidingavgtrans {
 typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} VSInterpolType;
 
 /// returns a name for the interpolation type
+const char* vsGetInterpolationTypeName(VSInterpolType type);
+/// see vsGetInterpolationTypeName(), remains for compatibility so far
 const char* getInterpolationTypeName(VSInterpolType type);
 
 typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
-typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
+typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg, VSNBCamPathAlgos } VSCamPathAlgo;
+
+/// returns the name of the camera path algorithm
+const char* vsGetCamPathAlgoName(VSCamPathAlgo algo);
 
 /**
  * interpolate: general interpolation function pointer for one channel image data
@@ -75,7 +80,7 @@ typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
                                  const uint8_t *img, int linesize,
                                  int width, int height, uint8_t def);
 
-typedef struct _VSTransformConfig {
+typedef struct _VSTransformConfigx {
 
     /* whether to consider transforms as relative (to previous frame)
      * or absolute transforms
@@ -99,6 +104,10 @@ typedef struct _VSTransformConfig {
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
     VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
+    double         pathD1Weight; // optimization weight for first derivative of camera path
+    double         pathD2Weight; // optimization weight for second derivative of camera path
+    double         pathD3Weight; // optimization weight for third derivative of camera path
+    double         maxZoom;      // maximal allowed zoom (for OptimalL1)
 } VSTransformConfig;
 
 typedef struct _VSTransformData {
@@ -123,7 +132,7 @@ typedef struct _VSTransformData {
     int initialized; // 1 if initialized and 2 if configured
 } VSTransformData;
 
-
+// TODO: Move to transcode plugin
 static const char vs_transform_help[] = ""
     "Overview\n"
     "    Reads a file with transform information for each frame\n"

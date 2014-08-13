@@ -97,7 +97,7 @@ double calcTransformQuality(VSArray params, void* dat){
       LocalMotion* m = LMGet(motions,i);
       double vx,vy;
       transform_vec_double(&vx, &vy, &pt, (Vec*)&m->f);
-      vx -= m->f.x; vy -= m->f.y;
+      vx = m->f.x - vx; vy = m->f.y - vy;
       double e   = sqr(vx - m->v.x) +  sqr(vy - m->v.y);
       gd->missmatches.dat[i]=e;
       error += e;

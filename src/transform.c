@@ -40,11 +40,23 @@ const char* interpol_type_names[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                       "Bi-Cubic (3)"};
 
 const char* getInterpolationTypeName(VSInterpolType type){
+  return vsGetInterpolationTypeName(type);
+}
+const char* vsGetInterpolationTypeName(VSInterpolType type){
   if (type >= VS_Zero && type < VS_NBInterPolTypes)
     return interpol_type_names[(int) type];
   else
     return "unknown";
 }
+
+const char* cam_path_algo_names[3] = {"VSOptimalL1", "VSGaussian", "VSAvg"};
+const char* vsGetCamPathAlgoName(VSCamPathAlgo algo){
+  if (algo < VSNBCamPathAlgos)
+    return cam_path_algo_names[(int) algo];
+  else
+    return "unknown";
+}
+
 
 // default initialization: attention the ffmpeg filter cannot call it
 VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
@@ -66,6 +78,10 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
   conf.camPathAlgo        = VSOptimalL1;
+  conf.pathD1Weight       = 10.0;
+  conf.pathD2Weight       = 1.0;
+  conf.pathD3Weight       = 100.0;
+  conf.maxZoom            = 10.0;
   return conf;
 }
 

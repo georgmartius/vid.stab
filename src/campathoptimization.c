@@ -37,6 +37,7 @@ int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
   switch(td->conf.camPathAlgo){
    case VSAvg: return cameraPathAvg(td,trans);
    case VSOptimalL1:
+   case VSNBCamPathAlgos:
 #ifdef USE_GLPK
     return cameraPathOptimalL1(td,trans);
 #endif // otherwise use gaussian
@@ -47,7 +48,7 @@ int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
 
 /*
  *  We perform a low-pass filter on the camera path.
- *  This supports slow camera movemen, but in a smooth fasion.
+ *  This supports slow camera movement, but in a smooth fasion.
  *  Here we use gaussian filter (gaussian kernel) lowpass filter
  */
 int cameraPathGaussian(VSTransformData* td, VSTransformations* trans){
@@ -106,7 +107,7 @@ int cameraPathGaussian(VSTransformData* td, VSTransformations* trans){
         avg = mult_transform(&avg, 1.0/weightsum);
 
         // high frequency must be transformed away
-        ts[i] = sub_transforms(&ts[i], &avg);
+        ts[i] = sub_transforms(&avg, &ts[i]);
       }
       if (td->conf.verbose & VS_DEBUG) {
         vs_log_msg(td->conf.modName,
@@ -175,7 +176,7 @@ int cameraPathAvg(VSTransformData* td, VSTransformations* trans){
       /* lowpass filter:
        * meaning high frequency must be transformed away
        */
-      ts[i] = sub_transforms(&ts2[i], &avg);
+      ts[i] = sub_transforms(&avg, &ts2[i]);
       /* kill accumulating offset in the filtered signal*/
       avg2 = add_transforms_(mult_transform(&avg2, 1 - tau),
                              mult_transform(&ts[i], tau));

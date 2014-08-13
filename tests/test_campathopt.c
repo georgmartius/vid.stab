@@ -23,18 +23,16 @@ VSTransformationsLS copyTransformsLS(VSTransformationsLS* src){
 }
 
 
-VSTransformations genSmoothTransforms(int num){
+VSTransformations genSmoothTransforms(int num, int flat){
   VSTransformations trans;
   trans.ts=vs_malloc(sizeof(VSTransform)*num);
   trans.len=num;
   trans.current=0;
   for(int i=0; i<num; i++){
-    trans.ts[i].x = 0.0;
-    trans.ts[i].y = 50*sin(((double)i)/10.0);
-    trans.ts[i].alpha = M_PI/180*sin(0.1+((double)i)/20.0);
-    // trans.ts[i].y = 0;
-    trans.ts[i].alpha = 0.0;
-    trans.ts[i].zoom = 0.0;
+    trans.ts[i].x     = 0.0;
+    trans.ts[i].y     = flat ? 0 : 2*sin(((double)i)/10.0);
+    trans.ts[i].alpha = flat ? 0 : M_PI/180*sin(0.1+((double)i)/20.0);
+    trans.ts[i].zoom  = 0.0;
   }
   return trans;
 }
@@ -263,19 +261,19 @@ void test_l1optutils(){
 
 extern int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans);
 
-void test_campathopt(TestData* testdata){
+void test_campathopt_LS(TestData* testdata, VSCamPathAlgo algo, int num, int store, int min_perturb){
   VSTransformConfig tdconf = vsTransformGetDefaultConfig("test_campathopt");
   VSTransformData td;
 
   test_bool(vsTransformDataInit(&td, &tdconf, &testdata->fi, &testdata->fi) == VS_OK);
-  int num=6;
-  VSTransformations trans=genSmoothTransforms(num);
-  VSTransformations transP=genSmoothTransforms(num);
-  writeTransforms(&trans,"transforms1.log");
+
+  VSTransformations trans  = genSmoothTransforms(num, min_perturb);
+  VSTransformations transP = genSmoothTransforms(num, min_perturb);
+  if(store) writeTransforms(&trans,"transforms1.log");
 
   test_bool(transformsDifference(&trans,&transP)==0.0);
-  perturbTransforms(&transP,2,0);
-  writeTransforms(&transP,"transformsP.log");
+  perturbTransforms(&transP,2,min_perturb);
+  if(store) writeTransforms(&transP,"transformsP.log");
 
   VSTransformationsLS transLSP = transformationsAZtoLS(&transP);
 
@@ -285,20 +283,25 @@ void test_campathopt(TestData* testdata){
 
   VSTransformationsLS transO = copyTransformsLS(&transLSP);
 
+  //  td.conf.pathD1Weight=1;
+  //  td.conf.pathD2Weight=0;
+  //  td.conf.pathD3Weight=0;
+  //  td.conf.maxZoom=10;
+  //  TODO other algos
   cameraPathOptimalL1Internal(&td, &transO);
 
-  writeTransformsLS(&transO,"transformsO.log");
+  if(store) writeTransformsLS(&transO,"transformsO.log");
   VSTransformationsLS transS = stabilizeTransformsLS(&transLSP,&transO);
-  writeTransformsLS(&transS,"transformsS.log");
+  if(store) writeTransformsLS(&transS,"transformsS.log");
 
   VSTransformationsLS afterD1 = derivativeTransformsLS(&transS);
   VSTransformationsLS afterD2g = getGrundmannDerivative2(&transLSP,&transO);
   VSTransformationsLS afterD2 = derivativeTransformsLS(&afterD1);
   VSTransformationsLS afterD3 = derivativeTransformsLS(&afterD2);
-  writeTransformsLS(&afterD1,"transformsD1a.log");
-  writeTransformsLS(&afterD2,"transformsD2a.log");
-  writeTransformsLS(&afterD2g,"transformsD2ag.log");
-  writeTransformsLS(&afterD3,"transformsD3a.log");
+  if(store)   writeTransformsLS(&afterD1,"transformsD1a.log");
+  if(store)   writeTransformsLS(&afterD2,"transformsD2a.log");
+  if(store)   writeTransformsLS(&afterD2g,"transformsD2ag.log");
+  if(store)   writeTransformsLS(&afterD3,"transformsD3a.log");
 
   double d1_before= totalSumTransformsLS(&beforeD1);
   double d1_after= totalSumTransformsLS(&afterD1);
@@ -310,50 +313,47 @@ void test_campathopt(TestData* testdata){
   test_bool(d1_after < d1_before);
   test_bool(d2_after < d2_before);
   test_bool(d3_after < d3_before);
-  printf("cam-path optimizer: L1Opt: D1: %f -> %f \t D2: %f -> %f  %f \t D3: %f -> %f \n", d1_before, d1_after, d2_before, d2_after, d2_afterg, d3_before, d3_after);
+  printf("cam-path optimizer: %s: D1: %f -> %f \t D2: %f -> %f (%f) \t D3: %f -> %f \n",
+         vsGetCamPathAlgoName(algo),
+         d1_before, d1_after, d2_before, d2_after, d2_afterg, d3_before, d3_after);
 
-  writeTransformsLS(&transS,"transformsS.log");
-
+  if(store)   writeTransformsLS(&transS,"transformsS.log");
   vsTransformDataCleanup(&td);
 }
 
-
-void test_campathopt_old(TestData* testdata){
+void test_campathopt_AZ(TestData* testdata, VSCamPathAlgo algo, int num, int store, int min_perturb){
   VSTransformConfig tdconf = vsTransformGetDefaultConfig("test_campathopt");
   VSTransformData td;
 
   test_bool(vsTransformDataInit(&td, &tdconf, &testdata->fi, &testdata->fi) == VS_OK);
-  int num=6;
-  VSTransformations trans=genSmoothTransforms(num);
-  VSTransformations transP=genSmoothTransforms(num);
-  writeTransforms(&trans,"transforms1.log");
+
+  VSTransformations trans  = genSmoothTransforms(num, min_perturb);
+  VSTransformations transP = genSmoothTransforms(num, min_perturb);
+  if(store) writeTransforms(&trans,"transforms1.log");
 
   test_bool(transformsDifference(&trans,&transP)==0.0);
-  perturbTransforms(&transP,2,1);
-  writeTransforms(&transP,"transformsP.log");
+  perturbTransforms(&transP, 2, min_perturb);
+  if(store) writeTransforms(&transP,"transformsP.log");
 
   VSTransformations beforeD1 = derivativeTransforms(&transP);
   VSTransformations beforeD2 = derivativeTransforms(&beforeD1);
   VSTransformations beforeD3 = derivativeTransforms(&beforeD2);
 
-  td.conf.camPathAlgo=
-    VSOptimalL1;
-  // VSGaussian;
-  //VSAvg;
+  td.conf.camPathAlgo=algo;
 
   VSTransformations transO = copyTransforms(&transP);
 
   cameraPathOptimization(&td, &transO);
-  writeTransforms(&transO,"transformsO.log");
+  if(store) writeTransforms(&transO,"transformsO.log");
   VSTransformations transS = stabilizeTransforms(&transP,&transO);
-  writeTransforms(&transS,"transformsS.log");
+  if(store) writeTransforms(&transS,"transformsS.log");
 
   VSTransformations afterD1 = derivativeTransforms(&transS);
   VSTransformations afterD2 = derivativeTransforms(&afterD1);
   VSTransformations afterD3 = derivativeTransforms(&afterD2);
-  writeTransforms(&afterD1,"transformsD1a.log");
-  writeTransforms(&afterD2,"transformsD2a.log");
-  writeTransforms(&afterD3,"transformsD3a.log");
+  if(store)   writeTransforms(&afterD1,"transformsD1a.log");
+  if(store)   writeTransforms(&afterD2,"transformsD2a.log");
+  if(store)   writeTransforms(&afterD3,"transformsD3a.log");
 
   double d1_before= totalSumTransforms(&beforeD1);
   double d1_after= totalSumTransforms(&afterD1);
@@ -364,11 +364,21 @@ void test_campathopt_old(TestData* testdata){
   test_bool(d1_after < d1_before);
   test_bool(d2_after < d2_before);
   test_bool(d3_after < d3_before);
-  printf("cam-path optimizer: L1Opt: D1: %f -> %f \t D2: %f -> %f \t D3: %f -> %f \n", d1_before, d1_after, d2_before, d2_after, d3_before, d3_after);
+  printf("cam-path optimizer: %s:\t D1: %f -> %f \t D2: %f -> %f \t D3: %f -> %f \n",
+         vsGetCamPathAlgoName(algo),
+         d1_before, d1_after, d2_before, d2_after, d3_before, d3_after);
 
-  writeTransforms(&transS,"transformsS.log");
-
-
-
+  if(store) writeTransforms(&transS,"transformsS.log");
   vsTransformDataCleanup(&td);
+}
+
+void test_campathopt(TestData* testdata){
+  // FOR L1: Number of Frames
+  // 2000: 200 MB < 5 sec
+  // 20000: 1.7GB RAM, 30 sec
+
+  test_campathopt_AZ(testdata, VSAvg,       200, 0, 0);
+  test_campathopt_AZ(testdata, VSGaussian,  200, 0, 0);
+  test_campathopt_AZ(testdata, VSOptimalL1, 200, 1, 0);
+  test_campathopt_AZ(testdata, VSOptimalL1, 200, 0, 1);
 }

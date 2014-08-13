@@ -28,9 +28,9 @@ void test_localmotion2transform(TestData* testdata){
     vs_vector_del(&localmotions);
     fprintf(stderr,"%i: ",i);
     storeVSTransform(stderr,&t);
-    VSTransform orig = mult_transform_(getTestFrameTransform(i),-1.0);
+    VSTransform orig = getTestFrameTransform(i);
     VSTransform diff = sub_transforms(&t,&orig);
-    int tolerance = fabs(diff.x)<1 && fabs(diff.y)<1 && fabs(diff.alpha)<0.001;
+    int tolerance = fabs(diff.x)<0.2 && fabs(diff.y)<0.2 && fabs(diff.alpha)<0.001;
     if(!tolerance){
       fprintf(stderr,"Difference: ");
       storeVSTransform(stderr,&diff);

@@ -71,6 +71,7 @@ int getColNum(int p_e, int t, int param, int N){
 #define SET(ep,offset,param,val) ia[idx] = row, ja[idx] = getColNum(ep, t+offset, param, N), ar[idx] =  val; idx++;
 #define F(offset, param) (inversetransforms[t+(offset)].param)
 
+#ifdef TESTING
 void dumpConstraintMatrix(glp_prob *lp, int N){
   int rows = glp_get_num_rows(lp);
   int cols = glp_get_num_cols(lp);
@@ -122,7 +123,7 @@ void dumpConstraintMatrix(glp_prob *lp, int N){
   }
   fclose(f);
 }
-
+#endif // TESTING
 
 /** optimal camera path algorithm as described in
    @INPROCEEDINGS{GrundmannKwatra2011,
@@ -138,7 +139,6 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
   if (td->conf.verbose & VS_DEBUG) {
     vs_log_msg(td->conf.modName, "Optimization of camera path:");
   }
-  fprintf(stderr,"L1Opt\n");
   //assume relative transforms
   if (!td->conf.relative) {
     vs_log_error(td->conf.modName, "require relative transforms\n");
@@ -146,11 +146,11 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
   }
 
   // inclusion constraint
-  // TODO: need more documentation
+  // we have to define square area of allowe positions of the transformed frame corners
   double x2=td->fiSrc.width/2;
   double y2=td->fiSrc.height/2;
   // TODO: configurable
-  double maxZoom = 1+(10.0/100.0);
+  double maxZoom = 1+(td->conf.maxZoom/100.0);
   // size of crop frame
   double xI2=td->fiSrc.width/2 / maxZoom;
   double yI2=td->fiSrc.height/2 / maxZoom;
@@ -183,9 +183,10 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
     glp_add_cols(lp, numcols);
 
     // weights for path
-    double w1 = 10; // 10
-    double w2 = 1; // 1.0;
-    double w3 = 100; //100;
+    double w1 = td->conf.pathD1Weight; // 10
+    double w2 = td->conf.pathD2Weight; // 1.0;
+    double w3 = td->conf.pathD3Weight; // 100;
+    double wABfactor = 1000; // factor for weights on A and B wrt. X and Y
 
     for(int t=0; t< N; t++){
       if(t<N-1){
@@ -234,21 +235,22 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
     // set columns (structural variables) and weights.
     for(int t=0; t< N; t++){
       for(int p=X; p<=B; p++){
+        double factor = (p == A || p == B) ? wABfactor : 1.0;
         // params (no constraints)
         glp_set_col_bnds(lp, getColNum(P,t,p,N), GLP_FR, 0.0, 0.0);
         glp_set_obj_coef(lp, getColNum(P,t,p,N), 0.0);
         // slack variables (e1-e3) (bounded from below)
         if(t<N-1) {
           glp_set_col_bnds(lp, getColNum(E1,t,p,N), GLP_LO, 0.0, 0.0);
-          glp_set_obj_coef(lp, getColNum(E1,t,p,N), w1);
+          glp_set_obj_coef(lp, getColNum(E1,t,p,N), w1 * factor);
         }
         if(t<N-2) {
           glp_set_col_bnds(lp, getColNum(E2,t,p,N), GLP_LO, 0.0, 0.0);
-          glp_set_obj_coef(lp, getColNum(E2,t,p,N), w2);
+          glp_set_obj_coef(lp, getColNum(E2,t,p,N), w2 * factor);
         }
         if(t<N-3) {
           glp_set_col_bnds(lp, getColNum(E3,t,p,N), GLP_LO, 0.0, 0.0);
-          glp_set_obj_coef(lp, getColNum(E3,t,p,N), w3);
+          glp_set_obj_coef(lp, getColNum(E3,t,p,N), w3 * factor);
         }
       }
     }
@@ -332,21 +334,37 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
     int numentries = idx-1;
     glp_load_matrix(lp, numentries, ia, ja, ar);
 
-    dumpConstraintMatrix(lp,N);
+    // dumpConstraintMatrix(lp,N);
 
-    glp_simplex(lp, NULL);
-    //glp_interior(lp, NULL);
-    double z = glp_get_obj_val(lp);
+    // glp_simplex(lp, NULL);
+    /* double z = glp_get_obj_val(lp); */
+    /* printf("\nz = %g\n", z); */
+    /* // retrieve optimized transforms and convert them to forward transforms */
+    /* for(int t=0; t< N; t++){ */
+    /*   ts[t].x = glp_get_col_prim(lp, getColNum(P,t,X,N)); */
+    /*   ts[t].y = glp_get_col_prim(lp, getColNum(P,t,Y,N)); */
+    /*   ts[t].a = glp_get_col_prim(lp, getColNum(P,t,A,N)); */
+    /*   ts[t].b = glp_get_col_prim(lp, getColNum(P,t,B,N)); */
+    /*   // storeVSTransformLS(stdout,&ts[t]); */
+    /*   ts[t]=invert_transformLS(&ts[t]); */
+    /* } */
+
+    glp_iptcp param;
+    glp_init_iptcp(&param);
+    param.ord_alg = GLP_ORD_SYMAMD;
+    glp_interior(lp, &param);
+    double z = glp_ipt_obj_val(lp);
     printf("\nz = %g\n", z);
     // retrieve optimized transforms and convert them to forward transforms
     for(int t=0; t< N; t++){
-      ts[t].x = glp_get_col_prim(lp, getColNum(P,t,X,N));
-      ts[t].y = glp_get_col_prim(lp, getColNum(P,t,Y,N));
-      ts[t].a = glp_get_col_prim(lp, getColNum(P,t,A,N));
-      ts[t].b = glp_get_col_prim(lp, getColNum(P,t,B,N));
+      ts[t].x = glp_ipt_col_prim(lp, getColNum(P,t,X,N));
+      ts[t].y = glp_ipt_col_prim(lp, getColNum(P,t,Y,N));
+      ts[t].a = glp_ipt_col_prim(lp, getColNum(P,t,A,N));
+      ts[t].b = glp_ipt_col_prim(lp, getColNum(P,t,B,N));
       storeVSTransformLS(stdout,&ts[t]);
       ts[t]=invert_transformLS(&ts[t]);
     }
+
 
     glp_delete_prob(lp);
     vs_free(ia); vs_free(ja); vs_free(ar);

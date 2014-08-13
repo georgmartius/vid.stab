@@ -1,0 +1,23 @@
+# workspace dev for cscout
+workspace vidstab {
+	project vidstab {
+		directory src {
+		  ipath "."
+			file boxblur.c campathoptimization.c frameinfo.c 	l1campathoptimization.c libvidstab.c localmotion2transform.c motiondetect.c motiondetect_opt.c 	serialize.c 	transform.c transformfixedpoint.c transformfloat.c transformtype.c vsvector.c
+		}
+		directory src/orc {
+		  ipath "../"
+ 			file motiondetectorc.c
+		}
+		directory tests {
+		  ipath "."
+		  ipath "../src"
+ 			file tests.c testutils.c testframework.c
+		}
+		directory transcode {
+		  ipath "."
+		  ipath "../src"
+ 			file filter_deshake.c  filter_stabilize.c  filter_transform.c
+		}
+	}
+}

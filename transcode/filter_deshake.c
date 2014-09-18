@@ -310,7 +310,7 @@ static int deshake_filter_video(TCModuleInstance *self,
       tc_log_error(MOD_NAME, "cannot write to file!");
       return TC_ERROR;
   }
-  motion = vsSimpleMotionsToTransform(td, &localmotions);
+  motion = vsSimpleMotionsToTransform(td->fiSrc, td->conf.modName, &localmotions);
   vs_vector_del(&localmotions);
 
   vsTransformPrepare(td, &vsFrame, &vsFrame);

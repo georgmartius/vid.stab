@@ -21,8 +21,8 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
  * Single pass filter for streaming applications(only with Transcode).
  * Virtual-tripod-mode to get a tripod experience.
 
-**NOTE:** This readme focuses mainly on using vidstab with Ffmpeg. Please see**
-[here](http://public.hronopik.de/vid.stab) **for information regarding installation, usage and examples for using vidstab with Transcode. Or contact me at georg dot martius @ web dot de
+**NOTE:** This readme focuses mainly on using vidstab with Ffmpeg. See 
+[here](http://public.hronopik.de/vid.stab) for information regarding installation, usage and examples for using vidstab with Transcode. Or contact me at georg dot martius @ web dot de
   
 ##System Requirements
  * A Linux-based system
@@ -37,10 +37,10 @@ For using vidstab library with ffmpeg, ffmpeg must to be configured using `--ena
 #####Installing vidstab library:
     
 ```shell    
-    cd path/to/vid.stab/dir/
-    cmake .
-    make
-    sudo make install
+cd path/to/vid.stab/dir/
+cmake .
+make
+sudo make install
 ```
 
 #####Installing ffmpeg:   
@@ -97,23 +97,18 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
 
 <dl>
   <dt><b>result</b></dt>
-  <dd>Set the path to the file used to write the transforms information. Default value is `transforms.trf`.</dd>
-  <br>
+  <dd>Set the path to the file used to write the transforms information. Default value is <b>transforms.trf</b>.</dd>
   <dt><b>shakiness</b></dt>
   <dd>Set the shakiness of input video or quickness of camera. It accepts an integer in the range 1-10, a value of 1 means little shakiness, a value of 10 means strong shakiness. Default value is 5.</dd>
-  <br>
   <dt><b>accuracy</b></dt>
   <dd>Set the accuracy of the detection process. It must be a value in the range 1-15. A value of 1 means low accuracy, a value of 15 means high accuracy. Default value is 15.</dd>
-  <br>
   <dt><b>stepsize</b></dt>
   <dd>Set stepsize of the search process. The region around minimum is scanned with 1 pixel resolution. Default value is 6.</dd>
-  <br>
   <dt><b>mincontrast</b></dt>
   <dd>Set minimum contrast. Any measurement field having contrast below this value is discarded. Must be a floating point value in the range 0-1. Default value is 0.3.</dd>
-  <br>
   <dt><b>tripod</b></dt>
-  <dd>  Set reference frame number for tripod mode.  If enabled, the motion of the frames is compared to a reference frame in the filtered stream, identified by the specified number. The intention is to compensate all movements in a more-or-less static scene and keep the camera view absolutely still. If set to 0, it is disabled. The frames are counted starting from 1.<br>*NOTE*: If this mode is used in first pass then it should also be used in second pass.</dd>
-  <br>
+  <dd>  Set reference frame number for tripod mode.  If enabled, the motion of the frames is compared to a reference frame in the filtered stream, identified by the specified number. The intention is to compensate all movements in a more-or-less static scene and keep the camera view absolutely still. If set to 0, it is disabled. The frames are counted starting from 1.
+  <br>NOTE: If this mode is used in first pass then it should also be used in second pass.</dd>
   <dt><b>show</b></dt>
   <dd>Show fields and transforms in the resulting frames for visual analysis. It accepts an integer in the range 0-2. Default value is 0, which disables any visualization.</dd>
 </dl>
@@ -126,9 +121,9 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
 ffmpeg -i input.mp4 -vf vidstabdetect -f null -
 ```  
   
-  *` -f null - ` makes sure that no output is produced as this is just the first pass. This in-turn results in faster speed*
+  *` -f null - ` makes sure that no output is produced as this is just the first pass. This in-turn results in faster speed.*
   
-  Analyzing strongly shaky video and putting the results in file mytransforms.trf:
+  Analyzing strongly shaky video and putting the results in file `mytransforms.trf`:
 ```shell
 ffmpeg -i input.mp4 -vf vidstabdetect=shakiness=10:accuracy=15:result="mytransforms.trf" -f null -
 ```
@@ -146,59 +141,46 @@ ffmpeg -i input.mp4 -vf vidstabdetect=shakiness=5:show=1 dummy_output.mp4
 #####Second pass (vidstabtransform filter): 
 <dl>
   <dt><b>input</b></dt>
-  <dd>Set path to the file used to read the transforms. Default value is `transforms.trf`.</dd>
-  <br>
+  <dd>Set path to the file used to read the transforms. Default value is <b>transforms.trf</b>.</dd>
   <dt><b>smoothing</b></dt>
-  <dd>Set the number of frames (value\*2 + 1), used for lowpass filtering the camera movements. Default value is 10.<br>For example, a number of 10 means that 21 frames are used (10 in the past and 10 in the future) to smoothen the motion in the video. A larger value leads to a smoother video, but limits the acceleration of the camera (pan/tilt movements). 0 is a special case where a static camera is simulated.</dd>
-  <br>
+  <dd>Set the number of frames (value*2 + 1), used for lowpass filtering the camera movements. Default value is 10.<br>For example, a number of 10 means that 21 frames are used (10 in the past and 10 in the future) to smoothen the motion in the video. A larger value leads to a smoother video, but limits the acceleration of the camera (pan/tilt movements). 0 is a special case where a static camera is simulated.</dd>
   <dt><b>optalgo</b></dt>
   <dd>Set the camera path optimization algorithm. Accepted values are:
-  <br><i><b>gauss:</b></i> Gaussian kernel low-pass filter on camera motion (default)
-  <br><i><b>avg:</b></i> Averaging on transformations</dd>
-  <br>
+  <br><i><b>gauss:</b></i> Gaussian kernel low-pass filter on camera motion (default).
+  <br><i><b>avg:</b></i> Averaging on transformations.</dd>
   <dt><b>maxshift</b></dt>
   <dd>Set maximal number of pixels to translate frames. Default value is -1, meaning: no limit.</dd>
-  <br>
   <dt><b>maxangle</b></dt>
-  <dd>Set maximal angle in radians (degree\*PI/180) to rotate frames. Default value is -1, meaning: no limit.</dd>
-  <br>
+  <dd>Set maximal angle in radians (degree*PI/180) to rotate frames. Default value is -1, meaning: no limit.</dd>
   <dt><b>crop</b></dt>
   <dd>  Specify how to deal with empty frame borders that may be shrinked-in due to movement compensation. Available values are:
-  <br><i><b>keep</b></i>: Keep image information from previous frame (default)
-  <br><i><b>black</b></i>: Fill the border-areas black</dd>
-  <br>
+  <br><i><b>keep</b></i>: Keep image information from previous frame (default).
+  <br><i><b>black</b></i>: Fill the border-areas black.</dd>
   <dt><b>invert</b></dt>
   <dd>Invert transforms if set to 1. Default value is 0.</dd>
-  <br>
   <dt><b>relative</b></dt>
   <dd>Consider transforms as relative to previous frame if set to 1, absolute if set to 0. Default value is 0.</dd>
-  <br>
   <dt><b>zoom</b></dt>
   <dd>Set percentage to zoom. A positive value will result in a zoom-in effect, a negative value in a zoom-out effect. Default value is 0 (no zoom).</dd>
-  <br>
   <dt><b>optzoom</b></dt>
   <dd>Set optimal zooming to avoid blank-borders. Accepted values are:
-  <br><i><b>‘0’</b></i>: Disabled
-  <br><i><b>‘1’</b></i>: Optimal static zoom value is determined (only very strong movements will lead to visible borders) (default)
-  <br><i><b>‘2’</b></i>: Optimal adaptive zoom value is determined (no borders will be visible), see zoomspeed
+  <br><i><b>0</b></i>: Disabled.
+  <br><i><b>1</b></i>: Optimal static zoom value is determined (only very strong movements will lead to visible borders) (default).
+  <br><i><b>2</b></i>: Optimal adaptive zoom value is determined (no borders will be visible), see <b>zoomspeed</b>.
   <br>Note that the value given at zoom is added to the one calculated here.</dd>
-  <br>
   <dt><b>zoomspeed</b></dt>
   <dd>Set percent to zoom maximally each frame (enabled when optzoom is set to 2). Range is from 0 to 5, default value is 0.25.</dd>
-  <br>
   <dt><b>interpol</b></dt>
   <dd>Specify type of interpolation. Available values are:
-  <br><i><b>no</b></i>: No interpolation
-  <br><i><b>linear</b></i>: Linear only horizontal
-  <br><i><b>bilinear</b></i>: Linear in both directions (default)
-  <br><i><b>bicubic</b></i>: Cubic in both directions (slow speed)
-  <br>  
+  <br><i><b>no</b></i>: No interpolation.
+  <br><i><b>linear</b></i>: Linear only horizontal.
+  <br><i><b>bilinear</b></i>: Linear in both directions (default).
+  <br><i><b>bicubic</b></i>: Cubic in both directions (slow speed).
   <dt><b>tripod</b></dt>
-  <dd>Enables virtual tripod mode if set to 1, which is equivalent to `relative=0:smoothing=0`. Default value is 0.
-  <br>*NOTE*: If this mode has been used in first pass then only it should be used in second pass.</dd>
-  <br>
+  <dd>Enables virtual tripod mode if set to 1, which is equivalent to <b>relative=0:smoothing=0</b>. Default value is 0.
+  <br>NOTE: If this mode has been used in first pass then only it should be used in second pass.</dd>
   <dt><b>debug</b></dt>
-  <dd>Increase log verbosity if set to 1. Also the detected global motions are written to the temporary file `global_motions.trf`. Default value is 0. </dd>
+  <dd>Increase log verbosity if set to 1. Also the detected global motions are written to the temporary file  <b>global_motions.trf</b> . Default value is 0. </dd>
  
 </dl>  
   

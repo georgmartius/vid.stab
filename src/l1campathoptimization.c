@@ -336,7 +336,7 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
 
     // dumpConstraintMatrix(lp,N);
 
-    // glp_simplex(lp, NULL);
+    /* glp_simplex(lp, NULL); */
     /* double z = glp_get_obj_val(lp); */
     /* printf("\nz = %g\n", z); */
     /* // retrieve optimized transforms and convert them to forward transforms */
@@ -345,7 +345,7 @@ int cameraPathOptimalL1Internal(VSTransformData* td, VSTransformationsLS* trans)
     /*   ts[t].y = glp_get_col_prim(lp, getColNum(P,t,Y,N)); */
     /*   ts[t].a = glp_get_col_prim(lp, getColNum(P,t,A,N)); */
     /*   ts[t].b = glp_get_col_prim(lp, getColNum(P,t,B,N)); */
-    /*   // storeVSTransformLS(stdout,&ts[t]); */
+    /*   storeVSTransformLS(stdout,&ts[t]); */
     /*   ts[t]=invert_transformLS(&ts[t]); */
     /* } */
 

@@ -233,6 +233,16 @@ void vsTransformationsCleanup(VSTransformations* trans){
   trans->len=0;
 }
 
+void writeTransforms_DBG(VSTransformations* trans, char* filename){
+  FILE* f = fopen(filename,"w");
+  if(f){
+    for(int i=0; i<trans->len; i++){
+      storeVSTransform(f,&(trans->ts[i]));
+    }
+    fclose(f);
+  }
+}
+
 /**
  * vsPreprocessTransforms: camera path optimization, relative to absolute conversion,
  *  and cropping of too large transforms.
@@ -251,6 +261,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
 {
   // works inplace on trans
   if(cameraPathOptimization(td, trans)!=VS_OK) return VS_ERROR;
+  writeTransforms_DBG(trans,"test.dat");
   VSTransform* ts = trans->ts;
   /*  invert? */
   if (td->conf.invert) {

@@ -1,3 +1,6 @@
+2.0
+	L1 camera path optimization
+
 0.98...
 	small measurement fields added that only scan around mean
 	diagnostics in show=1 and show=2 use lines now.

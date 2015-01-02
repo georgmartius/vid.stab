@@ -283,10 +283,10 @@ void test_campathopt_LS(TestData* testdata, VSCamPathAlgo algo, int num, int sto
 
   VSTransformationsLS transO = copyTransformsLS(&transLSP);
 
-  //  td.conf.pathD1Weight=1;
-  //  td.conf.pathD2Weight=0;
-  //  td.conf.pathD3Weight=0;
-  //  td.conf.maxZoom=10;
+  /* td.conf.pathD1Weight=1; */
+  /* td.conf.pathD2Weight=0; */
+  /* td.conf.pathD3Weight=0; */
+  /* td.conf.maxZoom=10; */
   //  TODO other algos
   cameraPathOptimalL1Internal(&td, &transO);
 
@@ -340,6 +340,10 @@ void test_campathopt_AZ(TestData* testdata, VSCamPathAlgo algo, int num, int sto
   VSTransformations beforeD3 = derivativeTransforms(&beforeD2);
 
   td.conf.camPathAlgo=algo;
+  /* td.conf.pathD1Weight=1; */
+  /* td.conf.pathD2Weight=0; */
+  /* td.conf.pathD3Weight=0; */
+  /* td.conf.maxZoom=10; */
 
   VSTransformations transO = copyTransforms(&transP);
 
@@ -377,8 +381,8 @@ void test_campathopt(TestData* testdata){
   // 2000: 200 MB < 5 sec
   // 20000: 1.7GB RAM, 30 sec
 
-  test_campathopt_AZ(testdata, VSAvg,       200, 0, 0);
-  test_campathopt_AZ(testdata, VSGaussian,  200, 0, 0);
-  test_campathopt_AZ(testdata, VSOptimalL1, 200, 1, 0);
-  test_campathopt_AZ(testdata, VSOptimalL1, 200, 0, 1);
+  /* test_campathopt_AZ(testdata, VSAvg,       200, 0, 0); */
+  /* test_campathopt_AZ(testdata, VSGaussian,  200, 0, 0); */
+  /* test_campathopt_AZ(testdata, VSOptimalL1, 200, 1, 0); */
+  test_campathopt_AZ(testdata, VSOptimalL1, 200, 0, 0);
 }

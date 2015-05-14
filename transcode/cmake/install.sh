@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PATHS="/usr/lib/transcode /usr/local/lib/transcode $HOME/lib/transcode"
+PATHS="/usr/lib/transcode /usr/local/lib/transcode /usr/lib64/transcode /usr/local/lib64/transcode $HOME/lib/transcode  $HOME/lib64/transcode"
 for D in $PATHS; do
     if [ -d "$D" ]; then
         echo -n "Do you want to install the plugins to $D ? [y/N] ";

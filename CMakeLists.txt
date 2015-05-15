@@ -17,7 +17,7 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
 
 # determine lib suffix
 get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
-if (${LIB64} STREQUAL "TRUE")
+if ("${LIB64}" STREQUAL "TRUE")
     set(LIBSUFFIX 64)
 else()
     set(LIBSUFFIX "")

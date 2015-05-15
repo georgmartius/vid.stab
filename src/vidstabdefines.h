@@ -67,6 +67,7 @@ typedef int (*vs_log_t) (int type, const char* tag, const char* format, ...);
 typedef char* (*vs_strdup_t) (const char* s);
 
 extern vs_log_t vs_log;
+extern int vs_log_level;
 
 extern vs_malloc_t vs_malloc;
 extern vs_realloc_t vs_realloc;
@@ -82,6 +83,7 @@ extern int VS_MSG_TYPE;
 
 extern int VS_ERROR;
 extern int VS_OK;
+
 
 #define vs_log_error(tag, format, args...) \
     vs_log(VS_ERROR_TYPE, tag, format , ## args)

@@ -37,17 +37,19 @@ void* _zalloc(size_t size){
 
 /// logging function
 int _vs_log(int type, const char* tag, const char* format, ...){
-    fprintf(stderr,"%s (%s):",
-            type == VS_ERROR_TYPE ? "Error: " :
-            type == VS_WARN_TYPE  ? "Warn:  " :
-            type == VS_INFO_TYPE  ? "Info:  " :
-            type == VS_MSG_TYPE   ? "Msg:   " : "Unknown",
-            tag);
-    va_list ap;
-    va_start (ap, format);
-    vfprintf (stderr, format, ap);
-    va_end (ap);
-    fprintf(stderr,"\n");
+    if(vs_log_level >= type){
+        fprintf(stderr,"%s (%s):",
+                type == VS_ERROR_TYPE ? "Error: " :
+                type == VS_WARN_TYPE  ? "Warn:  " :
+                type == VS_INFO_TYPE  ? "Info:  " :
+                type == VS_MSG_TYPE   ? "Msg:   " : "Unknown",
+                tag);
+        va_list ap;
+        va_start (ap, format);
+        vfprintf (stderr, format, ap);
+        va_end (ap);
+        fprintf(stderr,"\n");
+    }
     return 0;
 }
 
@@ -67,6 +69,8 @@ int VS_MSG_TYPE   = 3;
 
 int VS_ERROR     = -1;
 int VS_OK        = 0;
+
+int vs_log_level = 4;
 
 /*
  * Local variables:

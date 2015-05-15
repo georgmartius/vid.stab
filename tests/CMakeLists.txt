@@ -8,6 +8,8 @@ project (vid.stab)
 SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
+option(USE_OMP "use parallelization use OMP" ON)
+
 #add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING  -std=gnu99)
 add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING -std=gnu99)
 find_package(Orc)
@@ -40,4 +42,3 @@ endif()
 if(USE_OMP)
 target_link_libraries(tests gomp)
 endif()
-

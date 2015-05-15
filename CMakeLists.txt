@@ -45,6 +45,10 @@ if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 endif()
 
+if(USE_OMP)
+add_definitions(-fopenmp -DUSE_OMP)
+endif()
+
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c

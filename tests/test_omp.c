@@ -4,11 +4,11 @@ int openmptest(){
   long int sum=0;
   int i,j;
 
-#pragma omp parallel for shared(sum)
+#pragma omp parallel for shared(sum) private(i,j)
   for (i=0; i<10;i++){
     printf("num theads: %i\n",omp_get_thread_num());
     long int k=0;
-    for (j=0; j<40000;j++){
+    for (j=0; j<4000000;j++){
       k+=sqrt(j);
     }
 #pragma omp atomic
@@ -20,6 +20,7 @@ int openmptest(){
 }
 int openmp(){
   fprintf(stderr, "Processors: %i, Max # theads: %i\n", omp_get_num_procs(), omp_get_max_threads());
+  int num = omp_get_max_threads();
 
   int time, timeref;
   omp_set_dynamic( 0 );
@@ -28,10 +29,10 @@ int openmp(){
   time = openmptest();
   fprintf(stderr,"***C    time: %i ms\n",  time);
   timeref=time;
-  omp_set_dynamic( 0 );
-  omp_set_num_threads( 2 );
+  omp_set_dynamic( 1 );
+  omp_set_num_threads( num);
   time = openmptest();
-  fprintf(stderr,"***C (2)time: %i ms, Speedup %f\n", time,
+  fprintf(stderr,"***C (%i)time: %i ms, Speedup %f\n", num, time,
           (double)timeref/time);
   omp_set_dynamic( 1 );
   return 1;

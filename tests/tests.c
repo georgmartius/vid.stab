@@ -51,6 +51,7 @@ int main(int argc, char** argv){
   int all = contains(argv,argc,"--all", "Perform all tests")!=0;
 
   TestData testdata;
+  memset(&testdata,0,sizeof(TestData));
   vsFrameInfoInit(&testdata.fi,1280, 720, PF_YUV420P);
   vsFrameInfoInit(&testdata.fi_color, 640, 360, PF_GRAY8);
 
@@ -82,7 +83,9 @@ int main(int argc, char** argv){
   }
 
 #ifdef USE_OMP
-  openmp();
+  if(all || contains(argv,argc,"--testOMP", "openmp")){
+    UNIT(openmp());
+  }
 #endif
 
   if(all || contains(argv,argc,"--testTI", "transform_implementation")){
@@ -126,8 +129,10 @@ int main(int argc, char** argv){
   }
 
   // free
-  for(int i=0; i<FRAMENUM; i++)
-    vsFrameFree(&testdata.frames[i]);
+  for(int i=0; i<FRAMENUM; i++){
+    if(&testdata.frames[i])
+      vsFrameFree(&testdata.frames[i]);
+  }
 
   return unittest_summary();
 }

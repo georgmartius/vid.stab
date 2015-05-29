@@ -67,11 +67,14 @@ set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERS
 
 
 target_link_libraries(vidstab m)
+set(PKG_EXTRA_LIBS -lm)
 if(ORC_FOUND)
 target_link_libraries(vidstab ${ORC_LIBRARIES})
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${ORC_LIBRARIES}")
 endif()
 if(USE_OMP)
 target_link_libraries(vidstab gomp)
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp")
 endif()
 
 

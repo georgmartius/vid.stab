@@ -303,7 +303,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
       fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
 
       for (k = 0; k < channels; k++) { // iterate over colors
-        uint8_t *dest = &D_2[x + y * td->destbuf.linesize[0]+k];
+        uint8_t *dest = &D_2[x * channels + y * td->destbuf.linesize[0] + k];
         interpolateN(dest, x_s, y_s, D_1, td->src.linesize[0],
                      td->fiSrc.width, td->fiSrc.height,
                      channels, k, td->conf.crop ? 16 : *dest);

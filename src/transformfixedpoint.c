@@ -238,11 +238,12 @@ inline void interpolateN(uint8_t *rv, fp16 x, fp16 y,
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
-  if (ix_f < 0 || ix_f > width-1 || iy_f < 0 || iy_f > height - 1) {
+  int32_t ix_c = ix_f + 1;
+  int32_t iy_c = iy_f + 1;
+  if (ix_f < 0 || ix_f > width-1 || iy_f < 0 || iy_f > height - 1
+          || ix_c < 0 || ix_c > width-1 || iy_c < 0 || iy_c > height - 1) {
     *rv = def;
   } else {
-    int32_t ix_c = ix_f + 1;
-    int32_t iy_c = iy_f + 1;
     short v1 = PIXN(img, img_linesize, ix_c, iy_c, N, channel);
     short v2 = PIXN(img, img_linesize, ix_c, iy_f, N, channel);
     short v3 = PIXN(img, img_linesize, ix_f, iy_c, N, channel);

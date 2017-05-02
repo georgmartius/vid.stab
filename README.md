@@ -1,4 +1,4 @@
-#VidStab
+# VidStab
 
 Vidstab is a video stabilization library which can be plugged-in with Ffmpeg and Transcode.
 
@@ -24,17 +24,17 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
 **NOTE:** This readme focuses mainly on using vidstab with Ffmpeg. See 
 [here](http://public.hronopik.de/vid.stab) for information regarding installation, usage and examples for using vidstab with Transcode. Or contact me at georg dot martius @ web dot de
   
-##System Requirements
+## System Requirements
  * A Linux-based system
  * ffmpeg source code
  * Cmake
   
-##Installation Instructions
+## Installation Instructions
 
 For using vidstab library with ffmpeg, ffmpeg must to be configured using `--enable-libvidstab ` option.
 
-###Default Build and Installation:
-#####Installing vidstab library:
+### Default Build and Installation:
+##### Installing vidstab library:
     
 ```shell    
 cd path/to/vid.stab/dir/
@@ -43,7 +43,7 @@ make
 sudo make install
 ```
 
-#####Installing ffmpeg:   
+##### Installing ffmpeg:   
    
 ```shell    
 cd path/to/ffmpeg/dir/
@@ -52,8 +52,8 @@ make
 sudo make install
 ```
 
-###Alternatively one can install vidstab into a custom directory this way:
-#####Installing vidstab library:
+### Alternatively one can install vidstab into a custom directory this way:
+##### Installing vidstab library:
 
 ```shell
 cd path/to/vid.stab/dir/
@@ -62,7 +62,7 @@ make
 sudo make install
 ```
 
-#####Installing ffmpeg:
+##### Installing ffmpeg:
 
 ```shell
 cd path/to/ffmpeg/dir/
@@ -78,7 +78,7 @@ Before running ffmpeg for the first time, make sure to export `LD_LIBRARY_PATH` 
 export LD_LIBRARY_PATH=path/to/install_dir/lib:$LD_LIBRARY_PATH
 ```    
 
-##Usage instructions
+## Usage instructions
 
 **Currently with ffmpeg, vidstab library must run in two-pass mode.** The first pass employs the **vidstabdetect** filter and the second pass uses the **vidstabtransform** filter. 
 
@@ -91,9 +91,9 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
 
 *See [the list of ffmpeg filters](http://www.ffmpeg.org/ffmpeg-filters.html) to know more about vidstabdetect, vidstabtransform and all other filters available with ffmpeg.*
 
-###Available options with vidstab filters:
+### Available options with vidstab filters:
 
-#####First pass (vidstabdetect filter):
+##### First pass (vidstabdetect filter):
 
 <dl>
   <dt><b>result</b></dt>
@@ -115,7 +115,7 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
 
   
 
-#####Examples:
+##### Examples:
   Use default values:
 ```shell
 ffmpeg -i input.mp4 -vf vidstabdetect -f null -
@@ -138,7 +138,7 @@ ffmpeg -i input.mp4 -vf vidstabdetect=show=1 dummy_output.mp4
 ffmpeg -i input.mp4 -vf vidstabdetect=shakiness=5:show=1 dummy_output.mp4
 ```  
   
-#####Second pass (vidstabtransform filter): 
+##### Second pass (vidstabtransform filter): 
 <dl>
   <dt><b>input</b></dt>
   <dd>Set path to the file used to read the transforms. Default value is <b>transforms.trf</b>.</dd>
@@ -184,7 +184,7 @@ ffmpeg -i input.mp4 -vf vidstabdetect=shakiness=5:show=1 dummy_output.mp4
  
 </dl>  
   
-#####Examples:
+##### Examples:
   Using default values:
 ```shell  
 ffmpeg -i input.mp4 -vf vidstabtransform,unsharp=5:5:0.8:3:3:0.4 out_stabilized.mp4
@@ -201,7 +201,7 @@ Smoothening the video even more:
 ```shell
 ffmpeg -i input.mp4 -vf vidstabtransform=smoothing=30:input="mytransforms.trf" out_stabilized.mp4
 ```
-##Developement/Contributing
+## Developement/Contributing
 
 Vidstab is an open source library - pull requests are very welcome. Some things you might like to help us out with:
 

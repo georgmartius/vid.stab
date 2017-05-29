@@ -64,6 +64,7 @@ VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName){
   conf.contrastThreshold = 0.25;
   conf.show              = 0;
   conf.modName           = modName;
+  conf.numThreads        = 0;
   return conf;
 }
 
@@ -87,6 +88,12 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
                 md->fi.pFormat);
     return VS_ERROR;
   }
+
+#ifdef USE_OMP
+  if(md->conf.numThreads==0)
+    md->conf.numThreads=VS_MAX(omp_get_max_threads()*0.8,1);
+  vs_log_info(md->conf.modName, "Multitheading: use %i threads\n",md->conf.numThreads);
+#endif
 
   vsFrameAllocate(&md->prev, &md->fi);
   if (vsFrameIsNull(&md->prev)) {
@@ -716,7 +723,8 @@ LocalMotions calcTransFields(VSMotionDetect* md,
   VSVector goodflds = selectfields(md, fields, contrastfunc);
   // use all "good" fields and calculate optimal match to previous frame
 #ifdef USE_OMP
-#pragma omp parallel for shared(goodflds, md, localmotions, fs) // does not bring speedup
+  omp_set_num_threads(md->conf.numThreads);
+#pragma omp parallel for shared(goodflds, md, localmotions)
 #endif
   for(int index=0; index < vs_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;
@@ -728,6 +736,7 @@ LocalMotions calcTransFields(VSMotionDetect* md,
       fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
               m.f.x + m.v.x, m.f.y + m.v.y, m.match, m.contrast);
 #endif
+#pragma omp critical(localmotions_append)
       vs_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
     }
   }

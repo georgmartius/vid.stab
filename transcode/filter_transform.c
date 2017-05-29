@@ -144,11 +144,11 @@ static int transform_configure(TCModuleInstance *self,
         optstr_get(options, "maxshift",  "%d", &conf.maxShift);
         optstr_get(options, "maxangle", "%lf", &conf.maxAngle);
         optstr_get(options, "smoothing", "%d", &conf.smoothing);
-        optstr_get(options, "crop"     , "%d", (int*)&conf.crop);
         optstr_get(options, "invert"   , "%d", &conf.invert);
         optstr_get(options, "relative" , "%d", &conf.relative);
         optstr_get(options, "zoom"     ,"%lf", &conf.zoom);
         optstr_get(options, "optzoom"  , "%d", &conf.optZoom);
+        optstr_get(options, "zoomspeed", "%lf",&conf.zoomSpeed);
         optstr_get(options, "interpol" , "%d", (int*)(&conf.interpolType));
         optstr_get(options, "sharpen"  ,"%lf", &fd->sharpen);
         if(optstr_lookup(options, "tripod")){
@@ -178,6 +178,9 @@ static int transform_configure(TCModuleInstance *self,
                     conf.invert ? "True" : "False");
         tc_log_info(MOD_NAME, "    zoom      = %f", conf.zoom);
         tc_log_info(MOD_NAME, "    optzoom   = %d", conf.optZoom);
+        if(conf.optZoom==2){
+            tc_log_info(MOD_NAME, "    zoomspeed = %f", conf.zoomSpeed);
+        }
         tc_log_info(MOD_NAME, "    interpol  = %s",
                     getInterpolationTypeName(conf.interpolType));
         tc_log_info(MOD_NAME, "    sharpen   = %f", fd->sharpen);

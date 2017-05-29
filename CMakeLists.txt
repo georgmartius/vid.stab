@@ -7,10 +7,23 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 
-set(MAJOR_VERSION 0)
-set(MINOR_VERSION 9)
-set(PATCH_VERSION 8)
+set(MAJOR_VERSION 1)
+set(MINOR_VERSION 1)
+set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
+
+option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
+       ON)
+
+option(USE_OMP "use parallelization use OMP" ON)
+
+# determine lib suffix
+get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
+if (LIB64 STREQUAL "TRUE")
+    set(LIBSUFFIX 64)
+else()
+    set(LIBSUFFIX "")
+endif()
 
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
@@ -32,6 +45,10 @@ if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 endif()
 
+if(USE_OMP)
+add_definitions(-fopenmp -DUSE_OMP)
+endif()
+
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
@@ -43,19 +60,21 @@ set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
 
 
 # Create the vidstab library
-# add_library (vidstab STATIC ${SOURCES})
-add_library (vidstab SHARED ${SOURCES})
+add_library (vidstab ${SOURCES})
 
 #set version of lib
 set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})
 
 
 target_link_libraries(vidstab m)
+set(PKG_EXTRA_LIBS -lm)
 if(ORC_FOUND)
 target_link_libraries(vidstab ${ORC_LIBRARIES})
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${ORC_LIBRARIES}")
 endif()
 if(USE_OMP)
 target_link_libraries(vidstab gomp)
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp")
 endif()
 
 

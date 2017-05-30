@@ -1,3 +1,4 @@
+1.1     use openMP to do parallel execution
 1.0 = 0.98 (just because of API changes the version number was bumped
 0.98...
 	small measurement fields added that only scan around mean

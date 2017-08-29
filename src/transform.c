@@ -459,7 +459,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     double prezoom = 0.;
     double postzoom = 0.;
     if(td->conf.zoom>0.){
-      prezoom = td->conf.zoom
+      prezoom = td->conf.zoom;
     } else if(td->conf.zoom < 0.){
       postzoom = td->conf.zoom;
     }

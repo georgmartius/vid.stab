@@ -455,7 +455,16 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     for (int i = 0; i < trans->len; i++) {
       zooms[i] = transform_get_required_zoom(&ts[i], w, h);
     }
-    meanzoom = mean(zooms, trans->len) + td->conf.zoom; // add global zoom
+
+    double prezoom = 0.;
+    double postzoom = 0.;
+    if(td->conf.zoom>0.){
+      prezoom = td->conf.zoom
+    } else if(td->conf.zoom < 0.){
+      postzoom = td->conf.zoom;
+    }
+
+    meanzoom = mean(zooms, trans->len) + prezoom; // add global zoom
     // forward - propagation (to make the zooming smooth)
     req = meanzoom;
     for (int i = 0; i < trans->len; i++) {
@@ -467,7 +476,7 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     req = meanzoom;
     for (int i = trans->len-1; i >= 0; i--) {
       req = VS_MAX(req, zooms[i]);
-      ts[i].zoom=VS_MAX(ts[i].zoom,req);
+      ts[i].zoom=VS_MAX(ts[i].zoom,req) + postzoom;
       req= VS_MAX(meanzoom, req - td->conf.zoomSpeed);
     }
     vs_free(zooms);

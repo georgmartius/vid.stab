@@ -44,7 +44,8 @@ void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
   short v4 = PIXEL(img, img_linesize, x_f, y_f, width, height, def);
   float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
     (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-  *rv = (uint8_t)s;
+  int32_t res = (int32_t)s;
+  *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
 }
 
 /** taken from http://en.wikipedia.org/wiki/Bicubic_interpolation for alpha=-0.5
@@ -92,7 +93,8 @@ void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
                                   PIX(img, img_linesize, x_f,   y_f+2),
                                   PIX(img, img_linesize, x_f+1, y_f+2),
                                   PIX(img, img_linesize, x_f+2, y_f+2));
-    *rv = (uint8_t)_FLT(bicub_kernel)(y-y_f, v1, v2, v3, v4);
+    int32_t res = (int32_t)_FLT(bicub_kernel)(y-y_f, v1, v2, v3, v4);
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 
@@ -115,7 +117,8 @@ void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
     short v4 = PIX(img, img_linesize, x_f, y_f);
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-    *rv = (uint8_t)s;
+    int32_t res = (int32_t)s;
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 
@@ -131,7 +134,8 @@ void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
   float v1 = PIXEL(img, img_linesize, x_c, y_n, width, height, def);
   float v2 = PIXEL(img, img_linesize, x_f, y_n, width, height, def);
   float s  = v1*(x - x_f) + v2*(x_c - x);
-  *rv = (uint8_t)s;
+  int32_t res = (int32_t)s;
+  *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
 }
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */
@@ -178,7 +182,8 @@ void _FLT(interpolateN)(uint8_t *rv, float x, float y,
     short v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
-    *rv = (uint8_t)s;
+    int32_t res = (int32_t)s;
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 

@@ -74,7 +74,8 @@ inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
     // pixel at border of source image
     short val_border = PIX(img, img_linesize, VS_MAX(VS_MIN(ix_f, width-1),0),
                            VS_MAX(VS_MIN(iy_f, height-1),0));
-    *rv = (def * c + val_border * (w - c)) / w;
+    int32_t res = (def * c + val_border * (w - c)) / w;
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }else{
     short v1 = PIXEL(img, img_linesize, ix_c, iy_c, width, height, def);
     short v2 = PIXEL(img, img_linesize, ix_c, iy_f, width, height, def);
@@ -86,7 +87,8 @@ inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
     fp16 y_c = iToFp16(iy_c);
     fp16 s   = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +
       fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y) + 1;
-    *rv = fp16ToIRound(s);
+    int32_t res = fp16ToIRound(s);
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 
@@ -151,7 +153,7 @@ inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
                             PIX(img, img_linesize, ix_f+1, iy_f+2),
                             PIX(img, img_linesize, ix_f+2, iy_f+2));
     short res = bicub_kernel(y-y_f, v1, v2, v3, v4);
-    *rv = res < 255 ? res : 255;
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 
@@ -180,7 +182,7 @@ inline void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
       fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
     // it is underestimated due to truncation, so we add one
     short res = fp16ToI(s);
-    *rv = res < 255 ? res+1 : 255;
+    *rv = (res >= 0) ? ((res < 255) ? res+1 : 255) : 0;
   }
 }
 
@@ -199,7 +201,7 @@ inline void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
   short v2 = PIXEL(img, img_linesize, ix_f, y_n, width, height, def);
   fp16 s   = v1*(x - x_f) + v2*(x_c - x);
   short res = fp16ToI(s);
-  *rv =   res < 255 ? res : 255;
+  *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
 }
 
 /** interpolateZero: nearest neighbor interpolation function, see interpolate */
@@ -209,7 +211,8 @@ inline void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
 {
   int32_t ix_n = fp16ToIRound(x);
   int32_t iy_n = fp16ToIRound(y);
-  *rv = (uint8_t) PIXEL(img, img_linesize, ix_n, iy_n, width, height, def);
+  int32_t res = PIXEL(img, img_linesize, ix_n, iy_n, width, height, def);
+  *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
 }
 
 
@@ -250,7 +253,8 @@ inline void interpolateN(uint8_t *rv, fp16 x, fp16 y,
     fp16 y_c = iToFp16(iy_c);
     fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +
       fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
-    *rv = fp16ToIRound(s);
+    int32_t res = fp16ToIRound(s);
+    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
 

@@ -74,7 +74,7 @@ set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${ORC_LIBRARIES}")
 endif()
 if(USE_OMP)
 target_link_libraries(vidstab gomp)
-set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp")
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp -lpthread")
 endif()
 
 

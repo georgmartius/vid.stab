@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 2.8.5)
 project (vid.stab)
 
 SET(CMAKE_BUILTTYPE None)
@@ -6,6 +6,7 @@ SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
+include (GNUInstallDirs)
 
 set(MAJOR_VERSION 1)
 set(MINOR_VERSION 1)
@@ -16,14 +17,6 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
        ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
-
-# determine lib suffix
-get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
-if (LIB64 STREQUAL "TRUE")
-    set(LIBSUFFIX 64)
-else()
-    set(LIBSUFFIX "")
-endif()
 
 add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
 # add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
@@ -80,13 +73,13 @@ endif()
 
 #if(!NOHEADERS)
 FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
-INSTALL(FILES ${HEADERS} DESTINATION include/vid.stab)
+INSTALL(FILES ${HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vid.stab)
 #endif()
 
 INSTALL(TARGETS vidstab
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib${LIB_SUFFIX}
-  ARCHIVE DESTINATION lib${LIB_SUFFIX}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 include(create_pkgconfig_file)

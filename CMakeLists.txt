@@ -1,8 +1,6 @@
 cmake_minimum_required (VERSION 2.8.5)
 project (vid.stab)
 
-SET(CMAKE_BUILTTYPE None)
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
@@ -13,13 +11,17 @@ set(MINOR_VERSION 1)
 set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
+# Default to release builds if no explicit build type specified.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
        ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
 
-add_definitions( -Wall -O3 -g -Wno-pointer-sign -fPIC -std=gnu99)
-# add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+add_definitions(-Wall -Wno-pointer-sign -fPIC -std=gnu99)
 
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14

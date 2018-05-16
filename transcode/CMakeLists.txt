@@ -1,16 +1,17 @@
 cmake_minimum_required (VERSION 2.6)
 project (vid.stab.transcode)
 
-SET(CMAKE_BUILTTYPE None)
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
 # set your transcode path here!
 set(TRANSCODE_ROOT ../../transcode)
 
+# Default to release builds if no explicit build type specified.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
 
-add_definitions( -Wall -O3 -Wno-pointer-sign -DTRANSCODE -std=gnu99)
-#add_definitions(  -Wall -O0 -g -Wno-pointer-sign )
+add_definitions(-Wall -Wno-pointer-sign -DTRANSCODE -std=gnu99)
 # I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)
 # find_package(Orc)  // it actually not used by any active code

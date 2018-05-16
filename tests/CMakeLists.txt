@@ -5,13 +5,16 @@
 cmake_minimum_required (VERSION 2.6)
 project (vid.stab)
 
-SET(CMAKE_BUILTTYPE None)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
 option(USE_OMP "use parallelization use OMP" ON)
 
-#add_definitions( -Wall -O3 -Wno-pointer-sign -DTESTING  -std=gnu99)
-add_definitions(  -Wall -O0 -g -Wno-pointer-sign -DTESTING -std=gnu99)
+# Default to debug builds if no explicit build type specified.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
+add_definitions(-Wall -Wno-pointer-sign -DTESTING -std=gnu99)
 find_package(Orc)
 if(ORC_FOUND)
 add_definitions( -DUSE_ORC ${ORC_DEFINITIONS})

@@ -92,7 +92,7 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
 #ifdef USE_OMP
   if(md->conf.numThreads==0)
     md->conf.numThreads=VS_MAX(omp_get_max_threads()*0.8,1);
-  vs_log_info(md->conf.modName, "Multitheading: use %i threads\n",md->conf.numThreads);
+  vs_log_info(md->conf.modName, "Multithreading: use %i threads\n",md->conf.numThreads);
 #endif
 
   vsFrameAllocate(&md->prev, &md->fi);

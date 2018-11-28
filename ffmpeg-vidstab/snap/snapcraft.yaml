@@ -1,0 +1,32 @@
+name: ffmpeg-vidstab
+version: '0.1' 
+summary: Custom ffmpeg 
+description: |
+  FFMPEG for testing
+
+grade: devel 
+confinement: devmode 
+type: app
+
+
+apps:
+  ffmpeg-vidstab:
+    command: usr/local/bin/ffmpeg
+
+parts:
+  vidstab:
+    plugin: cmake
+    source: https://github.com/jonno85uk/vid.stab.git
+    source-type: git
+
+  ffmpeg:
+    after: 
+      - vidstab
+    plugin: autotools
+    source: https://git.ffmpeg.org/ffmpeg.git
+    source-type: git
+    configflags: 
+      - --enable-gpl
+      - --enable-libvidstab
+
+      

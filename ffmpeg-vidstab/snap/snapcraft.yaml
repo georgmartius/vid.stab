@@ -2,11 +2,12 @@ name: ffmpeg-vidstab
 version: '0.1' 
 summary: Custom ffmpeg 
 description: |
-  FFMPEG for testing
+  FFMPEG for testing vid.stab
 
 grade: devel 
-confinement: devmode 
+confinement: strict 
 type: app
+base: core18
 
 
 apps:
@@ -28,5 +29,9 @@ parts:
     configflags: 
       - --enable-gpl
       - --enable-libvidstab
+    build-packages:
+      - libdrm-dev
+    stage-packages:
+      - libdrm2
 
       

@@ -724,7 +724,7 @@ LocalMotions calcTransFields(VSMotionDetect* md,
   // use all "good" fields and calculate optimal match to previous frame
 #ifdef USE_OMP
   omp_set_num_threads(md->conf.numThreads);
-#pragma omp parallel for shared(goodflds, md, localmotions)
+#pragma omp parallel for shared(goodflds, md, localmotions) // TODO: use sycl
 #endif
   for(int index=0; index < vs_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;

@@ -21,7 +21,7 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
 
 option(USE_OMP "use parallelization use OMP" ON)
 
-add_definitions(-Wall -Wno-pointer-sign -fPIC -std=gnu99)
+add_definitions(-Wall -Wno-pointer-sign -fPIC -std=gnu11)
 
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14

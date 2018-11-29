@@ -249,10 +249,6 @@ int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* 
   return i;
 }
 
-
-//     t = vsSimpleMotionsToTransform(md, &localmotions);
-
-
 /*
  * Local variables:
  *   c-file-style: "stroustrup"

@@ -222,9 +222,8 @@ void vsTransformationsCleanup(VSTransformations* trans){
 int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
   switch(td->conf.camPathAlgo){
    case VSAvg: return cameraPathAvg(td,trans);
-   case VSOptimalL1: // not yet implenented
+   case VSOptimalL1: // not yet implenented e.g return cameraPathOptimalL1(td,trans);
    case VSGaussian: return cameraPathGaussian(td,trans);
-//   case VSOptimalL1: return cameraPathOptimalL1(td,trans);
   }
   return VS_ERROR;
 }

@@ -120,10 +120,6 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
   }
 
   int minDimension = VS_MIN(md->fi.width, md->fi.height);
-//  shift: shakiness 1: height/40; 10: height/4
-//  md->maxShift = VS_MAX(4,(minDimension*md->conf.shakiness)/40);
-//  size: shakiness 1: height/40; 10: height/6 (clipped)
-//  md->fieldSize = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->conf.shakiness)/40));
 
   // fixed size and shift now
   int maxShift      = VS_MAX(16, minDimension/7);

@@ -12,26 +12,43 @@ base: core18
 
 apps:
   ffmpeg-vidstab:
-    command: usr/local/bin/ffmpeg
+    command: usr/bin/ffmpeg
 
 parts:
   vidstab:
     plugin: cmake
+    configflags:
+      - -DCMAKE_INSTALL_PREFIX:PATH=/usr
     source: https://github.com/jonno85uk/vid.stab.git
     source-type: git
+    prime:
+      - usr/lib
+      - -usr/lib/pkgconfig
 
   ffmpeg:
     after: 
-      - vidstab
+      - vidstab  
     plugin: autotools
-    source: https://git.ffmpeg.org/ffmpeg.git
+    source: https://github.com/FFmpeg/FFmpeg.git
     source-type: git
+    source-tag: n4.1
     configflags: 
+      - --prefix=/usr/
+      - --disable-doc
       - --enable-gpl
       - --enable-libvidstab
     build-packages:
-      - libdrm-dev
+      - pkg-config
+      - yasm
+      - libdrm-dev      
     stage-packages:
       - libdrm2
+    prime:
+      - usr/bin
+      - usr/lib
+      - -usr/lib/pkgconfig
+      - -usr/include
+      - -usr/share/doc
+      - -usr/share/man
 
       

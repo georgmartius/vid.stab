@@ -154,9 +154,9 @@ inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
   }
 }
 
-
+//TODO:investigate. 31% of cycles in perf-test (profile). 28% when not inlined
 /** interpolateBiLin: bi-linear interpolation function, see interpolate */
-inline void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
+void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
                              const uint8_t *img, int img_linesize,
                              int32_t width, int32_t height, uint8_t def)
 {
@@ -389,17 +389,6 @@ int transformPlanar(VSTransformData* td, VSTransform t)
 
   return VS_OK;
 }
-
-
-/*
-  some debugging stuff
-  FILE* f1 = fopen("transFP.pos","w");
-  fprintf(f1,"%i,%i:\t %f,%f\n", x, y, x_s / (float)(1<<16), y_s / (float)(1<<16));
-  fclose(f1);
-
-*/
-
-
 
 /*
  * Local variables:

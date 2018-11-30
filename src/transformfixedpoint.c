@@ -29,10 +29,9 @@
 #include "transformtype_operations.h"
 
 // the orc code does not work at the moment (BUG in ORC?)
-// #include "orc/transformorc.h"
-
-//#include <math.h>
-//#include <libgen.h>
+#ifdef TESTING
+#include "orc/transformorc.h"
+#endif
 
 #define iToFp8(v)  ((v)<<8)
 #define fToFp8(v)  ((int32_t)((v)*((float)0xFF)))
@@ -101,13 +100,15 @@ inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
     (1,t,t^2,t^3) | 2,-5, 4,-1 |  |a2|
     |-1, 3,-3, 1 |  |a3|
 */
-/* inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){ */
-/*   // (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2; */
-/*   return ((iToFp16(2*a1) + t*(-a0+a2 */
-/*             + fp16ToI(t*((2*a0-5*a1+4*a2-a3) */
-/*              + fp16ToI(t*(-a0+3*a1-3*a2+a3)) )) ) */
-/*      ) ) >> 17; */
-/* } */
+#ifdef TESTING
+ inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){ 
+  //  (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2; 
+   return ((iToFp16(2*a1) + t*(-a0+a2 
+             + fp16ToI(t*((2*a0-5*a1+4*a2-a3) 
+              + fp16ToI(t*(-a0+3*a1-3*a2+a3)) )) ) 
+      ) ) >> 17; 
+ } 
+#else
 
 inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){
   // (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2;
@@ -117,6 +118,7 @@ inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3)
                                                             + fp16ToIRound(t*(-a0+3*a1-3*a2+a3)) )) )
                        ) >> 1);
 }
+#endif
 
 /** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
 inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
@@ -394,110 +396,109 @@ int transformPlanar(VSTransformData* td, VSTransform t)
 }
 
 
+#ifdef TESTING
+  /* transformPlanar_orc: applies current transformation to frame 
+  * 
+  * Parameters: 
+  *         td: private data structure of this filter 
+  * Return value:  
+  *         0 for failture, 1 for success 
+  * Preconditions: 
+  *  The frame must be in Planar format 
+  * 
+  * Fixed-point format 32 bit integer: 
+  *  for image coords we use val<<8 
+  *  for angle and zoom we use val<<16 
+  * 
+  */ 
+ int transformPlanar_orc(VSTransformData* td, VSTransform t) 
+ { 
+     int32_t x = 0, y = 0; 
+     uint8_t *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; 
 
-/* /\** TESTING */
-/*  * transformPlanar_orc: applies current transformation to frame */
-/*  * */
-/*  * Parameters: */
-/*  *         td: private data structure of this filter */
-/*  * Return value:  */
-/*  *         0 for failture, 1 for success */
-/*  * Preconditions: */
-/*  *  The frame must be in Planar format */
-/*  * */
-/*  * Fixed-point format 32 bit integer: */
-/*  *  for image coords we use val<<8 */
-/*  *  for angle and zoom we use val<<16 */
-/*  * */
-/*  *\/ */
-/* int transformPlanar_orc(VSTransformData* td, VSTransform t) */
-/* { */
-/*     int32_t x = 0, y = 0; */
-/*     uint8_t *Y_1, *Y_2, *Cb_1, *Cb_2, *Cr_1, *Cr_2; */
+     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return VS_OK; // noop 
 
-/*     if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0) return VS_OK; // noop */
+     Y_1  = td->src;   
+     Y_2  = td->destbuf;   
+     Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height; 
+     Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height; 
+     Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4; 
+     Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4; 
+     fp16 c_s_x = iToFp16(td->fiSrc.width / 2); 
+     fp16 c_s_y = iToFp16(td->fiSrc.height / 2); 
+     int32_t c_d_x = td->fiDest.width / 2; 
+     int32_t c_d_y = td->fiDest.height / 2;     
 
-/*     Y_1  = td->src;   */
-/*     Y_2  = td->destbuf;   */
-/*     Cb_1 = td->src + td->fiSrc.width * td->fiSrc.height; */
-/*     Cb_2 = td->destbuf + td->fiDest.width * td->fiDest.height; */
-/*     Cr_1 = td->src + 5*td->fiSrc.width * td->fiSrc.height/4; */
-/*     Cr_2 = td->destbuf + 5*td->fiDest.width * td->fiDest.height/4; */
-/*     fp16 c_s_x = iToFp16(td->fiSrc.width / 2); */
-/*     fp16 c_s_y = iToFp16(td->fiSrc.height / 2); */
-/*     int32_t c_d_x = td->fiDest.width / 2; */
-/*     int32_t c_d_y = td->fiDest.height / 2;     */
+     float z     = 1.0-t.zoom/100.0; 
+     fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos 
+     fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin 
+     fp16  c_tx    = c_s_x - fToFp16(t.x); 
+     fp16  c_ty    = c_s_y - fToFp16(t.y); 
 
-/*     float z     = 1.0-t.zoom/100.0; */
-/*     fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos */
-/*     fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin */
-/*     fp16  c_tx    = c_s_x - fToFp16(t.x); */
-/*     fp16  c_ty    = c_s_y - fToFp16(t.y); */
+     /* for each pixel in the destination image we calc the source 
+      * coordinate and make an interpolation:  
+      *      p_d = c_d + M(p_s - c_s) + t  
+      * where p are the points, c the center coordinate,  
+      *  _s source and _d destination,  
+      *  t the translation, and M the rotation and scaling matrix 
+      *      p_s = M^{-1}(p_d - c_d - t) + c_s 
+      */ 
+     // Luminance channel 
+     fp16* x_ss = (fp16*)malloc(sizeof(fp16)*td->fiDest.width); 
+     fp16* y_ss = (fp16*)malloc(sizeof(fp16)*td->fiDest.width);     
+     int32_t* xs = (int32_t*)malloc(sizeof(int32_t)*td->fiDest.width);         
+     for (x = 0; x < td->fiDest.width; x++) { // this can go to td 
+       xs[x]=x; 
+     } 
 
-/*     /\* for each pixel in the destination image we calc the source */
-/*      * coordinate and make an interpolation:  */
-/*      *      p_d = c_d + M(p_s - c_s) + t  */
-/*      * where p are the points, c the center coordinate,  */
-/*      *  _s source and _d destination,  */
-/*      *  t the translation, and M the rotation and scaling matrix */
-/*      *      p_s = M^{-1}(p_d - c_d - t) + c_s */
-/*      *\/ */
-/*     /\* Luminance channel *\/ */
-/*     fp16* x_ss = (fp16*)malloc(sizeof(fp16)*td->fiDest.width); */
-/*     fp16* y_ss = (fp16*)malloc(sizeof(fp16)*td->fiDest.width);     */
-/*     int32_t* xs = (int32_t*)malloc(sizeof(int32_t)*td->fiDest.width);         */
-/*     for (x = 0; x < td->fiDest.width; x++) { // this can go to td */
-/*       xs[x]=x; */
-/*     } */
+     for (y = 0; y < td->fiDest.height; y++) { 
+       int32_t y_d1 = (y - c_d_y);   
+       fp16 sin_y   = zsin_a * y_d1; 
+       fp16 cos_y   = zcos_a * y_d1; 
+       for (x = 0; x < td->fiDest.width; x++) { 
+         int32_t x_d1 = (xs[x] - c_d_x); 
+         //x_ss[x]  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx; 
+   y_ss[x]  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty; 
+       } 
+       transform_one_line_optimized1 (x_ss, y_ss, xs, y_d1, c_d_x,  
+              c_tx, c_ty, zcos_a, zsin_a, sin_y, cos_y,  
+              td->fiDest.width); 
+       // transform_one_line_optimized (x_ss, y_ss, xs, y_d1, c_d_x,  
+       //             c_tx, c_ty, zcos_a, zsin_a, td->fiDest.width); 
 
-/*     for (y = 0; y < td->fiDest.height; y++) { */
-/*       int32_t y_d1 = (y - c_d_y);   */
-/*       fp16 sin_y   = zsin_a * y_d1; */
-/*       fp16 cos_y   = zcos_a * y_d1; */
-/*       for (x = 0; x < td->fiDest.width; x++) { */
-/*         int32_t x_d1 = (xs[x] - c_d_x); */
-/*         //x_ss[x]  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx; */
-/*   y_ss[x]  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty; */
-/*       } */
-/*       transform_one_line_optimized1 (x_ss, y_ss, xs, y_d1, c_d_x,  */
-/*              c_tx, c_ty, zcos_a, zsin_a, sin_y, cos_y,  */
-/*              td->fiDest.width); */
-/*       // transform_one_line_optimized (x_ss, y_ss, xs, y_d1, c_d_x,  */
-/*       //             c_tx, c_ty, zcos_a, zsin_a, td->fiDest.width); */
+       for (x = 0; x < td->fiDest.width; x++) { 
+   uint8_t *dest = &Y_2[x + y * td->fiDest.width]; 
+   td->interpolate(dest, x_ss[x], y_ss[x], Y_1,  
+         td->fiSrc.width, td->fiSrc.height,  
+         td->crop ? 16 : *dest); 
+       } 
+     } 
 
-/*       for (x = 0; x < td->fiDest.width; x++) { */
-/*   uint8_t *dest = &Y_2[x + y * td->fiDest.width]; */
-/*   td->interpolate(dest, x_ss[x], y_ss[x], Y_1,  */
-/*         td->fiSrc.width, td->fiSrc.height,  */
-/*         td->crop ? 16 : *dest); */
-/*       } */
-/*     } */
+     // Color channels  
+     int32_t ws2 = td->fiSrc.width/2;
+     int32_t wd2 = td->fiDest.width/2; 
+     int32_t hs2 = td->fiSrc.height/2; 
+     int32_t hd2 = td->fiDest.height/2; 
+     fp16 c_tx2   = c_tx/2; 
+     fp16 c_ty2   = c_ty/2; 
 
-/*     /\* Color channels *\/ */
-/*     int32_t ws2 = td->fiSrc.width/2; */
-/*     int32_t wd2 = td->fiDest.width/2; */
-/*     int32_t hs2 = td->fiSrc.height/2; */
-/*     int32_t hd2 = td->fiDest.height/2; */
-/*     fp16 c_tx2   = c_tx/2; */
-/*     fp16 c_ty2   = c_ty/2; */
+    for (y = 0; y < hd2; y++) { 
+      int32_t y_d1 = y - (c_d_y)/2; 
+       for (x = 0; x < wd2; x++) { 
+        int32_t x_d1 = x - (c_d_x)/2; 
+        fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2; 
+        fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2;  
+        uint8_t *dest = &Cr_2[x + y * wd2]; 
+        td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2, td->crop ? 128 : *dest); 
+        dest = &Cb_2[x + y * wd2]; 
+        td->interpolate(dest, x_s, y_s, Cb_1, ws2, hs2, td->crop ? 128 : *dest); 
+       } 
+     } 
 
-/*     for (y = 0; y < hd2; y++) { */
-/*       int32_t y_d1 = y - (c_d_y)/2; */
-/*       for (x = 0; x < wd2; x++) { */
-/*   int32_t x_d1 = x - (c_d_x)/2; */
-/*   fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx2; */
-/*   fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty2;  */
-/*   uint8_t *dest = &Cr_2[x + y * wd2]; */
-/*   td->interpolate(dest, x_s, y_s, Cr_1, ws2, hs2,  */
-/*         td->crop ? 128 : *dest); */
-/*   dest = &Cb_2[x + y * wd2]; */
-/*   td->interpolate(dest, x_s, y_s, Cb_1, ws2, hs2,  */
-/*         td->crop ? 128 : *dest); */
-/*       } */
-/*     } */
+     return VS_OK; 
+ } 
 
-/*     return VS_OK; */
-/* } */
+#endif
 
 /*
   some debugging stuff

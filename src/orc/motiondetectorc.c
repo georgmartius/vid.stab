@@ -61,13 +61,26 @@ typedef union { orc_int64 i; double f; orc_int32 x2[2]; float x2f[2]; orc_int16 
 #endif
 #endif
 
+#ifndef ORC_INTERNAL
+#if defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590)
+#define ORC_INTERNAL __attribute__((visibility("hidden")))
+#elif defined(__SUNPRO_C) && (__SUNPRO_C >= 0x550)
+#define ORC_INTERNAL __hidden
+#elif defined (__GNUC__)
+#define ORC_INTERNAL __attribute__((visibility("hidden")))
+#else
+#define ORC_INTERNAL
+#endif
+#endif
+
+
 #ifndef DISABLE_ORC
 #include <orc/orc.h>
 #endif
 void image_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, const orc_uint8 * ORC_RESTRICT s2, int s2_stride, int n, int m);
 void image_line_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, const orc_uint8 * ORC_RESTRICT s2, int n);
 void image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int n, int m);
-void image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p2, int n, int m);
+void image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p1, int n, int m);
 
 
 /* begin Orc C target preamble */
@@ -77,11 +90,11 @@ void image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_REST
 #define ORC_MAX(a,b) ((a)>(b) ? (a) : (b))
 #define ORC_SB_MAX 127
 #define ORC_SB_MIN (-1-ORC_SB_MAX)
-#define ORC_UB_MAX 255
+#define ORC_UB_MAX (orc_uint8) 255
 #define ORC_UB_MIN 0
 #define ORC_SW_MAX 32767
 #define ORC_SW_MIN (-1-ORC_SW_MAX)
-#define ORC_UW_MAX 65535
+#define ORC_UW_MAX (orc_uint16)65535
 #define ORC_UW_MIN 0
 #define ORC_SL_MAX 2147483647
 #define ORC_SL_MIN (-1-ORC_SL_MAX)
@@ -93,8 +106,8 @@ void image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_REST
 #define ORC_CLAMP_UW(x) ORC_CLAMP(x,ORC_UW_MIN,ORC_UW_MAX)
 #define ORC_CLAMP_SL(x) ORC_CLAMP(x,ORC_SL_MIN,ORC_SL_MAX)
 #define ORC_CLAMP_UL(x) ORC_CLAMP(x,ORC_UL_MIN,ORC_UL_MAX)
-#define ORC_SWAP_W(x) ((((x)&0xff)<<8) | (((x)&0xff00)>>8))
-#define ORC_SWAP_L(x) ((((x)&0xff)<<24) | (((x)&0xff00)<<8) | (((x)&0xff0000)>>8) | (((x)&0xff000000)>>24))
+#define ORC_SWAP_W(x) ((((x)&0xffU)<<8) | (((x)&0xff00U)>>8))
+#define ORC_SWAP_L(x) ((((x)&0xffU)<<24) | (((x)&0xff00U)<<8) | (((x)&0xff0000U)>>8) | (((x)&0xff000000U)>>24))
 #define ORC_SWAP_Q(x) ((((x)&ORC_UINT64_C(0xff))<<56) | (((x)&ORC_UINT64_C(0xff00))<<40) | (((x)&ORC_UINT64_C(0xff0000))<<24) | (((x)&ORC_UINT64_C(0xff000000))<<8) | (((x)&ORC_UINT64_C(0xff00000000))>>8) | (((x)&ORC_UINT64_C(0xff0000000000))>>24) | (((x)&ORC_UINT64_C(0xff000000000000))>>40) | (((x)&ORC_UINT64_C(0xff00000000000000))>>56))
 #define ORC_PTR_OFFSET(ptr,offset) ((void *)(((unsigned char *)(ptr)) + (offset)))
 #define ORC_DENORMAL(x) ((x) & ((((x)&0x7f800000) == 0) ? 0xff800000 : 0xffffffff))
@@ -180,7 +193,7 @@ void
 image_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, const orc_uint8 * ORC_RESTRICT s2, int s2_stride, int n, int m)
 {
   OrcExecutor _ex, *ex = &_ex;
-  static int p_inited = 0;
+  static volatile int p_inited = 0;
   static OrcCode *c = 0;
   void (*func) (OrcExecutor *);
 
@@ -189,6 +202,15 @@ image_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_
     if (!p_inited) {
       OrcProgram *p;
 
+#if 1
+      static const orc_uint8 bc[] = {
+        1, 7, 9, 26, 105, 109, 97, 103, 101, 95, 100, 105, 102, 102, 101, 114, 
+        101, 110, 99, 101, 95, 111, 112, 116, 105, 109, 105, 122, 101, 100, 12, 1, 
+        1, 12, 1, 1, 13, 4, 182, 12, 4, 5, 2, 0, 
+      };
+      p = orc_program_new_from_static_bytecode (bc);
+      orc_program_set_backup_function (p, _backup_image_difference_optimized);
+#else
       p = orc_program_new ();
       orc_program_set_2d (p);
       orc_program_set_name (p, "image_difference_optimized");
@@ -198,6 +220,7 @@ image_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_
       orc_program_add_accumulator (p, 4, "a1");
 
       orc_program_append_2 (p, "accsadubl", 0, ORC_VAR_A1, ORC_VAR_S1, ORC_VAR_S2, ORC_VAR_D1);
+#endif
 
       orc_program_compile (p);
       c = orc_program_take_code (p);
@@ -282,7 +305,7 @@ void
 image_line_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, const orc_uint8 * ORC_RESTRICT s2, int n)
 {
   OrcExecutor _ex, *ex = &_ex;
-  static int p_inited = 0;
+  static volatile int p_inited = 0;
   static OrcCode *c = 0;
   void (*func) (OrcExecutor *);
 
@@ -291,6 +314,16 @@ image_line_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 *
     if (!p_inited) {
       OrcProgram *p;
 
+#if 1
+      static const orc_uint8 bc[] = {
+        1, 9, 31, 105, 109, 97, 103, 101, 95, 108, 105, 110, 101, 95, 100, 105, 
+        102, 102, 101, 114, 101, 110, 99, 101, 95, 111, 112, 116, 105, 109, 105, 122, 
+        101, 100, 12, 1, 1, 12, 1, 1, 13, 4, 182, 12, 4, 5, 2, 0, 
+
+      };
+      p = orc_program_new_from_static_bytecode (bc);
+      orc_program_set_backup_function (p, _backup_image_line_difference_optimized);
+#else
       p = orc_program_new ();
       orc_program_set_name (p, "image_line_difference_optimized");
       orc_program_set_backup_function (p, _backup_image_line_difference_optimized);
@@ -299,6 +332,7 @@ image_line_difference_optimized (orc_uint32 * ORC_RESTRICT a1, const orc_uint8 *
       orc_program_add_accumulator (p, 4, "a1");
 
       orc_program_append_2 (p, "accsadubl", 0, ORC_VAR_A1, ORC_VAR_S1, ORC_VAR_S2, ORC_VAR_D1);
+#endif
 
       orc_program_compile (p);
       c = orc_program_take_code (p);
@@ -345,7 +379,7 @@ image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, i
       /* 2: convuwl */
       var36.i = (orc_uint16)var35.i;
       /* 3: accl */
-      var12.i = var12.i + var36.i;
+      var12.i = ((orc_uint32)var12.i) + ((orc_uint32)var36.i);
     }
   }
   *a1 = var12.i;
@@ -378,7 +412,7 @@ _backup_image_sum_optimized (OrcExecutor * ORC_RESTRICT ex)
       /* 2: convuwl */
       var36.i = (orc_uint16)var35.i;
       /* 3: accl */
-      var12.i = var12.i + var36.i;
+      var12.i = ((orc_uint32)var12.i) + ((orc_uint32)var36.i);
     }
   }
   ex->accumulators[0] = var12.i;
@@ -389,7 +423,7 @@ void
 image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int n, int m)
 {
   OrcExecutor _ex, *ex = &_ex;
-  static int p_inited = 0;
+  static volatile int p_inited = 0;
   static OrcCode *c = 0;
   void (*func) (OrcExecutor *);
 
@@ -398,6 +432,15 @@ image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, i
     if (!p_inited) {
       OrcProgram *p;
 
+#if 1
+      static const orc_uint8 bc[] = {
+        1, 7, 9, 19, 105, 109, 97, 103, 101, 95, 115, 117, 109, 95, 111, 112, 
+        116, 105, 109, 105, 122, 101, 100, 12, 1, 1, 13, 4, 20, 2, 20, 4, 
+        150, 32, 4, 154, 33, 32, 181, 12, 33, 2, 0, 
+      };
+      p = orc_program_new_from_static_bytecode (bc);
+      orc_program_set_backup_function (p, _backup_image_sum_optimized);
+#else
       p = orc_program_new ();
       orc_program_set_2d (p);
       orc_program_set_name (p, "image_sum_optimized");
@@ -410,6 +453,7 @@ image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, i
       orc_program_append_2 (p, "convubw", 0, ORC_VAR_T1, ORC_VAR_S1, ORC_VAR_D1, ORC_VAR_D1);
       orc_program_append_2 (p, "convuwl", 0, ORC_VAR_T2, ORC_VAR_T1, ORC_VAR_D1, ORC_VAR_D1);
       orc_program_append_2 (p, "accl", 0, ORC_VAR_A1, ORC_VAR_T2, ORC_VAR_D1, ORC_VAR_D1);
+#endif
 
       orc_program_compile (p);
       c = orc_program_take_code (p);
@@ -436,7 +480,7 @@ image_sum_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, i
 /* image_variance_optimized */
 #ifdef DISABLE_ORC
 void
-image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p2, int n, int m){
+image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p1, int n, int m){
   int i;
   int j;
   const orc_int8 * ORC_RESTRICT ptr4;
@@ -448,7 +492,7 @@ image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT 
     ptr4 = ORC_PTR_OFFSET(s1, s1_stride * j);
 
       /* 1: loadpb */
-        var33 = p2;
+        var33 = p1;
 
     for (i = 0; i < n; i++) {
       /* 0: loadb */
@@ -478,7 +522,7 @@ _backup_image_variance_optimized (OrcExecutor * ORC_RESTRICT ex)
     ptr4 = ORC_PTR_OFFSET(ex->arrays[4], ex->params[4] * j);
 
       /* 1: loadpb */
-        var33 = ex->params[25];
+        var33 = ex->params[24];
 
     for (i = 0; i < n; i++) {
       /* 0: loadb */
@@ -492,10 +536,10 @@ _backup_image_variance_optimized (OrcExecutor * ORC_RESTRICT ex)
 }
 
 void
-image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p2, int n, int m)
+image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT s1, int s1_stride, int p1, int n, int m)
 {
   OrcExecutor _ex, *ex = &_ex;
-  static int p_inited = 0;
+  static volatile int p_inited = 0;
   static OrcCode *c = 0;
   void (*func) (OrcExecutor *);
 
@@ -504,15 +548,25 @@ image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT 
     if (!p_inited) {
       OrcProgram *p;
 
+#if 1
+      static const orc_uint8 bc[] = {
+        1, 7, 9, 24, 105, 109, 97, 103, 101, 95, 118, 97, 114, 105, 97, 110, 
+        99, 101, 95, 111, 112, 116, 105, 109, 105, 122, 101, 100, 12, 1, 1, 13, 
+        4, 16, 1, 182, 12, 4, 24, 2, 0, 
+      };
+      p = orc_program_new_from_static_bytecode (bc);
+      orc_program_set_backup_function (p, _backup_image_variance_optimized);
+#else
       p = orc_program_new ();
       orc_program_set_2d (p);
       orc_program_set_name (p, "image_variance_optimized");
       orc_program_set_backup_function (p, _backup_image_variance_optimized);
       orc_program_add_source (p, 1, "s1");
       orc_program_add_accumulator (p, 4, "a1");
-      orc_program_add_parameter (p, 1, "p2");
+      orc_program_add_parameter (p, 1, "p1");
 
-      orc_program_append_2 (p, "accsadubl", 0, ORC_VAR_A1, ORC_VAR_S1, ORC_VAR_P2, ORC_VAR_D1);
+      orc_program_append_2 (p, "accsadubl", 0, ORC_VAR_A1, ORC_VAR_S1, ORC_VAR_P1, ORC_VAR_D1);
+#endif
 
       orc_program_compile (p);
       c = orc_program_take_code (p);
@@ -528,7 +582,7 @@ image_variance_optimized (int * ORC_RESTRICT a1, const orc_uint8 * ORC_RESTRICT 
   ORC_EXECUTOR_M(ex) = m;
   ex->arrays[ORC_VAR_S1] = (void *)s1;
   ex->params[ORC_VAR_S1] = s1_stride;
-  ex->params[ORC_VAR_P2] = p2;
+  ex->params[ORC_VAR_P1] = p1;
 
   func = c->exec;
   func (ex);

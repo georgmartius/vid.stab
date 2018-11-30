@@ -12,15 +12,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 add_definitions(-Wall -Wno-pointer-sign -DTRANSCODE -std=gnu99)
-# I tried it with 0.4.14
-#  0.4.10 did not work (not all opcode implemented)
-# find_package(Orc)  // it actually not used by any active code
-if(ORC_FOUND)
-add_definitions( -DUSE_ORC ${ORC_DEFINITIONS} )
-include_directories( ${ORC_INCLUDE_DIRS} )
-else()
-add_definitions( -DDISABLE_ORC )
-endif()
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
@@ -33,14 +24,14 @@ include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ )
 add_library (filter_transform SHARED filter_transform.c
   ../src/transformtype.c ../src/libvidstab.c ../src/transform.c
   ../src/transformfixedpoint.c  ../src/vsvector.c ../src/serialize.c ../src/frameinfo.c
-	../src/localmotion2transform.c) #  orc/transformorc.c)
+	../src/localmotion2transform.c) 
 add_library (filter_stabilize SHARED filter_stabilize.c
   ../src/transformtype.c ../src/libvidstab.c ../src/motiondetect.c
-	../src/orc/motiondetectorc.c ../src/motiondetect_opt.c ../src/localmotion2transform.c
+	../src/motiondetect_opt.c ../src/localmotion2transform.c
   ../src/boxblur.c ../src/vsvector.c ../src/serialize.c  ../src/frameinfo.c)
 add_library (filter_deshake SHARED filter_deshake.c
   ../src/transformtype.c ../src/libvidstab.c ../src/motiondetect.c
-  ../src/orc/motiondetectorc.c ../src/boxblur.c ../src/transform.c ../src/motiondetect_opt.c
+  ../src/boxblur.c ../src/transform.c ../src/motiondetect_opt.c
   ../src/transformfixedpoint.c ../src/vsvector.c ../src/serialize.c ../src/frameinfo.c
 	../src/localmotion2transform.c)
 
@@ -53,11 +44,6 @@ target_link_libraries(filter_stabilize m )
 target_link_libraries(filter_transform m )
 target_link_libraries(filter_deshake   m )
 
-if(ORC_FOUND)
-target_link_libraries(filter_stabilize ${ORC_LIBRARIES} )
-target_link_libraries(filter_transform ${ORC_LIBRARIES} )
-target_link_libraries(filter_deshake   ${ORC_LIBRARIES} )
-endif()
 if(USE_OMP)
 target_link_libraries(filter_stabilize gomp )
 target_link_libraries(filter_transform gomp )

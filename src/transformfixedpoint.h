@@ -38,12 +38,7 @@ int transformPacked(struct _VSTransformData* td, VSTransform t);
 /// does the actual transformation in Planar space
 int transformPlanar(struct _VSTransformData* td, VSTransform t);
 
-// testing
-/// does the actual transformation in Planar space
-int transformPlanar_orc(struct _VSTransformData* td, VSTransform t);
-
-
-/* forward deklarations, please see .c file for documentation*/
+/* forward declarations, please see .c file for documentation*/
 void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
                             const uint8_t *img, int img_linesize,
                             int w, int h, uint8_t def);

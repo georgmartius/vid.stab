@@ -870,12 +870,12 @@ void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
 // }
 
 
-//#ifdef TESTING
-/// plain C implementation of compareSubImg (without ORC)
+
+/// plain C implementation of compareSubImg
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width1, int width2, int height,
-           int bytesPerPixel, int d_x, int d_y,
-           unsigned int threshold) {
+                                          int bytesPerPixel, int d_x, int d_y,
+                                                     unsigned int threshold) {
   int k, j;
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;

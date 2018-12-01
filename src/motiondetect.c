@@ -64,7 +64,6 @@ VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName){
   conf.contrastThreshold = 0.25;
   conf.show              = 0;
   conf.modName           = modName;
-  conf.numThreads        = 0;
   return conf;
 }
 
@@ -90,9 +89,7 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
   }
 
 #ifdef USE_OMP
-  if(md->conf.numThreads==0)
-    md->conf.numThreads=VS_MAX(omp_get_max_threads()*0.8,1);
-  vs_log_info(md->conf.modName, "Multithreading: use %i threads\n",md->conf.numThreads);
+  vs_log_info(md->conf.modName, "Multithreading: use %i threads\n", omp_get_max_threads());
 #endif
 
   vsFrameAllocate(&md->prev, &md->fi);
@@ -719,8 +716,7 @@ LocalMotions calcTransFields(VSMotionDetect* md,
   VSVector goodflds = selectfields(md, fields, contrastfunc);
   // use all "good" fields and calculate optimal match to previous frame
 #ifdef USE_OMP
-  omp_set_num_threads(md->conf.numThreads);
-#pragma omp parallel for shared(goodflds, md, localmotions) // TODO: use sycl
+#pragma omp parallel for shared(goodflds, md, localmotions)
 #endif
   for(int index=0; index < vs_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;

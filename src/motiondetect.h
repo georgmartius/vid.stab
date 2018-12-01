@@ -48,7 +48,6 @@ typedef struct _vsmotiondetectconfig {
   /* measurement fields with lower contrast are discarded */
   double      contrastThreshold;
   const char* modName;          // module name (used for logging)
-  int         numThreads;       // number of threads to use (automatically set if 0)
 } VSMotionDetectConfig;
 
 /** structure for motion detection fields */

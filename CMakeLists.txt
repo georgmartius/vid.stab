@@ -16,11 +16,12 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries" ON)
+option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries" ON) # no need for -fPIC
 
+set(CMAKE_C_FLAGS_DEBUG "-Wall -Wno-pointer-sign -g3 -Og")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native -Ofast")
+add_definitions(-std=gnu11)
 option(USE_OMP "use parallelization use OMP" ON)
-
-add_definitions(-Wall -Wno-pointer-sign -fPIC -g1 -std=gnu11 -march=native -ffast-math )
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic

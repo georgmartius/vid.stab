@@ -16,21 +16,21 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
-       ON)
+option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries" ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
 
-add_definitions(-Wall -Wno-pointer-sign -fPIC -std=gnu11 -g3)
+add_definitions(-Wall -Wno-pointer-sign -fPIC -g1 -std=gnu11 -march=native -ffast-math )
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
+# explicitly using sse2 and fast-math makes 0% perf difference
 if(SSE2_FOUND)
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+  add_definitions( -DUSE_SSE2 )
 endif()
 
 if(USE_OMP)
-add_definitions(-fopenmp -DUSE_OMP)
+  add_definitions(-fopenmp -DUSE_OMP)
 endif()
 
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
@@ -53,8 +53,8 @@ set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERS
 target_link_libraries(vidstab m)
 set(PKG_EXTRA_LIBS -lm)
 if(USE_OMP)
-target_link_libraries(vidstab gomp)
-set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp -lpthread")
+  target_link_libraries(vidstab gomp)
+  set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp -lpthread")
 endif()
 
 

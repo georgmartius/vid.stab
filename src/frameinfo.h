@@ -91,11 +91,11 @@ void vsFrameAllocate(VSFrame* frame, const VSFrameInfo* fi);
 
 
 /// copies the given plane number from src to dest
-void vsFrameCopyPlane(VSFrame* dest, const VSFrame* src,
+void vsFrameCopyPlane(VSFrame* const dest, const VSFrame* src,
                     const VSFrameInfo* fi, int plane);
 
 /// copies src to dest
-void vsFrameCopy(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi);
+void vsFrameCopy(VSFrame* const dest, const VSFrame* src, const VSFrameInfo* fi);
 
 /** fills the data pointer so that it corresponds to the img saved in the linear buffer.
     No copying is performed.

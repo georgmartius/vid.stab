@@ -39,21 +39,22 @@ int transformPacked(struct _VSTransformData* td, VSTransform t);
 int transformPlanar(struct _VSTransformData* td, VSTransform t);
 
 /* forward declarations, please see .c file for documentation*/
-void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
-                            const uint8_t *img, int img_linesize,
-                            int w, int h, uint8_t def);
-void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
-                      const uint8_t *img, int img_linesize,
-                      int width, int height, uint8_t def);
-void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
-                      const uint8_t *img, int img_linesize,
-                      int w, int h, uint8_t def);
-void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
-                    const uint8_t *img, int img_linesize,
-                    int w, int h, uint8_t def);
-void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
-                     const uint8_t *img, int img_linesize,
-                     int w, int h, uint8_t def);
+void interpolateBiLinBorder(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
+void interpolateBiCub(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
+void interpolateBiLin(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
+void interpolateLin(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
+void interpolateZero(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
+                                 
 void interpolateN(uint8_t *rv, fp16 x, fp16 y,
                   const uint8_t *img, int img_linesize,
                   int width, int height,

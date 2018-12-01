@@ -59,21 +59,23 @@ typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
 typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
 
 /**
- * interpolate: general interpolation function pointer for one channel image data
- *              for fixed point numbers/calculations
- * Parameters:
- *             rv: destination pixel (call by reference)
- *            x,y: the source coordinates in the image img. Note this
- *                 are real-value coordinates (in fixed point format 24.8),
- *                 that's why we interpolate
- *            img: source image
- *   width,height: dimension of image
- *            def: default value if coordinates are out of range
- * Return value:  None
+ * General interpolation function pointer for one channel image data
+ * for fixed point numbers/calculations
+ * 
+ * @param rv        - destination pixel (call by reference)
+ * @param x,y       - the source coordinates in the image img. Note this
+ *                      are real-value coordinates (in fixed point format 24.8),
+ *                      that's why we interpolate
+ * @param img       - source image
+ * @param lineSize  - line size?
+ * @param width     - dimension of image
+ * @param height    - dimension of image
+ * @param default   - value if coordinates are out of range
+ * @return void
  */
-typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
-                                 const uint8_t *img, int linesize,
-                                 int width, int height, uint8_t def);
+typedef void (*vsInterpolateFun)(uint8_t * const rv, const int32_t x, const int32_t y,
+                                 const uint8_t * const img, const int linesize,
+                                 const int width, const int height, const uint8_t def);
 
 typedef struct _VSTransformConfig {
 

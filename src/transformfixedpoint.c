@@ -104,8 +104,10 @@ inline void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
       ) ) >> 17; 
  } 
 #else
-
-inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){
+/**
+ * 
+ */
+static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3){  // ~0.0% change in perf with _inline_
   // (2*a1 + t*((-a0+a2) + t*((2*a0-5*a1+4*a2-a3) + t*(-a0+3*a1-3*a2+a3) )) ) / 2;
   // we add 1/2 because of truncation errors
   return fp16ToIRound((iToFp16(2*a1) + t*(-a0+a2
@@ -115,20 +117,47 @@ inline static short bicub_kernel(fp16 t, short a0, short a1, short a2, short a3)
 }
 #endif
 
-/** interpolateBiCub: bi-cubic interpolation function using 4x4 pixel, see interpolate */
-inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
+
+/**
+ * bi-cubic interpolation function using 4x4 pixel, see interpolate
+ * @param rv  -   ptr to interpolated value
+ * @param x
+ * @param y
+ * @param img
+ * @param img_linesize
+ * @param width
+ * @param height
+ * @param def
+ */
+inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,                     // ~0% perf improvement with _inline_ hint
                              const uint8_t *img, int img_linesize,
                              int width, int height, uint8_t def)
 {
   // do a simple linear interpolation at the border
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
-  if (unlikely(ix_f < 1 || ix_f > width - 3 || iy_f < 1 || iy_f > height - 3)) {
+  if (unlikely((ix_f < 1) || (ix_f > (width - 3)) || (iy_f < 1) || (iy_f > (height - 3)) )) { //see ~1% perf improvement with _unlikely
     interpolateBiLinBorder(rv, x, y, img, img_linesize, width, height, def);
   } else {
     fp16 x_f = iToFp16(ix_f);
     fp16 y_f = iToFp16(iy_f);
     fp16 tx  = x-x_f;
+
+// #define LOOPY    
+#ifdef LOOPY // ~2.25% slower
+    short vals[4];
+    int32_t pixs[4];
+    for (int32_t iy=0; iy < 4; iy++) {
+      for (int32_t ix=0; ix < 4; ix++) {
+          int32_t ixx = ix_f+ix-1;
+          int32_t iyy = iy_f+iy-1;
+          pixs[ix] = PIX(img, img_linesize, ixx, iyy);
+      }
+      vals[iy] = bicub_kernel(tx, pixs[0], pixs[1], pixs[2], pixs[3]);
+    }
+
+    short res = bicub_kernel(y-y_f, vals[0], vals[1], vals[2], vals[3]);
+#else
     short v1 = bicub_kernel(tx,
                             PIX(img, img_linesize, ix_f-1, iy_f-1),
                             PIX(img, img_linesize, ix_f,   iy_f-1),
@@ -150,6 +179,7 @@ inline void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
                             PIX(img, img_linesize, ix_f+1, iy_f+2),
                             PIX(img, img_linesize, ix_f+2, iy_f+2));
     short res = bicub_kernel(y-y_f, v1, v2, v3, v4);
+#endif
     *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
   }
 }
@@ -328,7 +358,6 @@ int transformPacked(VSTransformData* td, VSTransform t)
 int transformPlanar(VSTransformData* td, VSTransform t)
 {
   int32_t x = 0, y = 0;
-  uint8_t *dat_1, *dat_2;
 
   if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
     if(vsFramesEqual(&td->src,&td->destbuf))
@@ -340,23 +369,25 @@ int transformPlanar(VSTransformData* td, VSTransform t)
   }
 
   int plane;
-  for(plane=0; plane< td->fiSrc.planes; plane++){
-    dat_1  = td->src.data[plane];
-    dat_2  = td->destbuf.data[plane];
-    int wsub = vsGetPlaneWidthSubS(&td->fiSrc,plane);
-    int hsub = vsGetPlaneHeightSubS(&td->fiSrc,plane);
-    int dw = CHROMA_SIZE(td->fiDest.width , wsub);
-    int dh = CHROMA_SIZE(td->fiDest.height, hsub);
-    int sw = CHROMA_SIZE(td->fiSrc.width  , wsub);
-    int sh = CHROMA_SIZE(td->fiSrc.height , hsub);
-    uint8_t black = plane==0 ? 0 : 0x80;
+  for (plane=0; plane < td->fiSrc.planes; plane++) {
 
-    fp16 c_s_x = iToFp16(sw / 2);
-    fp16 c_s_y = iToFp16(sh / 2);
-    int32_t c_d_x = dw / 2;
-    int32_t c_d_y = dh / 2;
+    // uint8_t *srcData, *destData;
+    const uint8_t *srcData  = td->src.data[plane];
+    uint8_t *destData = td->destbuf.data[plane];
+    int wsub = vsGetPlaneWidthSubS(&td->fiSrc, plane);
+    int hsub = vsGetPlaneHeightSubS(&td->fiSrc, plane);
+    const int destWidth = CHROMA_SIZE(td->fiDest.width, wsub);
+    const int destHeight = CHROMA_SIZE(td->fiDest.height, hsub);
+    const int sourceWidth = CHROMA_SIZE(td->fiSrc.width  , wsub);
+    const int sourceHeight = CHROMA_SIZE(td->fiSrc.height , hsub);
+    const uint8_t black = plane==0 ? 0 : 0x80;
 
-    float z     = 1.0-t.zoom/100.0;
+    fp16 c_s_x = iToFp16(sourceWidth / 2);
+    fp16 c_s_y = iToFp16(sourceHeight / 2);
+    int32_t c_d_x = destWidth / 2;
+    int32_t c_d_y = destHeight / 2;
+
+    float z     = 1.0- (t.zoom/100.0);
     fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
     fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
     fp16  c_tx    = c_s_x - (fToFp16(t.x) >> wsub);
@@ -370,19 +401,25 @@ int transformPlanar(VSTransformData* td, VSTransform t)
      *  t the translation, and M the rotation and scaling matrix
      *      p_s = M^{-1}(p_d - c_d - t) + c_s
      */
-    for (y = 0; y < dh; y++) {
+#ifdef USE_OMP_TEST
+    #pragma omp parallel for //shared(td,destData) // ~66.0% performance improvement but some horiz-line issues occasionally
+#endif
+    for (y = 0; y < destHeight; y++) {
       // swapping of the loops brought 15% performace gain
-      int32_t y_d1 = (y - c_d_y);
-      for (x = 0; x < dw; x++) {
-        int32_t x_d1 = (x - c_d_x);
-        fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-        fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
-        uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
-        // inlining the interpolation function would bring 10%
-        //  (but then we cannot use the function pointer anymore...)
-        td->interpolate(dest, x_s, y_s, dat_1,
-                        td->src.linesize[plane], sw, sh,
-                        td->conf.crop ? black : *dest);
+      int32_t y_d1 = y - c_d_y;
+      for (x = 0; x < destWidth; x++) {
+        const int32_t x_d1 = x - c_d_x;
+        const fp16 x_s = (zcos_a * x_d1) + (zsin_a * y_d1) + c_tx;
+        const fp16 y_s = (-zsin_a * x_d1) + (zcos_a * y_d1) + c_ty;
+        const uint32_t index = x + (y * td->destbuf.linesize[plane]);
+        uint8_t * const dest = &destData[index];
+        const uint8_t def = td->conf.crop ? black : *dest;
+        // inlining the interpolation function brings no performance change
+#ifdef USE_OMP_TEST
+        #pragma omp critical(interp)  // undoes gains
+#endif
+        td->interpolate(dest, x_s, y_s, srcData,
+                        td->src.linesize[plane], sourceWidth, sourceHeight, def);
       }
     }
   }

@@ -7,6 +7,8 @@ project (vid.stab)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
 
+include (FindSSE)
+
 option(USE_OMP "use parallelization use OMP" ON)
 
 # Default to debug builds if no explicit build type specified.
@@ -23,7 +25,9 @@ else()
 add_definitions( -DDISABLE_ORC)
 endif()
 
+if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math -fno-show-column ) # -DUSE_SSE2_ASM
+endif()
 
 if(USE_OMP)
 add_definitions(-fopenmp -DUSE_OMP)

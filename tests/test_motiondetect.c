@@ -19,7 +19,9 @@ void test_motionDetect(TestData* testdata){
     int i;
 
     int start = timeOfDayinMS();
+#ifdef USE_OMP
     omp_set_dynamic( 1 );
+#endif
     md.conf.numThreads=threads;
 
     for(i=0; i<numruns; i++){

@@ -23,7 +23,11 @@ option(USE_OMP "use parallelization use OMP" ON)
 
 set(CMAKE_C_STANDARD 99)
 
-add_definitions(-Wall -Wno-pointer-sign -fPIC)
+add_definitions(-Wall -Wno-pointer-sign)
+
+if(NOT WIN32)
+  add_definitions(-fPIC)
+endif()
 
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14

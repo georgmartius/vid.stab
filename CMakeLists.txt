@@ -5,6 +5,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 include (GNUInstallDirs)
+find_package(OpenMP)
 
 set(MAJOR_VERSION 1)
 set(MINOR_VERSION 1)
@@ -40,8 +41,8 @@ if(SSE2_FOUND)
 add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
 endif()
 
-if(USE_OMP)
-add_definitions(-fopenmp -DUSE_OMP)
+if(USE_OMP AND OPENMP_FOUND)
+add_definitions(${OpenMP_C_FLAGS})
 endif()
 
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
@@ -67,9 +68,9 @@ if(ORC_FOUND)
 target_link_libraries(vidstab ${ORC_LIBRARIES})
 set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${ORC_LIBRARIES}")
 endif()
-if(USE_OMP)
-target_link_libraries(vidstab gomp)
-set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lgomp -lpthread")
+if(USE_OMP AND OPENMP_FOUND)
+target_link_libraries(vidstab OpenMP::OpenMP_C)
+set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${OpenMP_C_FLAGS}")
 endif()
 
 

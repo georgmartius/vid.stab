@@ -39,6 +39,12 @@ VSTransform new_transform(double x, double y, double alpha,
   VSTransform t;
   t.x        = x;
   t.y        = y;
+  while (alpha < -M_PI){
+    alpha += 2.0*M_PI;
+  }
+  while (alpha > M_PI){
+    alpha -= 2.0*M_PI;
+  }
   t.alpha    = alpha;
   t.zoom     = zoom;
   t.barrel   = barrel;

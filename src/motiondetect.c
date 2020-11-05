@@ -521,8 +521,8 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fs,
   vs_log_msg(md->modName, "Minerror: %f\n", minerror);
 #endif
 
-  if (unlikely(fabs(tx) >= maxShift + stepSize - 1  ||
-               fabs(ty) >= maxShift + stepSize)) {
+  if (unlikely(abs(tx) >= maxShift + stepSize - 1  ||
+               abs(ty) >= maxShift + stepSize)) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal shift ");
 #endif
@@ -601,7 +601,7 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
     }
   }
 
-  if (fabs(tx) >= maxShift + stepSize - 1 || fabs(ty) >= maxShift + stepSize - 1) {
+  if (abs(tx) >= maxShift + stepSize - 1 || abs(ty) >= maxShift + stepSize - 1) {
 #ifdef STABVERBOSE
     vs_log_msg(md->modName, "maximal shift ");
 #endif

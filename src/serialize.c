@@ -30,19 +30,147 @@
 #include "transformtype_operations.h"
 #include "motiondetect.h"
 
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || \
+    defined(__BIG_ENDIAN__) || \
+    defined(__ARMEB__) || \
+    defined(__THUMBEB__) || \
+    defined(__AARCH64EB__) || \
+    defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
+// It's a big-endian target architecture
+#define __IS_BIG_ENDIAN__
+#include <byteswap.h>
+static double byteSwapDouble(double v)
+{
+    char in[8], out[8];
+    double result;
+    memcpy(in, &v, 8);
+    out[0] = in[7];
+    out[1] = in[6];
+    out[2] = in[5];
+    out[3] = in[4];
+    out[4] = in[3];
+    out[5] = in[2];
+    out[6] = in[1];
+    out[7] = in[0];
+    memcpy(&result, out, 8);
+    return result;
+}
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || \
+    defined(__LITTLE_ENDIAN__) || \
+    defined(__ARMEL__) || \
+    defined(__THUMBEL__) || \
+    defined(__AARCH64EL__) || \
+    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+// It's a little-endian target architecture
+#define __IS_LITTLE_ENDIAN__
+#else
+#error "I don't know what architecture this is!"
+#endif
+
 const char* modname = "vid.stab - serialization";
 
+int vsPrepareFileText(const VSMotionDetect* md, FILE* f);
+int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f);
+int vsWriteToFileText(const VSMotionDetect* md, FILE* f, const LocalMotions* lms);
+int vsWriteToFileBinary(const VSMotionDetect* md, FILE* f, const LocalMotions* lms);
+int vsStoreLocalmotionsText(FILE* f, const LocalMotions* lms);
+int vsStoreLocalmotionsBinary(FILE* f, const LocalMotions* lms);
+int storeLocalmotionText(FILE* f, const LocalMotion* lm);
+int storeLocalmotionBinary(FILE* f, const LocalMotion* lm);
+LocalMotions vsRestoreLocalmotionsText(FILE* f);
+LocalMotions vsRestoreLocalmotionsBinary(FILE* f);
+LocalMotion restoreLocalmotionText(FILE* f);
+LocalMotion restoreLocalmotionBinary(FILE* f);
+int vsReadFileVersionText(FILE* f);
+int vsReadFileVersionBinary(FILE* f);
+int vsReadFromFileText(FILE* f, LocalMotions* lms);
+int vsReadFromFileBinary(FILE* f, LocalMotions* lms);
+
+int readInt16(int16_t* i, FILE* f){
+  int result = fread(i, sizeof(int16_t), 1, f);
+  #ifdef __IS_BIG_ENDIAN__
+  if(result>0) *i = __bswap_16(*i);
+  #endif
+  return result;
+}
+
+int readInt32(int32_t* i, FILE* f){
+  int result = fread(i, sizeof(int32_t), 1, f);
+  #ifdef __IS_BIG_ENDIAN__
+  if(result>0) *i = __bswap_32(*i);
+  #endif
+  return result;
+}
+
+int readDouble(double* d, FILE* f){
+  int result = fread(d, sizeof(double), 1, f);
+  #ifdef __IS_BIG_ENDIAN__
+  if(result>0) *d = byteSwapDouble(*d);
+  #endif
+  return result;
+}
+
+int writeInt16(const int16_t* i, FILE* f){
+  int16_t val = *i;
+  #ifdef __IS_BIG_ENDIAN__
+  val = __bswap_16(val);
+  #endif
+  return fwrite((const void*)&val, sizeof(int16_t), 1, f);
+}
+
+int writeInt32(const int32_t* i, FILE* f){
+  int32_t val = *i;
+  #ifdef __IS_BIG_ENDIAN__
+  val = __bswap_32(val);
+  #endif
+  return fwrite((const void*)&val, sizeof(int32_t), 1, f);
+}
+
+int writeDouble(const double* d, FILE* f){
+  double val = *d;
+  #ifdef __IS_BIG_ENDIAN__
+  val = byteSwapDouble(val);
+  #endif
+  return fwrite((const void*)&val, sizeof(double), 1, f);
+}
 
 int storeLocalmotion(FILE* f, const LocalMotion* lm){
-  return fprintf(f,"(LM %i %i %i %i %i %lf %lf)", lm->v.x,lm->v.y,lm->f.x,lm->f.y,lm->f.size,
+  #ifdef USE_BINARY_FILE_FORMAT
+    return storeLocalmotionBinary(f, lm);
+  #else
+    return storeLocalmotionText(f, lm);
+  #endif
+}
+
+int storeLocalmotionText(FILE* f, const LocalMotion* lm) {
+  return fprintf(f,"(LM %hi %hi %hi %hi %hi %lf %lf)", lm->v.x,lm->v.y,lm->f.x,lm->f.y,lm->f.size,
                  lm->contrast, lm->match);
+}
+
+int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
+  if (writeInt16(&lm->v.x, f)<=0) return 0;
+  if (writeInt16(&lm->v.y, f)<=0) return 0;
+  if (writeInt16(&lm->f.x, f)<=0) return 0;
+  if (writeInt16(&lm->f.y, f)<=0) return 0;
+  if (writeInt16(&lm->f.size, f)<=0) return 0;
+  if (writeDouble(&lm->contrast, f)<=0) return 0;
+  if (writeDouble(&lm->match, f)<=0) return 0;
+  return 1;
 }
 
 /// restore local motion from file
 LocalMotion restoreLocalmotion(FILE* f){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return restoreLocalmotionBinary(f);
+  #else
+    return restoreLocalmotionText(f);
+  #endif
+}
+
+LocalMotion restoreLocalmotionText(FILE* f){
   LocalMotion lm;
   char c;
-  if(fscanf(f,"(LM %i %i %i %i %i %lf %lf", &lm.v.x,&lm.v.y,&lm.f.x,&lm.f.y,&lm.f.size,
+  if(fscanf(f,"(LM %hi %hi %hi %hi %hi %lf %lf", &lm.v.x,&lm.v.y,&lm.f.x,&lm.f.y,&lm.f.size,
             &lm.contrast, &lm.match) != 7) {
     vs_log_error(modname, "Cannot parse localmotion!\n");
     return null_localmotion();
@@ -55,7 +183,33 @@ LocalMotion restoreLocalmotion(FILE* f){
   return lm;
 }
 
+LocalMotion restoreLocalmotionBinary(FILE* f){
+  LocalMotion lm;
+
+  if (readInt16(&lm.v.x, f)<=0) goto parse_error_handling;
+  if (readInt16(&lm.v.y, f)<=0) goto parse_error_handling;
+  if (readInt16(&lm.f.x, f)<=0) goto parse_error_handling;
+  if (readInt16(&lm.f.y, f)<=0) goto parse_error_handling;
+  if (readInt16(&lm.f.size, f)<=0) goto parse_error_handling;
+  if (readDouble(&lm.contrast, f)<=0) goto parse_error_handling;
+  if (readDouble(&lm.match, f)<=0) goto parse_error_handling;
+
+  return lm;
+
+parse_error_handling:
+  vs_log_error(modname, "Cannot parse localmotion!\n");
+  return null_localmotion();
+}
+
 int vsStoreLocalmotions(FILE* f, const LocalMotions* lms){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsStoreLocalmotionsBinary(f, lms);
+  #else
+    return vsStoreLocalmotionsText(f, lms);
+  #endif
+}
+
+int vsStoreLocalmotionsText(FILE* f, const LocalMotions* lms){
   int len = vs_vector_size(lms);
   int i;
   fprintf(f,"List %i [",len);
@@ -67,8 +221,26 @@ int vsStoreLocalmotions(FILE* f, const LocalMotions* lms){
   return 1;
 }
 
+int vsStoreLocalmotionsBinary(FILE* f, const LocalMotions* lms){
+  const int len = vs_vector_size(lms);
+  int i;
+  if(writeInt32(&len, f)<=0) return 0;
+  for (i=0; i<len; i++){
+    if(storeLocalmotion(f,LMGet(lms,i)) <= 0) return 0;
+  }
+  return 1;
+}
+
 /// restores local motions from file
 LocalMotions vsRestoreLocalmotions(FILE* f){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsRestoreLocalmotionsBinary(f);
+  #else
+    return vsRestoreLocalmotionsText(f);
+  #endif
+}
+
+LocalMotions vsRestoreLocalmotionsText(FILE* f){
   LocalMotions lms;
   int i;
   char c;
@@ -98,17 +270,67 @@ LocalMotions vsRestoreLocalmotions(FILE* f){
   return lms;
 }
 
+LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
+  LocalMotions lms;
+  int i;
+  int len;
+  vs_vector_init(&lms,0);
+  if(readInt32(&len, f) <= 0) {
+    vs_log_error(modname, "Cannot parse localmotions list!\n");
+    return lms;
+  }
+  if (len>0){
+    vs_vector_init(&lms,len);
+    for (i=0; i<len; i++){
+      LocalMotion lm = restoreLocalmotion(f);
+      vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
+    }
+  }
+  if(len != vs_vector_size(&lms)){
+    vs_log_error(modname, "Cannot parse the given number of localmotions!\n");
+  }
+  return lms;
+}
+
 int vsPrepareFile(const VSMotionDetect* md, FILE* f){
-    if(!f) return VS_ERROR;
-    fprintf(f, "VID.STAB 1\n");
-    fprintf(f, "#      accuracy = %d\n", md->conf.accuracy);
-    fprintf(f, "#     shakiness = %d\n", md->conf.shakiness);
-    fprintf(f, "#      stepsize = %d\n", md->conf.stepSize);
-    fprintf(f, "#   mincontrast = %f\n", md->conf.contrastThreshold);
-    return VS_OK;
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsPrepareFileBinary(md, f);
+  #else
+    return vsPrepareFileText(md, f);
+  #endif
+}
+
+int vsPrepareFileText(const VSMotionDetect* md, FILE* f){
+  if(!f) return VS_ERROR;
+  fprintf(f, "VID.STAB %i\n", LIBVIDSTAB_FILE_FORMAT_VERSION);
+  fprintf(f, "#      accuracy = %d\n", md->conf.accuracy);
+  fprintf(f, "#     shakiness = %d\n", md->conf.shakiness);
+  fprintf(f, "#      stepsize = %d\n", md->conf.stepSize);
+  fprintf(f, "#   mincontrast = %f\n", md->conf.contrastThreshold);
+  return VS_OK;
+}
+
+int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f){
+  static const int kFileFormatVersion = LIBVIDSTAB_FILE_FORMAT_VERSION;
+  
+  if(!f) return VS_ERROR;
+  writeInt32(&kFileFormatVersion, f);
+  writeInt32(&md->conf.accuracy, f);
+  writeInt32(&md->conf.shakiness, f);
+  writeInt32(&md->conf.stepSize, f);
+  writeDouble(&md->conf.contrastThreshold, f);
+  return VS_OK;
 }
 
 int vsWriteToFile(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsWriteToFileBinary(md, f, lms);
+  #else
+    return vsWriteToFileText(md, f, lms);
+  #endif
+}
+
+int vsWriteToFileText(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
   if(!f || !lms) return VS_ERROR;
 
   if(fprintf(f, "Frame %i (", md->frameNum)>0
@@ -118,16 +340,57 @@ int vsWriteToFile(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
     return VS_ERROR;
 }
 
+int vsWriteToFileBinary(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
+  if(!f || !lms) return VS_ERROR;
+
+  if(writeInt32(&md->frameNum, f)<=0) return VS_ERROR;
+  if(vsStoreLocalmotions(f,lms)<=0) return VS_ERROR;
+
+  return VS_OK;
+}
+
 /// reads the header of the file and return the version number
 int vsReadFileVersion(FILE* f){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsReadFileVersionBinary(f);
+  #else
+    return vsReadFileVersionText(f);
+  #endif
+}
+
+int vsReadFileVersionText(FILE* f){
   if(!f) return VS_ERROR;
   int version;
-  if(fscanf(f, "VID.STAB %i\n", &version)!=1)
+  if(fscanf(f, "VID.STAB %i\n", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION)
     return VS_ERROR;
   else return version;
 }
 
+int vsReadFileVersionBinary(FILE* f){
+  if(!f) return VS_ERROR;
+  int version;
+  VSMotionDetectConfig conf;
+
+  if(readInt32(&version, f)<=0||version!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
+  if(readInt32(&conf.accuracy, f)<=0) goto parse_error_handling;
+  if(readInt32(&conf.shakiness, f)<=0) goto parse_error_handling;
+  if(readInt32(&conf.stepSize, f)<=0) goto parse_error_handling;
+  if(readDouble(&conf.contrastThreshold, f)<=0) goto parse_error_handling;
+  
+  return version;
+parse_error_handling:
+  return VS_ERROR;
+}
+
 int vsReadFromFile(FILE* f, LocalMotions* lms){
+  #ifdef USE_BINARY_FILE_FORMAT
+    return vsReadFromFileBinary(f,lms);
+  #else
+    return vsReadFromFileText(f,lms);
+  #endif
+}
+
+int vsReadFromFileText(FILE* f, LocalMotions* lms){
   char c = fgetc(f);
   if(c=='F') {
     int num;
@@ -154,6 +417,13 @@ int vsReadFromFile(FILE* f, LocalMotions* lms){
                  c, (int) c);
     return VS_ERROR;
   }
+}
+
+int vsReadFromFileBinary(FILE* f, LocalMotions* lms){
+  int frameNum;
+  if(readInt32(&frameNum, f)<=0) return VS_ERROR;
+  *lms = vsRestoreLocalmotions(f);
+  return frameNum;
 }
 
 int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){

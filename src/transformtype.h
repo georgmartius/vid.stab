@@ -44,15 +44,15 @@ typedef struct _transform {
 
 /** stores x y and size of a measurement field */
 typedef struct _field {
-  int x;     // middle position x
-  int y;     // middle position y
-  int size;  // size of field
+  int16_t x;     // middle position x
+  int16_t y;     // middle position y
+  int16_t size;  // size of field
 } Field;
 
 /** stores x y coordinates (integer) */
 typedef struct _vec {
-  int x;     // middle position x
-  int y;     // middle position y
+  int16_t x;     // middle position x
+  int16_t y;     // middle position y
 } Vec;
 
 /* structure to hold information about local motion.

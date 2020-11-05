@@ -25,6 +25,8 @@
 #ifndef __SERIALIZE_H
 #define __SERIALIZE_H
 
+#define LIBVIDSTAB_FILE_FORMAT_VERSION 1
+
 #include "transformtype.h"
 #include "motiondetect.h"
 #include "transform.h"

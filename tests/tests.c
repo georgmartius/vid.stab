@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <limits.h>
 #include <math.h>
+
+#if defined(__linux__)
 #include <features.h>
+#endif
 
 #ifdef USE_OMP
 #include <omp.h>

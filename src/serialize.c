@@ -134,12 +134,12 @@ int writeDouble(const double* d, FILE* f){
   return fwrite((const void*)&val, sizeof(double), 1, f);
 }
 
-int storeLocalmotion(FILE* f, const LocalMotion* lm){
-  #ifdef USE_BINARY_FILE_FORMAT
+int storeLocalmotion(FILE* f, const LocalMotion* lm, int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE){
     return storeLocalmotionBinary(f, lm);
-  #else
+  } else {
     return storeLocalmotionText(f, lm);
-  #endif
+  }
 }
 
 int storeLocalmotionText(FILE* f, const LocalMotion* lm) {
@@ -159,12 +159,12 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
 }
 
 /// restore local motion from file
-LocalMotion restoreLocalmotion(FILE* f){
-  #ifdef USE_BINARY_FILE_FORMAT
+LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return restoreLocalmotionBinary(f);
-  #else
+  } else {
     return restoreLocalmotionText(f);
-  #endif
+  }
 }
 
 LocalMotion restoreLocalmotionText(FILE* f){
@@ -201,12 +201,12 @@ parse_error_handling:
   return null_localmotion();
 }
 
-int vsStoreLocalmotions(FILE* f, const LocalMotions* lms){
-  #ifdef USE_BINARY_FILE_FORMAT
+int vsStoreLocalmotions(FILE* f, const LocalMotions* lms, const int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsStoreLocalmotionsBinary(f, lms);
-  #else
+  } else {
     return vsStoreLocalmotionsText(f, lms);
-  #endif
+  }
 }
 
 int vsStoreLocalmotionsText(FILE* f, const LocalMotions* lms){
@@ -215,7 +215,7 @@ int vsStoreLocalmotionsText(FILE* f, const LocalMotions* lms){
   fprintf(f,"List %i [",len);
   for (i=0; i<len; i++){
     if(i>0) fprintf(f,",");
-    if(storeLocalmotion(f,LMGet(lms,i)) <= 0) return 0;
+    if(storeLocalmotion(f,LMGet(lms,i),ASCII_SERIALIZATION_MODE) <= 0) return 0;
   }
   fprintf(f,"]");
   return 1;
@@ -226,18 +226,18 @@ int vsStoreLocalmotionsBinary(FILE* f, const LocalMotions* lms){
   int i;
   if(writeInt32(&len, f)<=0) return 0;
   for (i=0; i<len; i++){
-    if(storeLocalmotion(f,LMGet(lms,i)) <= 0) return 0;
+    if(storeLocalmotion(f,LMGet(lms,i),BINARY_SERIALIZATION_MODE) <= 0) return 0;
   }
   return 1;
 }
 
 /// restores local motions from file
-LocalMotions vsRestoreLocalmotions(FILE* f){
-  #ifdef USE_BINARY_FILE_FORMAT
+LocalMotions vsRestoreLocalmotions(FILE* f, const int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsRestoreLocalmotionsBinary(f);
-  #else
+  } else {
     return vsRestoreLocalmotionsText(f);
-  #endif
+  }
 }
 
 LocalMotions vsRestoreLocalmotionsText(FILE* f){
@@ -254,7 +254,7 @@ LocalMotions vsRestoreLocalmotionsText(FILE* f){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
       if(i>0) while((c=fgetc(f)) && c!=',' && c!=EOF);
-      LocalMotion lm = restoreLocalmotion(f);
+      LocalMotion lm = restoreLocalmotion(f,ASCII_SERIALIZATION_MODE);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
@@ -282,7 +282,7 @@ LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
   if (len>0){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
-      LocalMotion lm = restoreLocalmotion(f);
+      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
@@ -293,11 +293,11 @@ LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
 }
 
 int vsPrepareFile(const VSMotionDetect* md, FILE* f){
-  #ifdef USE_BINARY_FILE_FORMAT
+  if(md->serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsPrepareFileBinary(md, f);
-  #else
+  } else {
     return vsPrepareFileText(md, f);
-  #endif
+  }
 }
 
 int vsPrepareFileText(const VSMotionDetect* md, FILE* f){
@@ -311,10 +311,9 @@ int vsPrepareFileText(const VSMotionDetect* md, FILE* f){
 }
 
 int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f){
-  static const int kFileFormatVersion = LIBVIDSTAB_FILE_FORMAT_VERSION;
-  
+  static const unsigned char kFileFormatVersion = LIBVIDSTAB_FILE_FORMAT_VERSION;
   if(!f) return VS_ERROR;
-  writeInt32(&kFileFormatVersion, f);
+  fprintf(f, "TRF%hhu", kFileFormatVersion);
   writeInt32(&md->conf.accuracy, f);
   writeInt32(&md->conf.shakiness, f);
   writeInt32(&md->conf.stepSize, f);
@@ -323,18 +322,18 @@ int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f){
 }
 
 int vsWriteToFile(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
-  #ifdef USE_BINARY_FILE_FORMAT
+  if(md->serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsWriteToFileBinary(md, f, lms);
-  #else
+  } else {
     return vsWriteToFileText(md, f, lms);
-  #endif
+  }
 }
 
 int vsWriteToFileText(const VSMotionDetect* md, FILE* f, const LocalMotions* lms){
   if(!f || !lms) return VS_ERROR;
 
   if(fprintf(f, "Frame %i (", md->frameNum)>0
-     && vsStoreLocalmotions(f,lms)>0 && fprintf(f, ")\n"))
+     && vsStoreLocalmotions(f, lms, ASCII_SERIALIZATION_MODE)>0 && fprintf(f, ")\n"))
     return VS_OK;
   else
     return VS_ERROR;
@@ -344,18 +343,32 @@ int vsWriteToFileBinary(const VSMotionDetect* md, FILE* f, const LocalMotions* l
   if(!f || !lms) return VS_ERROR;
 
   if(writeInt32(&md->frameNum, f)<=0) return VS_ERROR;
-  if(vsStoreLocalmotions(f,lms)<=0) return VS_ERROR;
+  if(vsStoreLocalmotions(f, lms, BINARY_SERIALIZATION_MODE)<=0) return VS_ERROR;
 
   return VS_OK;
 }
 
+int vsGuessSerializationMode(FILE* f){
+  int serializationMode = ASCII_SERIALIZATION_MODE;
+  const int pos = ftell(f);
+
+  if(fgetc(f) == 'T' 
+      && fgetc(f) == 'R'
+      && fgetc(f) == 'F') {
+    serializationMode = BINARY_SERIALIZATION_MODE;
+  }
+  
+  fseek(f, pos, SEEK_SET);
+  return serializationMode;
+}
+
 /// reads the header of the file and return the version number
-int vsReadFileVersion(FILE* f){
-  #ifdef USE_BINARY_FILE_FORMAT
+int vsReadFileVersion(FILE* f, const int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsReadFileVersionBinary(f);
-  #else
+  } else {
     return vsReadFileVersionText(f);
-  #endif
+  }
 }
 
 int vsReadFileVersionText(FILE* f){
@@ -368,10 +381,10 @@ int vsReadFileVersionText(FILE* f){
 
 int vsReadFileVersionBinary(FILE* f){
   if(!f) return VS_ERROR;
-  int version;
+  unsigned char version;
   VSMotionDetectConfig conf;
 
-  if(readInt32(&version, f)<=0||version!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
+  if(fscanf(f, "TRF%hhu\n", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
   if(readInt32(&conf.accuracy, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.shakiness, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.stepSize, f)<=0) goto parse_error_handling;
@@ -382,12 +395,12 @@ parse_error_handling:
   return VS_ERROR;
 }
 
-int vsReadFromFile(FILE* f, LocalMotions* lms){
-  #ifdef USE_BINARY_FILE_FORMAT
+int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode){
+  if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return vsReadFromFileBinary(f,lms);
-  #else
+  } else {
     return vsReadFromFileText(f,lms);
-  #endif
+  }
 }
 
 int vsReadFromFileText(FILE* f, LocalMotions* lms){
@@ -398,7 +411,7 @@ int vsReadFromFileText(FILE* f, LocalMotions* lms){
       vs_log_error(modname,"cannot read file, expect 'Frame num (...'");
       return VS_ERROR;
     }
-    *lms = vsRestoreLocalmotions(f);
+    *lms = vsRestoreLocalmotions(f,ASCII_SERIALIZATION_MODE);
     if(fscanf(f,")\n")<0) {
       vs_log_error(modname,"cannot read file, expect '...)'");
       return VS_ERROR;
@@ -407,9 +420,9 @@ int vsReadFromFileText(FILE* f, LocalMotions* lms){
   } else if(c=='#') {
     char l[1024];
     if(fgets(l, sizeof(l), f)==0) return VS_ERROR;
-    return vsReadFromFile(f,lms);
+    return vsReadFromFile(f,lms,ASCII_SERIALIZATION_MODE);
   } else if(c=='\n' || c==' ') {
-    return vsReadFromFile(f,lms);
+    return vsReadFromFile(f,lms,ASCII_SERIALIZATION_MODE);
   } else if(c==EOF) {
     return VS_ERROR;
   } else {
@@ -422,12 +435,13 @@ int vsReadFromFileText(FILE* f, LocalMotions* lms){
 int vsReadFromFileBinary(FILE* f, LocalMotions* lms){
   int frameNum;
   if(readInt32(&frameNum, f)<=0) return VS_ERROR;
-  *lms = vsRestoreLocalmotions(f);
+  *lms = vsRestoreLocalmotions(f, BINARY_SERIALIZATION_MODE);
   return frameNum;
 }
 
 int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
-  int version = vsReadFileVersion(f);
+  const int serializationMode = vsGuessSerializationMode(f);
+  int version = vsReadFileVersion(f, serializationMode);
   if(version<1) // old format or unknown
     return VS_ERROR;
   if(version>1){
@@ -441,7 +455,7 @@ int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
   int index;
   int oldindex = 0;
   LocalMotions lms;
-  while((index = vsReadFromFile(f,&lms)) != VS_ERROR){
+  while((index = vsReadFromFile(f,&lms,serializationMode)) != VS_ERROR){
     if(index > oldindex+1){
       vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
                   oldindex, index);

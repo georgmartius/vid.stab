@@ -173,6 +173,7 @@ static int stabilize_configure(TCModuleInstance *self,
             return(TC_IMPORT_ERROR);
         }
 
+        optstr_get(options, "fileformat", "%d", &md->serializationMode);
         optstr_get(options, "result",     "%[^:]", sd->result);
         optstr_get(options, "shakiness",  "%d", &conf.shakiness);
         optstr_get(options, "accuracy",   "%d", &conf.accuracy);

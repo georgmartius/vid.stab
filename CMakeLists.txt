@@ -7,7 +7,7 @@ include (FindSSE)
 include (GNUInstallDirs)
 
 set(MAJOR_VERSION 1)
-set(MINOR_VERSION 1)
+set(MINOR_VERSION 2)
 set(PATCH_VERSION 0)
 set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
 
@@ -20,7 +20,6 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
        ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
-option(USE_BINARY_FILE_FORMAT "use binary file format" ON)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -49,10 +48,6 @@ endif()
 
 if(USE_OMP)
 add_definitions(-fopenmp -DUSE_OMP)
-endif()
-
-if(USE_BINARY_FILE_FORMAT)
-add_compile_definitions(USE_BINARY_FILE_FORMAT=1)
 endif()
 
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c

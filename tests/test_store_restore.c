@@ -8,10 +8,13 @@ int compare_localmotions(const LocalMotions* lms1, const LocalMotions* lms2){
   return 1;
 }
 
-int test_store_restore(TestData* testdata){
+int test_store_restore(TestData* testdata, int serializationMode){
   VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("test_motionDetect");
   VSMotionDetect md;
+
+  md.serializationMode = serializationMode;
   test_bool(vsMotionDetectInit(&md, &mdconf, &testdata->fi) == VS_OK);
+  serializationMode = md.serializationMode;
 
   LocalMotions lms;
   int i;
@@ -21,12 +24,12 @@ int test_store_restore(TestData* testdata){
   }
 
   FILE* f = fopen("lmtest","w");
-  vsStoreLocalmotions(f,&lms);
+  vsStoreLocalmotions(f,&lms,serializationMode);
   fclose(f);
   f = fopen("lmtest","r");
-  LocalMotions test = vsRestoreLocalmotions(f);
+  LocalMotions test = vsRestoreLocalmotions(f,serializationMode);
   fclose(f);
-  vsStoreLocalmotions(stderr,&test);
+  vsStoreLocalmotions(stderr,&test,serializationMode);
   compare_localmotions(&lms,&test);
   fprintf(stderr,"\n** LM and LMS OKAY\n");
 
@@ -39,12 +42,12 @@ int test_store_restore(TestData* testdata){
   fclose(f);
 
   f = fopen("lmstest","r");
-  test_bool(vsReadFileVersion(f)==1);
+  test_bool(vsReadFileVersion(f,serializationMode)==1);
   LocalMotions read1;
-  test_bool(vsReadFromFile(f,&read1)==1);
+  test_bool(vsReadFromFile(f,&read1,serializationMode)==1);
   compare_localmotions(&lms,&read1);
   LocalMotions read2;
-  test_bool(vsReadFromFile(f,&read2)==2);
+  test_bool(vsReadFromFile(f,&read2,serializationMode)==2);
   compare_localmotions(&test,&read2);
   fclose(f);
   fprintf(stderr,"** Reading file stepwise OKAY\n");

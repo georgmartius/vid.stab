@@ -10,7 +10,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/
 include (FindSSE)
 
 option(USE_OMP "use parallelization use OMP" ON)
-option(USE_BINARY_FILE_FORMAT "use binary file format" ON)
 
 # Default to debug builds if no explicit build type specified.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -32,10 +31,6 @@ endif()
 
 if(USE_OMP)
 add_definitions(-fopenmp -DUSE_OMP)
-endif()
-
-if(USE_BINARY_FILE_FORMAT)
-add_compile_definitions(USE_BINARY_FILE_FORMAT=1)
 endif()
 
 # Make sure the compiler can find include files from transcode

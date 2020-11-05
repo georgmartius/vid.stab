@@ -107,6 +107,10 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
   md->hasSeenOneFrame = 0;
   md->frameNum = 0;
 
+  if(md->serializationMode != ASCII_SERIALIZATION_MODE && md->serializationMode != BINARY_SERIALIZATION_MODE) {
+    md->serializationMode = BINARY_SERIALIZATION_MODE;
+  }
+
   // TODO: get rid of shakiness parameter in the long run
   md->conf.shakiness = VS_MIN(10,VS_MAX(1,md->conf.shakiness));
   md->conf.accuracy = VS_MIN(15,VS_MAX(1,md->conf.accuracy));

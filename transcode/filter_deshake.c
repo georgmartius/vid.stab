@@ -79,6 +79,8 @@ static const char deshake_help[] = ""
   "     It also generates a file with relative transform information\n"
   "     to be used by the transform filter separately."
   "Options\n"
+  "    'fileformat'  the type of file format used to write the transforms\n"
+  "                  1: ascii (human readable) file format 2: binary (smaller) file format\n"
   "    'smoothing' number of frames*2 + 1 used for lowpass filtering \n"
   "                used for stabilizing (def: 10)\n"
   "    'shakiness'   how shaky is the video and how quick is the camera?\n"
@@ -213,6 +215,7 @@ static int deshake_configure(TCModuleInstance *self,
       return(TC_IMPORT_ERROR);
     }
 
+    optstr_get(options, "fileformat", "%d", &md->serializationMode);
     optstr_get(options, "result",     "%[^:]", sd->result);
     optstr_get(options, "shakiness",  "%d", &mdconf.shakiness);
     optstr_get(options, "accuracy",   "%d", &mdconf.accuracy);

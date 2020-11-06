@@ -36,6 +36,9 @@
 #include "vsvector.h"
 #include "frameinfo.h"
 
+#define ASCII_SERIALIZATION_MODE 1
+#define BINARY_SERIALIZATION_MODE 2
+
 typedef struct _vsmotiondetectconfig {
   /* meta parameter for maxshift and fieldsize between 1 and 15 */
   int         shakiness;
@@ -81,6 +84,7 @@ typedef struct _vsmotiondetect {
   VSFrame prev;                 // frame buffer for last frame (copied)
   short hasSeenOneFrame;        // true if we have a valid previous frame
   int initialized;              // 1 if initialized and 2 if configured
+  int serializationMode;        // 1 if ascii and 2 if binary
 
   int frameNum;
 } VSMotionDetect;
@@ -91,6 +95,8 @@ static const char vs_motiondetect_help[] = ""
     "     (translation, rotation) about subsequent frames."
     " See also transform.\n"
     "Options\n"
+    "    'fileformat'  the type of file format used to write the transforms\n"
+    "                  1: ascii (human readable) file format 2: binary (smaller) file format\n"
     "    'result'      path to the file used to write the transforms\n"
     "                  (def:inputfile.stab)\n"
     "    'shakiness'   how shaky is the video and how quick is the camera?\n"

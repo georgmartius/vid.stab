@@ -2,7 +2,10 @@
 #define __TESTFRAMEWORK_H
 
 #include <stdio.h>
+
+#if defined(__linux__)
 #include <features.h>
+#endif
 
 int contains(char **list, int len,  const char *str, const char* descr);
 void unittest_init();

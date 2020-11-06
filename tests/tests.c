@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <limits.h>
 #include <math.h>
+
+#if defined(__linux__)
 #include <features.h>
+#endif
 
 #ifdef USE_OMP
 #include <omp.h>
@@ -117,7 +120,9 @@ int main(int argc, char** argv){
   }
 
   if(all || contains(argv,argc,"--testSR", "store_restore")){
-    UNIT(test_store_restore(&testdata));
+    UNIT(test_store_restore(&testdata, ASCII_SERIALIZATION_MODE));
+    UNIT(test_store_restore(&testdata, BINARY_SERIALIZATION_MODE));
+    UNIT(test_store_restore(&testdata, 0)); // test default binary selection
   }
 
   if(all || contains(argv,argc,"--testCT", "contrastImg")){

@@ -25,6 +25,8 @@
 #ifndef __SERIALIZE_H
 #define __SERIALIZE_H
 
+#define LIBVIDSTAB_FILE_FORMAT_VERSION 1
+
 #include "transformtype.h"
 #include "motiondetect.h"
 #include "transform.h"
@@ -36,12 +38,14 @@ typedef VSVector VSManyLocalMotions;
 #define VSMLMGet(manylocalmotions,index) \
     ((LocalMotions*)vs_vector_get(manylocalmotions,index))
 
+/// guess the serialization mode of the local motions file
+int vsGuessSerializationMode(FILE* f);
 
 /// stores local motions to file
-int vsStoreLocalmotions(FILE* f, const LocalMotions* lms);
+int vsStoreLocalmotions(FILE* f, const LocalMotions* lms, const int serializationMode);
 
 /// restores local motions from file
-LocalMotions vsRestoreLocalmotions(FILE* f);
+LocalMotions vsRestoreLocalmotions(FILE* f, const int serializationMode);
 
 
 /// writes the header to the file that is to be holding the local motions
@@ -51,13 +55,13 @@ int vsPrepareFile(const VSMotionDetect* td, FILE* f);
 int vsWriteToFile(const VSMotionDetect* td, FILE* f, const LocalMotions* lms);
 
 /// reads the header of the file and return the version number (used by readLocalmotionsFile)
-int vsReadFileVersion(FILE* f);
+int vsReadFileVersion(FILE* f, const int serializationMode);
 
 /*
  * reads the next set of localmotions from the file, return VS_ERROR on error or
  * if nothing is read (used by readLocalmotionsFile)
  */
-int vsReadFromFile(FILE* f, LocalMotions* lms);
+int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode);
 
 /*
  * reads the entire file of localmotions, return VS_ERROR on error or if nothing is read

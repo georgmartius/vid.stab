@@ -29,7 +29,7 @@ int test_store_restore(TestData* testdata, int serializationMode){
   f = fopen("lmtest","r");
   LocalMotions test = vsRestoreLocalmotions(f,serializationMode);
   fclose(f);
-  vsStoreLocalmotions(stderr,&test,serializationMode);
+  vsStoreLocalmotions(stderr,&test,ASCII_SERIALIZATION_MODE);
   compare_localmotions(&lms,&test);
   fprintf(stderr,"\n** LM and LMS OKAY\n");
 

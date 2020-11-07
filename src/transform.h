@@ -26,6 +26,7 @@
 
 #include <math.h>
 #include <libgen.h>
+#include <stdint.h>
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "vidstabdefines.h"

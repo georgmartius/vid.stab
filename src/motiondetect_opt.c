@@ -24,6 +24,9 @@
  *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
+
+#include <limits.h>
+
 #include "motiondetect_opt.h"
 
 #ifdef USE_ORC
@@ -36,6 +39,21 @@
 #define USE_SSE2_CMP_HOR
 #define SSE2_CMP_SUM_ROWS 8
 #endif
+
+unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
+                                    const Field* field, int width1, int width2, int height,
+                                    int bytesPerPixel, int d_x, int d_y,
+                                    unsigned int threshold){
+
+  int s2 = field->size / 2;
+
+  // check for frame boundaries. if field is outside frame after translation, return INT_MAX
+  if ((field->x - s2 + d_x + field->size > width2) || (field->y - s2 + d_y + field->size > height)){
+    return INT_MAX;
+  }
+
+  return _compareSubImg(I1, I2, field, width1, width2, height, bytesPerPixel, d_x, d_y, threshold);
+}
 
 #ifdef USE_SSE2
 /**

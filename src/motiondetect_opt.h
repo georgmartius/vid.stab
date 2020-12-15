@@ -31,14 +31,19 @@
 #include "motiondetect.h"
 
 #ifdef USE_SSE2_ASM //enable SSE2 inline asm code
-#define compareSubImg compareSubImg_thr_sse2_asm
+#define _compareSubImg compareSubImg_thr_sse2_asm
 #elif defined(USE_SSE2)      //enable SSE2 code
-#define compareSubImg compareSubImg_thr_sse2
+#define _compareSubImg compareSubImg_thr_sse2
 #elif defined(USE_ORC)
-#define compareSubImg compareSubImg_thr_orc
+#define _compareSubImg compareSubImg_thr_orc
 #else
-#define compareSubImg compareSubImg_thr
+#define _compareSubImg compareSubImg_thr
 #endif
+
+unsigned int compareSubImg(unsigned char* const I1, unsigned char* const I2,
+                                    const Field* field, int width1, int width2, int height,
+                                    int bytesPerPixel, int d_x, int d_y,
+                                    unsigned int threshold);
 
 #ifdef USE_SSE2
 double contrastSubImg1_SSE(unsigned char* const I, const Field* field,

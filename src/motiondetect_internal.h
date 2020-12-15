@@ -65,14 +65,18 @@ LocalMotions calcTransFields(VSMotionDetect* md, VSMotionDetectFields* fields,
 
 void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion, int maxShift);
 void drawField(VSMotionDetect* md, const LocalMotion* motion, short box);
-void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, int color);
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
-             int x, int y, int sizex, int sizey, unsigned char color);
-void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,
-                   int x, int y, int sizex, int sizey, unsigned char color);
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, uint32_t color, uint32_t transColor);
 
-void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
-              Vec* a, Vec* b, int thickness, unsigned char color);
+void drawBox(VSPixelFormat format, unsigned char* I, int width, int height, 
+             int x, int y, int sizex, int sizey, uint32_t color);
+void drawRectangle(VSPixelFormat format, unsigned char* I, int width, int height, 
+                   int x, int y, int sizex, int sizey, uint32_t color);
+void drawLine(VSPixelFormat format, unsigned char* I, int width, int height, 
+              Vec* a, Vec* b, int thickness, uint32_t color);
+void drawHLine(VSPixelFormat format, unsigned char* I, int width, int height, 
+              int x, int y, unsigned int length, uint32_t color);
+void drawVLine(VSPixelFormat format, unsigned char* I, int width, int height, 
+              int x, int y, unsigned int length, uint32_t color);
 
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width1, int width2, int height,

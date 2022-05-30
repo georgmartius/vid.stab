@@ -10,7 +10,7 @@ check_c_compiler_flag(-msse4.1 HAVE_SSE4_1)
 # It is necessary try to compile actual code
 if(HAVE_SSE2)
       try_compile(SSE_OK "${PROJECT_BINARY_DIR}"
-          "${PROJECT_SOURCE_DIR}/CMakeModules/TestSSE2.c"
+          "${CMAKE_CURRENT_LIST_DIR}/TestSSE2.c"
           COMPILE_DEFINITIONS "-msse2" )
       if(NOT SSE_OK)
             message(STATUS "SSE2 test compilation fails")
@@ -20,7 +20,7 @@ endif()
 
 if(HAVE_SSE3)
       try_compile(SSE_OK "${PROJECT_BINARY_DIR}"
-          "${PROJECT_SOURCE_DIR}/CMakeModules/TestSSE3.c"
+          "${CMAKE_CURRENT_LIST_DIR}/TestSSE3.c"
           COMPILE_DEFINITIONS "-msse3" )
       if(NOT SSE_OK)
             message(STATUS "SSE3 test compilation fails")
@@ -30,7 +30,7 @@ endif()
 
 if(HAVE_SSSE3)
       try_compile(SSE_OK "${PROJECT_BINARY_DIR}"
-          "${PROJECT_SOURCE_DIR}/CMakeModules/TestSSSE3.c"
+          "${CMAKE_CURRENT_LIST_DIR}/TestSSSE3.c"
           COMPILE_DEFINITIONS "-mssse3" )
       if(NOT SSE_OK)
             message(STATUS "SSE3 test compilation fails")
@@ -40,7 +40,7 @@ endif()
 
 if(HAVE_SSE4_1)
       try_compile(SSE_OK "${PROJECT_BINARY_DIR}"
-          "${PROJECT_SOURCE_DIR}/CMakeModules/TestSSE41.c"
+          "${CMAKE_CURRENT_LIST_DIR}/TestSSE41.c"
           COMPILE_DEFINITIONS "-msse4.1" )
       if(NOT SSE_OK)
             message(STATUS "SSE4.1 test compilation fails")

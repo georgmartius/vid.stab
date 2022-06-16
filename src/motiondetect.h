@@ -42,6 +42,7 @@
 typedef struct _vsmotiondetectconfig {
   /* meta parameter for maxshift and fieldsize between 1 and 15 */
   int         shakiness;
+  int         seek_range;       // user-selected maximum range in pixels for finding matches
   int         accuracy;         // meta parameter for number of fields between 1 and 10
   int         stepSize;         // stepsize of field transformation detection
   int         algo;             // deprecated
@@ -101,6 +102,8 @@ static const char vs_motiondetect_help[] = ""
     "                  (def:inputfile.stab)\n"
     "    'shakiness'   how shaky is the video and how quick is the camera?\n"
     "                  1: little (fast) 10: very strong/quick (slow) (def: 5)\n"
+    "    'seek_range'  How far (in pixels) can we search for local matches?\n"
+    "                  (def: 1/7 of the smallest image dimension )\n"
     "    'accuracy'    accuracy of detection process (>=shakiness)\n"
     "                  1: low (fast) 15: high (slow) (def: 9)\n"
     "    'stepsize'    stepsize of search process, region around minimum \n"

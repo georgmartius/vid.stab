@@ -307,6 +307,7 @@ int vsPrepareFileText(const VSMotionDetect* md, FILE* f){
   fprintf(f, "VID.STAB %i\n", LIBVIDSTAB_FILE_FORMAT_VERSION);
   fprintf(f, "#      accuracy = %d\n", md->conf.accuracy);
   fprintf(f, "#     shakiness = %d\n", md->conf.shakiness);
+  fprintf(f, "#     seek_range = %d\n", md->conf.seek_range);
   fprintf(f, "#      stepsize = %d\n", md->conf.stepSize);
   fprintf(f, "#   mincontrast = %f\n", md->conf.contrastThreshold);
   return VS_OK;
@@ -318,6 +319,7 @@ int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f){
   fprintf(f, "TRF%hhu", kFileFormatVersion);
   writeInt32(&md->conf.accuracy, f);
   writeInt32(&md->conf.shakiness, f);
+  writeInt32(&md->conf.seek_range, f);
   writeInt32(&md->conf.stepSize, f);
   writeDouble(&md->conf.contrastThreshold, f);
   return VS_OK;

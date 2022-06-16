@@ -60,6 +60,7 @@ VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName){
   conf.stepSize          = 6;
   conf.accuracy          = 15;
   conf.shakiness         = 5;
+  conf.seek_range        = -1;
   conf.virtualTripod     = 0;
   conf.contrastThreshold = 0.25;
   conf.show              = 0;
@@ -130,7 +131,11 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
 //  md->fieldSize = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->conf.shakiness)/40));
 
   // fixed size and shift now
-  int maxShift      = VS_MAX(16, minDimension/7);
+  int maxShift;
+  if ( md->conf.seek_range < 0 )
+    maxShift = VS_MAX(16, minDimension/7);
+  else 
+    maxShift = md->conf.seek_range;
   int fieldSize     = VS_MAX(16, minDimension/10);
   int fieldSizeFine = VS_MAX(6, minDimension/60);
 #if defined(USE_SSE2) || defined(USE_SSE2_ASM)

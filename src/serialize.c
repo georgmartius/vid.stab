@@ -82,7 +82,7 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm);
 LocalMotions vsRestoreLocalmotionsText(FILE* f);
 LocalMotions vsRestoreLocalmotionsBinary(FILE* f);
 LocalMotion restoreLocalmotionText(FILE* f);
-LocalMotion restoreLocalmotionBinary(FILE* f,int i);
+LocalMotion restoreLocalmotionBinary(FILE* f);
 int vsReadFileVersionText(FILE* f);
 int vsReadFileVersionBinary(FILE* f);
 int vsReadFromFileText(FILE* f, LocalMotions* lms);
@@ -161,7 +161,7 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
 }
 
 /// restore local motion from file
-LocalMotion restoreLocalmotion(FILE* f, const int serializationMode,int i){
+LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
   if(serializationMode == BINARY_SERIALIZATION_MODE) {
     return restoreLocalmotionBinary(f,i);
   } else {
@@ -185,7 +185,7 @@ LocalMotion restoreLocalmotionText(FILE* f){
   return lm;
 }
 
-LocalMotion restoreLocalmotionBinary(FILE* f, int i){
+LocalMotion restoreLocalmotionBinary(FILE* f){
   LocalMotion lm;
 
   if (readInt16(&lm.v.x, f)<=0) goto parse_error_handling;
@@ -256,7 +256,7 @@ LocalMotions vsRestoreLocalmotionsText(FILE* f){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
       if(i>0) while((c=fgetc(f)) && c!=',' && c!=EOF);
-      LocalMotion lm = restoreLocalmotion(f,ASCII_SERIALIZATION_MODE,i);
+      LocalMotion lm = restoreLocalmotion(f,ASCII_SERIALIZATION_MODE);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
@@ -284,7 +284,7 @@ LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
   if (len>0){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
-      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE,i);
+      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }

@@ -172,7 +172,6 @@ static int stabilize_configure(TCModuleInstance *self,
             tc_log_info(MOD_NAME,vs_motiondetect_help);
             return(TC_IMPORT_ERROR);
         }
-        printf("GOT OPTIONS");
 
         optstr_get(options, "fileformat", "%d", &md->serializationMode);
         optstr_get(options, "result",     "%[^:]", sd->result);

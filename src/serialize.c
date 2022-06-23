@@ -82,7 +82,7 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm);
 LocalMotions vsRestoreLocalmotionsText(FILE* f);
 LocalMotions vsRestoreLocalmotionsBinary(FILE* f);
 LocalMotion restoreLocalmotionText(FILE* f);
-LocalMotion restoreLocalmotionBinary(FILE* f);
+LocalMotion restoreLocalmotionBinary(FILE* f,int i);
 int vsReadFileVersionText(FILE* f);
 int vsReadFileVersionBinary(FILE* f);
 int vsReadFromFileText(FILE* f, LocalMotions* lms);
@@ -161,9 +161,9 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
 }
 
 /// restore local motion from file
-LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
+LocalMotion restoreLocalmotion(FILE* f, const int serializationMode,int i){
   if(serializationMode == BINARY_SERIALIZATION_MODE) {
-    return restoreLocalmotionBinary(f);
+    return restoreLocalmotionBinary(f,i);
   } else {
     return restoreLocalmotionText(f);
   }
@@ -185,7 +185,7 @@ LocalMotion restoreLocalmotionText(FILE* f){
   return lm;
 }
 
-LocalMotion restoreLocalmotionBinary(FILE* f){
+LocalMotion restoreLocalmotionBinary(FILE* f, int i){
   LocalMotion lm;
 
   if (readInt16(&lm.v.x, f)<=0) goto parse_error_handling;
@@ -256,7 +256,7 @@ LocalMotions vsRestoreLocalmotionsText(FILE* f){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
       if(i>0) while((c=fgetc(f)) && c!=',' && c!=EOF);
-      LocalMotion lm = restoreLocalmotion(f,ASCII_SERIALIZATION_MODE);
+      LocalMotion lm = restoreLocalmotion(f,ASCII_SERIALIZATION_MODE,i);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
@@ -284,7 +284,7 @@ LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
   if (len>0){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
-      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE);
+      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE,i);
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
@@ -388,9 +388,10 @@ int vsReadFileVersionBinary(FILE* f){
   unsigned char version;
   VSMotionDetectConfig conf;
 
-  if(fscanf(f, "TRF%hhu\n", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
+  if(fscanf(f, "TRF%hhu", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
   if(readInt32(&conf.accuracy, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.shakiness, f)<=0) goto parse_error_handling;
+  if(readInt32(&conf.seek_range, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.stepSize, f)<=0) goto parse_error_handling;
   if(readDouble(&conf.contrastThreshold, f)<=0) goto parse_error_handling;
   

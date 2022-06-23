@@ -163,7 +163,7 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
 /// restore local motion from file
 LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
   if(serializationMode == BINARY_SERIALIZATION_MODE) {
-    return restoreLocalmotionBinary(f,i);
+    return restoreLocalmotionBinary(f);
   } else {
     return restoreLocalmotionText(f);
   }

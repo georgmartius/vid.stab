@@ -386,7 +386,7 @@ int vsReadFileVersionBinary(FILE* f){
   unsigned char version;
   VSMotionDetectConfig conf;
 
-  if(fscanf(f, "TRF%hhu\n", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
+  if(fscanf(f, "TRF%hhu", &version)!=LIBVIDSTAB_FILE_FORMAT_VERSION) goto parse_error_handling;
   if(readInt32(&conf.accuracy, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.shakiness, f)<=0) goto parse_error_handling;
   if(readInt32(&conf.stepSize, f)<=0) goto parse_error_handling;

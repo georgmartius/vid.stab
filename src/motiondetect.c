@@ -293,8 +293,8 @@ int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
   fs->useOffset = 0;
   fs->contrastThreshold = contrastThreshold;
 
-  int rows = VS_MAX(3,(md->fi.height - fs->maxShift*2)/(size+spacing)-1);
-  int cols = VS_MAX(3,(md->fi.width - fs->maxShift*2)/(size+spacing)-1);
+  int rows = VS_MAX(3,(md->fi.height - fs->fieldSize*2)/(size+spacing)-1);
+  int cols = VS_MAX(3,(md->fi.width - fs->fieldSize*2)/(size+spacing)-1);
   // make sure that the remaining rows have the same length
   fs->fieldNum = rows * cols;
   fs->fieldRows = rows;
@@ -309,7 +309,7 @@ int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
     // have to be away from the image boundary
     // (stepsize is added in case shift is increased through stepsize)
     if(keepBorder)
-      border = size / 2 + fs->maxShift + fs->stepSize;
+      border = size / 2 + fs->fieldSize + fs->stepSize;
     int step_x = (md->fi.width  - 2 * border) / VS_MAX(cols-1,1);
     int step_y = (md->fi.height - 2 * border) / VS_MAX(rows-1,1);
     for (j = 0; j < rows; j++) {

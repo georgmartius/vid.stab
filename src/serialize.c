@@ -39,6 +39,16 @@
     defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
 // It's a big-endian target architecture
 #define __IS_BIG_ENDIAN__
+#ifdef __APPLE__
+// Make sure that byte swap functions are not already defined.
+#if !defined(bswap_16)
+// Mac OS X / Darwin features
+#include <libkern/OSByteOrder.h>
+#define __bswap_16(x) OSSwapInt16(x)
+#define __bswap_32(x) OSSwapInt32(x)
+#define byteSwapDouble(x) OSSwapInt64(x)
+#endif
+#else
 #include <byteswap.h>
 static double byteSwapDouble(double v)
 {
@@ -56,6 +66,7 @@ static double byteSwapDouble(double v)
     memcpy(&result, out, 8);
     return result;
 }
+#endif
 #elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || \
     defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || \
     defined(__LITTLE_ENDIAN__) || \

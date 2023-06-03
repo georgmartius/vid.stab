@@ -182,7 +182,7 @@ LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
 
 LocalMotion restoreLocalmotionText(FILE* f){
   LocalMotion lm;
-  char c;
+  int c;
   if(fscanf(f,"(LM %hi %hi %hi %hi %hi %lf %lf", &lm.v.x,&lm.v.y,&lm.f.x,&lm.f.y,&lm.f.size,
             &lm.contrast, &lm.match) != 7) {
     vs_log_error(modname, "Cannot parse localmotion!\n");
@@ -256,7 +256,7 @@ LocalMotions vsRestoreLocalmotions(FILE* f, const int serializationMode){
 LocalMotions vsRestoreLocalmotionsText(FILE* f){
   LocalMotions lms;
   int i;
-  char c;
+  int c;
   int len;
   vs_vector_init(&lms,0);
   if(fscanf(f,"List %i [", &len) != 1) {
@@ -417,7 +417,7 @@ int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode){
 }
 
 int vsReadFromFileText(FILE* f, LocalMotions* lms){
-  char c = fgetc(f);
+  int c = fgetc(f);
   if(c=='F') {
     int num;
     if(fscanf(f,"rame %i (", &num)!=1) {

@@ -32,6 +32,10 @@ if(NOT WIN32)
   add_definitions(-fPIC)
 endif()
 
+if(APPLE)
+  add_definitions(-march=armv8-a+fp+simd+crypto+crc)
+endif(APPLE)
+
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14
 #  0.4.10 did not work (not all opcode implemented)

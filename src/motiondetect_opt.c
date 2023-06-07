@@ -37,6 +37,13 @@
 #define SSE2_CMP_SUM_ROWS 8
 #endif
 
+#ifdef __ARM_NEON__
+#include "sse2neon.h"
+#define USE_SSE2
+#define USE_SSE2_CMP_HOR
+#define SSE2_CMP_SUM_ROWS 8
+#endif
+
 #ifdef USE_SSE2
 /**
    \see contrastSubImg using SSE2 optimization, Planar (1 byte per channel) only

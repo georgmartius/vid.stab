@@ -5,6 +5,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 include (GNUInstallDirs)
+# include (ExternalProject) # There must be a nicer way to include this
+# include (sse2neon)
 find_package(OpenMP)
 
 set(MAJOR_VERSION 1)

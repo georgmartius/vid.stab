@@ -1,5 +1,7 @@
 # VidStab
 
+[![C/C++ CI](https://github.com/georgmartius/vid.stab/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/georgmartius/vid.stab/actions/workflows/c-cpp.yml)
+
 Vidstab is a video stabilization library which can be plugged-in with Ffmpeg and Transcode.
 
 **Why is it needed**

@@ -9,3 +9,7 @@ CMakeFiles
 Makefile
 cmake_install.cmake
 install_manifest.txt
+
+# Don't include the build directory and compiled Mac dynamic libraries.
+build 
+*.dylib

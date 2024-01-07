@@ -5,6 +5,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include (FindSSE)
 include (GNUInstallDirs)
+# include (ExternalProject) # There must be a nicer way to include this
+# include (sse2neon)
 find_package(OpenMP)
 
 set(MAJOR_VERSION 1)
@@ -29,6 +31,10 @@ add_definitions(-Wall -Wno-pointer-sign)
 if(NOT WIN32)
   add_definitions(-fPIC)
 endif()
+
+if(APPLE)
+  add_definitions(-march=armv8-a+fp+simd+crypto+crc)
+endif(APPLE)
 
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14

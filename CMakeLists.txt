@@ -32,9 +32,9 @@ if(NOT WIN32)
   add_definitions(-fPIC)
 endif()
 
-if(APPLE)
+if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES AND NOT SSE2_FOUND)
   add_definitions(-march=armv8-a+fp+simd+crypto+crc)
-endif(APPLE)
+endif()
 
 ### ORC is not used in any active code at the moment  ###
 # I tried it with 0.4.14

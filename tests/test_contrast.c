@@ -13,36 +13,6 @@ void test_contrastImg(const TestData* testdata){
   double contrastC[numruns];
   double contrastOpt[numruns];
   int timeC, timeOpt;
-#ifdef USE_ORC
-  fprintf(stderr,"********** Variance - based Contrast (with ORC):\n");
-  {
-    int start = timeOfDayinMS();
-    for(i=0; i<numruns; i++){
-      contrastC[i]=contrastSubImg_variance_C(testdata->frames[0],
-                                             &f, testdata->fi.width, testdata->fi.height);
-    }
-    int end = timeOfDayinMS();
-    timeC=end-start;
-    fprintf(stderr,"***C    time for %i runs: %i ms ****\n", numruns, timeC);
-  }
-  {
-    int start = timeOfDayinMS();
-    for(i=0; i<numruns; i++){
-      contrastOpt[i]=contrastSubImg_variance_orc(testdata->frames[0],
-                                                 &f, testdata->fi.width, testdata->fi.height);
-    }
-    int end = timeOfDayinMS();
-    timeOpt=end-start;
-    fprintf(stderr,"***Orc  time for %i runs: %i ms ****\n", numruns, timeOpt);
-  }
-  fprintf(stderr,"***Speedup %3.2f\n", timeC/timeOpt);
-  for(i=0; i<numruns; i++){
-    if(i==0){
-      printf("Orc contrast %3.2f, C contrast %3.2f\n",contrastOpt[i], contrastC[i]);
-    }
-    test_bool(contrastC[i]==contrastOpt[i]);
-  }
-#endif
   fprintf(stderr,"********** Michelson Contrast (with SSE2):\n");
   {
     int start = timeOfDayinMS();

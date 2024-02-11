@@ -36,17 +36,6 @@ if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES AND NOT SSE2_FOUND)
   add_definitions(-march=armv8-a+fp+simd+crypto+crc)
 endif()
 
-### ORC is not used in any active code at the moment  ###
-# I tried it with 0.4.14
-#  0.4.10 did not work (not all opcode implemented)
-# find_package(Orc)
-if(ORC_FOUND)
-add_definitions( -DUSE_ORC ${ORC_DEFINITIONS} )
-include_directories( ${ORC_INCLUDE_DIRS} )
-else()
-add_definitions( -DDISABLE_ORC )
-endif()
-
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
 if(SSE2_FOUND)
@@ -60,7 +49,7 @@ endif()
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
-  src/boxblur.c src/vsvector.c src/orc/motiondetectorc.c)
+  src/boxblur.c src/vsvector.c)
 
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
@@ -76,10 +65,6 @@ set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERS
 
 target_link_libraries(vidstab m)
 set(PKG_EXTRA_LIBS -lm)
-if(ORC_FOUND)
-target_link_libraries(vidstab ${ORC_LIBRARIES})
-set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} ${ORC_LIBRARIES}")
-endif()
 if(USE_OMP AND OPENMP_FOUND)
 if(TARGET OpenMP::OpenMP_C)
 target_link_libraries(vidstab OpenMP::OpenMP_C)

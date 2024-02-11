@@ -78,16 +78,6 @@ void test_compareImg_performance(const TestData* testdata){
   timeC=runcompare(compareSubImg_thr, testdata->frames[0], testdata->frames[1],
                    f, testdata->fi, diffsC, 0, numruns);
   fprintf(stderr,"***C        time for %i runs: %i ms ****\n", numruns, timeC);
-#ifdef USE_ORC
-  timeO=runcompare(compareSubImg_orc, testdata->frames[0], testdata->frames[1],
-                   f, testdata->fi, diffsO, diffsC, numruns);
-  fprintf(stderr,"***orc      time for %i runs: %i ms \tSpeedup %3.2f\n",
-          numruns, timeO, (double)timeC/timeO);
-  timeO=runcompare(compareSubImg_thr_orc, testdata->frames[0], testdata->frames[1],
-                   f, testdata->fi, diffsO, diffsC, numruns);
-  fprintf(stderr,"***thr_orc  time for %i runs: %i ms \tSpeedup %3.2f\n",
-          numruns, timeO, (double)timeC/timeO);
-#endif
 #ifdef USE_SSE2
   timeO=runcompare(compareSubImg_thr_sse2, testdata->frames[0], testdata->frames[1],
                    f, testdata->fi, diffsO, diffsC, numruns);

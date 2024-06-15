@@ -85,7 +85,7 @@ void test_transform_performance(const TestData* testdata){
   VSFrame cfinal;
   int it;
   int start, numruns;
-  int timeC, timeCFP; //, timeOrc;
+  int timeC, timeCFP;
   vsFrameAllocate(&dest, &testdata->fi);
   vsFrameAllocate(&cfinal, &testdata->fi);
   numruns = 5;

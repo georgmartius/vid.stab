@@ -34,8 +34,6 @@
 #define compareSubImg compareSubImg_thr_sse2_asm
 #elif defined(USE_SSE2)      //enable SSE2 code
 #define compareSubImg compareSubImg_thr_sse2
-#elif defined(USE_ORC)
-#define compareSubImg compareSubImg_thr_orc
 #else
 #define compareSubImg compareSubImg_thr
 #endif
@@ -45,26 +43,8 @@ double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
                            int width, int height);
 #endif
 
-#ifdef USE_ORC
-double contrastSubImg_variance_orc(unsigned char* const I, const Field* field,
-                          int width, int height);
 double contrastSubImg_variance_C(unsigned char* const I, const Field* field,
                         int width, int height);
-
-#endif
-
-#ifdef USE_ORC
-unsigned int compareSubImg_orc(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width1, int width2, int height,
-                               int bytesPerPixel, int d_x, int d_y,
-                               unsigned int threshold);
-
-
-unsigned int compareSubImg_thr_orc(unsigned char* const I1, unsigned char* const I2,
-                                   const Field* field, int width1, int width2, int height,
-                                   int bytesPerPixel, int d_x, int d_y,
-                                   unsigned int threshold);
-#endif
 
 #ifdef USE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,

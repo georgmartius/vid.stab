@@ -207,6 +207,8 @@ ffmpeg -i input.mp4 -vf vidstabtransform=smoothing=30:input="mytransforms.trf" o
 
 Vidstab is an open source library - pull requests are very welcome. Some things you might like to help us out with:
 
+ ** I am looking for a new maintainer/ developer for this project! ** Please reach out to me (Georg), if you are interested.
+
  * Specific video clips where vidstab is not up-to the mark.
  * Bugs/fixes.
  * New features and improvements.

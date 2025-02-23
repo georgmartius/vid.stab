@@ -251,10 +251,15 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
         drawField(md, LMGet(&motionscoarse,i), 1);
       for (int i = 0; i < num_motions_fine; i++)
         drawField(md, LMGet(&motionsfine,i), 0);
+      
+      uint32_t color = md->fi.pFormat > PF_PACKED ? 0xB4B4B4 : 180;
+      uint32_t transColor = md->fi.pFormat > PF_PACKED ? 0xFAFAFA :250;
       for (int i = 0; i < num_motions; i++)
-        drawFieldTrans(md, LMGet(&motionscoarse,i),180);
+        drawFieldTrans(md, LMGet(&motionscoarse,i), color, transColor);
+      
+      color = md->fi.pFormat > PF_PACKED ? 0x404040 :64;
       for (int i = 0; i < num_motions_fine; i++)
-        drawFieldTrans(md, LMGet(&motionsfine,i), 64);
+        drawFieldTrans(md, LMGet(&motionsfine,i), color, transColor);
     }
     *motions = vs_vector_concat(&motionscoarse,&motionsfine);
     //*motions = motionscoarse;
@@ -758,34 +763,31 @@ LocalMotions calcTransFields(VSMotionDetect* md,
 
 /** draws the field scanning area */
 void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* lm, int maxShift) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
-  drawRectangle(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
-                lm->f.size + 2 * maxShift, lm->f.size + 2 * maxShift, 80);
+  uint32_t color = md->fi.pFormat > PF_PACKED ? 0x505050: 80; 
+  drawRectangle(md->fi.pFormat, md->currorig.data[0], md->fi.width, md->fi.height, 
+          lm->f.x, lm->f.y,
+                lm->f.size + 2 * maxShift, lm->f.size + 2 * maxShift, color);
 }
 
 /** draws the field */
 void drawField(VSMotionDetect* md, const LocalMotion* lm, short box) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
+  uint32_t color = md->fi.pFormat > PF_PACKED ? 0x282828: 40; 
   if(box)
-    drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
-            lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
+    drawBox(md->fi.pFormat, md->currorig.data[0], md->fi.width, md->fi.height, 
+            lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ color);
   else
-    drawRectangle(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
-                  lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
+    drawRectangle(md->fi.pFormat, md->currorig.data[0], md->fi.width, md->fi.height, 
+                  lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ color);
 }
 
 /** draws the transform data of this field */
-void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm, int color) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
+void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm, uint32_t color, uint32_t transColor) {
   Vec end = add_vec(field_to_vec(lm->f),lm->v);
-  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+  drawBox(md->fi.pFormat, md->currorig.data[0], md->fi.width, md->fi.height, 
           lm->f.x, lm->f.y, 5, 5, 0); // draw center
-  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
-          lm->f.x + lm->v.x, lm->f.y + lm->v.y, 5, 5, 250); // draw translation
-  drawLine(md->currorig.data[0], md->currorig.linesize[0],  md->fi.height, 1,
+  drawBox(md->fi.pFormat, md->currorig.data[0], md->fi.width, md->fi.height, 
+          lm->f.x + lm->v.x, lm->f.y + lm->v.y, 5, 5, transColor); // draw translation
+  drawLine(md->fi.pFormat, md->currorig.data[0], md->fi.width,  md->fi.height, 
            (Vec*)&lm->f, &end, 3, color);
 
 }
@@ -794,18 +796,14 @@ void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm, int color) {
  * draws a box at the given position x,y (center) in the given color
  (the same for all channels)
 */
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
-       int y, int sizex, int sizey, unsigned char color) {
+void drawBox(VSPixelFormat format, unsigned char* I, int width, int height, int x,
+       int y, int sizex, int sizey, uint32_t color) {
 
-  unsigned char* p = NULL;
-  int j, k;
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (j = 0; j < sizey; j++) {
-    for (k = 0; k < sizex * bytesPerPixel; k++) {
-      *p = color;
-      p++;
-    }
-    p += (width - sizex) * bytesPerPixel;
+  int left = x - sizex/2;
+  int top = y - sizey/2;
+    
+  for (int j = top; j < y+sizey; j++) {
+    drawHLine( format, I, width, height, left, j, sizex,  color);
   }
 }
 
@@ -813,41 +811,45 @@ void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
  * draws a rectangle (not filled) at the given position x,y (center) in the given color
  at the first channel
 */
-void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel, int x,
-                   int y, int sizex, int sizey, unsigned char color) {
+void drawRectangle(VSPixelFormat format, unsigned char* I, int width, int height, int x,
+                   int y, int sizex, int sizey, uint32_t color) {
 
-  unsigned char* p;
-  int k;
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizex; k++) { *p = color; p+= bytesPerPixel; } // upper line
-  p = I + ((x - sizex / 2) + (y + sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizex; k++) { *p = color; p+= bytesPerPixel; } // lower line
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // left line
-  p = I + ((x + sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // right line
+  int left = x - sizex/2;
+  int top = y - sizey/2;
+  
+  // upper line
+  drawHLine( format, I, width, height, left, top, sizex,  color);
+  // lower line
+  drawHLine( format, I, width, height, left, top + sizey, sizex,  color);
+ // left line
+  drawVLine( format, I, width, height, left, top , sizey,  color);
+  // right line
+  drawVLine( format, I, width, height, left + sizex, top , sizey,  color);  
 }
 
 /**
  * draws a line from a to b with given thickness(not filled) at the given position x,y (center) in the given color
  at the first channel
 */
-void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
-              Vec* a, Vec* b, int thickness, unsigned char color) {
-  unsigned char* p;
+void drawLine(VSPixelFormat format, unsigned char* I, int width, int height,
+              Vec* a, Vec* b, int thickness, uint32_t color) {
+  //int bytesPerPixel = 1;
+  //unsigned char* p;
   Vec div = sub_vec(*b,*a);
   if(div.y==0){ // horizontal line
     if(div.x<0) {*a=*b; div.x*=-1;}
     for(int r=-thickness/2; r<=thickness/2; r++){
-      p = I + ((a->x) + (a->y+r) * width) * bytesPerPixel;
-      for (int k = 0; k <= div.x; k++) { *p = color; p+= bytesPerPixel; }
+      drawHLine( format, I, width, height, a->x, a->y+r, div.x, color);              
+      //p = I + ((a->x) + (a->y+r) * width) * bytesPerPixel;
+      //for (int k = 0; k <= div.x; k++) { *p = color; p+= bytesPerPixel; }
     }
   }else{
     if(div.x==0){ // vertical line
       if(div.y<0) {*a=*b; div.y*=-1;}
       for(int r=-thickness/2; r<=thickness/2; r++){
-        p = I + ((a->x+r) + (a->y) * width) * bytesPerPixel;
-        for (int k = 0; k <= div.y; k++) { *p = color; p+= width * bytesPerPixel; }
+        drawVLine( format, I, width, height, a->x+r, a->y, div.y, color);
+        //p = I + ((a->x+r) + (a->y) * width) * bytesPerPixel;
+        //for (int k = 0; k <= div.y; k++) { *p = color; p+= width * bytesPerPixel; }
       }
     }else{
       double m = (double)div.x/(double)div.y;
@@ -855,10 +857,70 @@ void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
       for( int c=0; c<= abs(div.y); c++){
         int dy = div.y<0 ? -c : c;
         int x = a->x + m*dy - horlen/2;
-        p = I + (x + (a->y+dy) * width) * bytesPerPixel;
-        for( int k=0; k<= horlen; k++){ *p = color; p+= bytesPerPixel; }
+        drawHLine( format, I, width, height, x, a->y+dy, horlen, color);
+        //p = I + (x + (a->y+dy) * width) * bytesPerPixel;
+        //for( int k=0; k<= horlen; k++){ *p = color; p+= bytesPerPixel; }
       }
     }
+  }
+}
+
+inline void drawHLine(VSPixelFormat format, unsigned char* I, int width, int height, 
+              int x, int y, unsigned int length, uint32_t color){
+  
+  unsigned char*  p;
+  if (format > PF_PACKED){
+    int bytesPerPixel = (format == PF_RGBA) ? 4 : 3;
+    uint8_t c1, c2, c3;
+    if (format == PF_BGR24){
+      c1 = color ;
+      c2 = (color >> 8) ;
+      c3 = (color >> 16) ;
+    }else{
+      c3 = color ;
+      c2 = (color >> 8) ;
+      c1 = (color >> 16) ;
+    }   
+    p = I + (x*bytesPerPixel + y * width * bytesPerPixel);
+    for( int k=0; k<= length; k++){ 
+      *p = c1; 
+      *(p+1) = c2; 
+      *(p+2) = c3; 
+      p += bytesPerPixel; 
+    }
+  }else{
+    // for planar formats, draw only to first channel
+    p = I + (x + y * width);
+    for( int k=0; k<= length; k++){ *p = (unsigned char)color; p ++; }
+  }
+}
+inline void drawVLine(VSPixelFormat format, unsigned char* I, int width, int height, 
+              int x, int y, unsigned int length, uint32_t color){
+  
+  unsigned char*  p;
+  if (format > PF_PACKED){
+    int bytesPerPixel = (format == PF_RGBA) ? 4 : 3;
+    uint8_t c1, c2, c3;
+    if (format == PF_BGR24){
+      c1 = color ;
+      c2 = (color >> 8) ;
+      c3 = (color >> 16) ;
+    }else{
+      c3 = color ;
+      c2 = (color >> 8) ;
+      c1 = (color >> 16) ;
+    }   
+    p = I + (x*bytesPerPixel + y * width * bytesPerPixel);
+    for(int k=0; k<= length; k++){ 
+      *p = c1; 
+      *(p+1) = c2; 
+      *(p+2) = c3; 
+      p += (bytesPerPixel * width); 
+    }    
+  }else{
+    // for planar formats, draw only to first channel
+    p = I + (x + y * width);
+    for( int k=0; k<= length; k++){ *p = (unsigned char)color; p += width; }
   }
 }
 

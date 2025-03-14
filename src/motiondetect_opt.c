@@ -28,9 +28,6 @@
 
 #ifdef USE_SSE2
 #include <emmintrin.h>
-
-#define USE_SSE2_CMP_HOR
-#define SSE2_CMP_SUM_ROWS 8
 #endif
 
 #ifdef __ARM_NEON__
@@ -139,98 +136,30 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
   int s2 = field->size / 2;
   unsigned int sum = 0;
 
-  static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
-  unsigned char row = 0;
-#ifndef USE_SSE2_CMP_HOR
-  unsigned char summes[16];
-  int i;
-#endif
-  __m128i xmmsum, xmmmask;
-  xmmsum = _mm_setzero_si128();
-  xmmmask = _mm_loadu_si128((__m128i const*)mask);
-
   p1=I1 + ((field->x - s2) + (field->y - s2)*width1)*bytesPerPixel;
   p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width2)*bytesPerPixel;
   for (j = 0; j < field->size; j++){
     for (k = 0; k < field->size * bytesPerPixel; k+=16){
       {
-        __m128i xmm0, xmm1, xmm2;
-        xmm0 = _mm_loadu_si128((__m128i const *)p1);
-        xmm1 = _mm_loadu_si128((__m128i const *)p2);
+        __m128i a, b;
+        a = _mm_loadu_si128((__m128i const *)p1);
+        b = _mm_loadu_si128((__m128i const *)p2);
 
-        xmm2 = _mm_subs_epu8(xmm0, xmm1);
-        xmm0 = _mm_subs_epu8(xmm1, xmm0);
-        xmm0 = _mm_adds_epu8(xmm0, xmm2);
-
-        xmm1 = _mm_and_si128(xmm0, xmmmask);
-        xmm0 = _mm_srli_si128(xmm0, 1);
-        xmm0 = _mm_and_si128(xmm0, xmmmask);
-
-        xmmsum = _mm_adds_epu16(xmmsum, xmm0);
-        xmmsum = _mm_adds_epu16(xmmsum, xmm1);
+        a = _mm_sad_epu8(a, b);
+        b = _mm_srli_si128(a, 8);
+        a = _mm_add_epi32(a, b);
+        sum += _mm_cvtsi128_si32(a);
       }
 
       p1+=16;
       p2+=16;
-
-      row++;
-      if (row == SSE2_CMP_SUM_ROWS) {
-        row = 0;
-#ifdef USE_SSE2_CMP_HOR
-        {
-          __m128i xmm1;
-
-          xmm1 = _mm_srli_si128(xmmsum, 8);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          xmm1 = _mm_srli_si128(xmmsum, 4);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          xmm1 = _mm_srli_si128(xmmsum, 2);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          sum += _mm_extract_epi16(xmmsum, 0);
-        }
-#else
-        _mm_storeu_si128((__m128i*)summes, xmmsum);
-        for(i = 0; i < 16; i+=2)
-          sum += summes[i] + summes[i+1]*256;
-#endif
-        xmmsum = _mm_setzero_si128();
-      }
     }
+
     if (sum > treshold)
       break;
     p1 += (width1 - field->size) * bytesPerPixel;
     p2 += (width2 - field->size) * bytesPerPixel;
   }
-
-#if (SSE2_CMP_SUM_ROWS != 1) && (SSE2_CMP_SUM_ROWS != 2) && (SSE2_CMP_SUM_ROWS != 4) \
-  && (SSE2_CMP_SUM_ROWS != 8) && (SSE2_CMP_SUM_ROWS != 16)
-  //process all data left unprocessed
-  //this part can be safely ignored if
-  //SSE_SUM_ROWS = {1, 2, 4, 8, 16}
-#ifdef USE_SSE2_CMP_HOR
-  {
-    __m128i xmm1;
-
-    xmm1 = _mm_srli_si128(xmmsum, 8);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    xmm1 = _mm_srli_si128(xmmsum, 4);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    xmm1 = _mm_srli_si128(xmmsum, 2);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    sum += _mm_extract_epi16(xmmsum, 0);
-  }
-#else
-  _mm_storeu_si128((__m128i*)summes, xmmsum);
-  for(i = 0; i < 16; i+=2)
-    sum += summes[i] + summes[i+1]*256;
-#endif
-#endif
 
   return sum;
 }

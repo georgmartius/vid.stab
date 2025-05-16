@@ -6,7 +6,7 @@ int openmptest(){
 
 #pragma omp parallel for shared(sum) private(i,j)
   for (i=0; i<10;i++){
-    printf("num theads: %i\n",omp_get_thread_num());
+    printf("num threads: %i\n",omp_get_thread_num());
     long int k=0;
     for (j=0; j<4000000;j++){
       k+=sqrt(j);
@@ -19,7 +19,7 @@ int openmptest(){
   return end-start;
 }
 int openmp(){
-  fprintf(stderr, "Processors: %i, Max # theads: %i\n", omp_get_num_procs(), omp_get_max_threads());
+  fprintf(stderr, "Processors: %i, Max # threads: %i\n", omp_get_num_procs(), omp_get_max_threads());
   int num = omp_get_max_threads();
 
   int time, timeref;

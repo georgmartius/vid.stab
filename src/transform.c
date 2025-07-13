@@ -32,7 +32,9 @@
 #endif
 
 #include <math.h>
-#include <libgen.h>
+#ifndef _MSC_VER
+    #include <libgen.h>
+#endif
 #include <string.h>
 
 const char* interpol_type_names[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",

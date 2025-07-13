@@ -25,24 +25,27 @@
 #define __TRANSFORM_H
 
 #include <math.h>
-#include <libgen.h>
+#ifndef _MSC_VER
+    #include <libgen.h>
+#endif
 #include <stdint.h>
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "vidstabdefines.h"
+#include "vidstab_api.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
 
 
-typedef struct _vstransformations {
+typedef struct VS_API _vstransformations {
     VSTransform* ts; // array of transformations
     int current;   // index to current transformation
     int len;       // length of trans array
     short warned_end; // whether we warned that there is no transform left
 } VSTransformations;
 
-typedef struct _vsslidingavgtrans {
+typedef struct VS_API _vsslidingavgtrans {
     VSTransform avg; // average transformation
     VSTransform accum; // accumulator for relative to absolute conversion
     double zoomavg;     // average zoom value
@@ -54,7 +57,7 @@ typedef struct _vsslidingavgtrans {
 typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} VSInterpolType;
 
 /// returns a name for the interpolation type
-const char* getInterpolationTypeName(VSInterpolType type);
+VS_API const char* getInterpolationTypeName(VSInterpolType type);
 
 typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
 typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
@@ -76,7 +79,7 @@ typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
                                  const uint8_t *img, int linesize,
                                  int width, int height, uint8_t def);
 
-typedef struct _VSTransformConfig {
+typedef struct VS_API _VSTransformConfig {
 
     /* whether to consider transforms as relative (to previous frame)
      * or absolute transforms
@@ -102,7 +105,7 @@ typedef struct _VSTransformConfig {
     VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
 } VSTransformConfig;
 
-typedef struct _VSTransformData {
+typedef struct VS_API _VSTransformData {
     VSFrameInfo fiSrc;
     VSFrameInfo fiDest;
 
@@ -157,61 +160,61 @@ static const char vs_transform_help[] = ""
 
 /** returns the default config
  */
-VSTransformConfig vsTransformGetDefaultConfig(const char* modName);
+VS_API VSTransformConfig vsTransformGetDefaultConfig(const char* modName);
 
 /** initialized the VSTransformData structure using the config and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
+VS_API int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
                         const VSFrameInfo* fi_src, const VSFrameInfo* fi_dest);
 
 
 /** Deletes internal data structures.
  * In order to use the VSTransformData again, you have to call vsTransformDataInit
  */
-void vsTransformDataCleanup(VSTransformData* td);
+VS_API void vsTransformDataCleanup(VSTransformData* td);
 
 /// returns the current config
-void vsTransformGetConfig(VSTransformConfig* conf, const VSTransformData* td);
+VS_API void vsTransformGetConfig(VSTransformConfig* conf, const VSTransformData* td);
 
 /// returns the frame info for the src
-const VSFrameInfo* vsTransformGetSrcFrameInfo(const VSTransformData* td);
+VS_API const VSFrameInfo* vsTransformGetSrcFrameInfo(const VSTransformData* td);
 /// returns the frame info for the dest
-const VSFrameInfo* vsTransformGetDestFrameInfo(const VSTransformData* td);
+VS_API const VSFrameInfo* vsTransformGetDestFrameInfo(const VSTransformData* td);
 
 
 /// initializes VSTransformations structure
-void vsTransformationsInit(VSTransformations* trans);
+VS_API void vsTransformationsInit(VSTransformations* trans);
 /// deletes VSTransformations internal memory
-void vsTransformationsCleanup(VSTransformations* trans);
+VS_API void vsTransformationsCleanup(VSTransformations* trans);
 
 /// return next Transform and increases internal counter
-VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
+VS_API VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformations* trans);
 
 /** preprocesses the list of transforms all at once. Here the deshaking is calculated!
  */
-int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
+VS_API int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
 
 /**
  * vsLowPassTransforms: single step smoothing of transforms, using only the past.
  *  see also vsPreprocessTransforms. */
-VSTransform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
+VS_API VSTransform vsLowPassTransforms(VSTransformData* td, VSSlidingAvgTrans* mem,
                             const VSTransform* trans);
 
 /** call this function to prepare for a next transformation (transformPacked/transformPlanar)
     and supply the src frame buffer and the frame to write to. These can be the same pointer
     for an inplace operation (working on framebuffer directly)
  */
-int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest);
+VS_API int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest);
 
 /// does the actual transformation
-int vsDoTransform(VSTransformData* td, VSTransform t);
+VS_API int vsDoTransform(VSTransformData* td, VSTransform t);
 
 
 /** call this function to finish the transformation of a frame (transformPacked/transformPlanar)
  */
-int vsTransformFinish(VSTransformData* td);
+VS_API int vsTransformFinish(VSTransformData* td);
 
 
 #endif

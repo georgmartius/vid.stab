@@ -26,6 +26,7 @@
 #define __TRANSFORMFLOAT_H
 
 #include "transformtype.h"
+#include "vidstab_api.h"
 #include <stdint.h>
 
 #ifdef TESTING
@@ -37,9 +38,9 @@
 struct _VSTransformData;
 
 /// does the actual transformation in Packed space
-int _FLT(transformPacked)(struct _VSTransformData* td, VSTransform t);
+VS_API int _FLT(transformPacked)(struct _VSTransformData* td, VSTransform t);
 /// does the actual transformation in Planar space
-int _FLT(transformPlanar)(struct _VSTransformData* td, VSTransform t);
+VS_API int _FLT(transformPlanar)(struct _VSTransformData* td, VSTransform t);
 
 /**
  * interpolate: general interpolation function pointer for one channel image data
@@ -59,22 +60,22 @@ typedef void (*_FLT(vsInterpolateFun))(uint8_t *rv, float x, float y,
                                        int width, int height, uint8_t def);
 
 /* forward deklarations, please look in the .c file for documentation*/
-void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateBiLinBorder)(uint8_t *rv, float x, float y,
                                   const uint8_t *img, int img_linesize,
                                   int w, int h, uint8_t def);
-void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
                             const uint8_t *img, int img_linesize,
                             int width, int height, uint8_t def);
-void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
                             const uint8_t *img, int img_linesize,
                             int w, int h, uint8_t def);
-void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateLin)(uint8_t *rv, float x, float y,
                           const uint8_t *img, int img_linesize,
                           int w, int h, uint8_t def);
-void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
                            const uint8_t *img, int img_linesize,
                            int w, int h, uint8_t def);
-void _FLT(interpolateN)(uint8_t *rv, float x, float y,
+VS_API void _FLT(interpolateN)(uint8_t *rv, float x, float y,
                         const uint8_t *img, int img_linesize,
                         int width, int height,
                         uint8_t N, uint8_t channel, uint8_t def);

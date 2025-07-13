@@ -29,6 +29,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include "vidstab_api.h"
+
 #ifdef __GNUC__
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
@@ -66,25 +68,30 @@ typedef int (*vs_log_t) (int type, const char* tag, const char* format, ...);
 
 typedef char* (*vs_strdup_t) (const char* s);
 
-extern vs_log_t vs_log;
-extern int vs_log_level;
+extern VS_API vs_log_t vs_log;
+extern VS_API int vs_log_level;
 
-extern vs_malloc_t vs_malloc;
-extern vs_realloc_t vs_realloc;
-extern vs_free_t vs_free;
-extern vs_zalloc_t vs_zalloc;
+extern VS_API vs_malloc_t vs_malloc;
+extern VS_API vs_realloc_t vs_realloc;
+extern VS_API vs_free_t vs_free;
+extern VS_API vs_zalloc_t vs_zalloc;
 
-extern vs_strdup_t vs_strdup;
+extern VS_API vs_strdup_t vs_strdup;
 
-extern int VS_ERROR_TYPE;
-extern int VS_WARN_TYPE;
-extern int VS_INFO_TYPE;
-extern int VS_MSG_TYPE;
+extern VS_API int VS_ERROR_TYPE;
+extern VS_API int VS_WARN_TYPE;
+extern VS_API int VS_INFO_TYPE;
+extern VS_API int VS_MSG_TYPE;
 
-extern int VS_ERROR;
-extern int VS_OK;
-
-
+extern VS_API int VS_ERROR;
+extern VS_API int VS_OK;
+#if defined(_MSC_VER)
+#define VS_LOG_MSVC_HELPER(log_func, log_type, tag, format, ...) log_func(log_type, tag, format, __VA_ARGS__)
+#define vs_log_error(tag, format, ...) VS_LOG_MSVC_HELPER(vs_log, VS_ERROR_TYPE, tag, format, __VA_ARGS__)
+#define vs_log_warn(tag, format, ...)  VS_LOG_MSVC_HELPER(vs_log, VS_WARN_TYPE, tag, format, __VA_ARGS__)
+#define vs_log_info(tag, format, ...)  VS_LOG_MSVC_HELPER(vs_log, VS_INFO_TYPE, tag, format, __VA_ARGS__)
+#define vs_log_msg(tag, format, ...)   VS_LOG_MSVC_HELPER(vs_log, VS_MSG_TYPE, tag, format, __VA_ARGS__)
+#else
 #define vs_log_error(tag, format, args...) \
     vs_log(VS_ERROR_TYPE, tag, format , ## args)
 #define vs_log_warn(tag, format, args...) \
@@ -93,5 +100,6 @@ extern int VS_OK;
     vs_log(VS_INFO_TYPE, tag, format , ## args)
 #define vs_log_msg(tag, format, args...) \
     vs_log(VS_MSG_TYPE, tag, format , ## args)
+#endif
 
 #endif /* VIDSTABDEFINES_H_ */

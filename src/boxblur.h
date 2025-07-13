@@ -25,7 +25,7 @@
 #define __BOXBLUR_H
 
 #include "frameinfo.h"
-
+#include "vidstab_api.h"
 /** BoxBlurColor     - blur also color channels,
     BoxBlurKeepColor - copy original color channels
     BoxBlurNoColor   - do not touch color channels in dest
@@ -39,7 +39,7 @@ typedef enum _BoxBlurColorMode { BoxBlurColor, BoxBlurKeepColor, BoxBlurNoColor}
  * @param size of bluring kernel, (min 3 and it is made odd)
  * @param onlyLumincance if true color planes stay untouched
  */
-void boxblurPlanar(VSFrame* dest, const VSFrame* src,
+VS_API void boxblurPlanar(VSFrame* dest, const VSFrame* src,
     VSFrame* buffer, const VSFrameInfo* fi,
     unsigned int size, BoxBlurColorMode colormode);
 

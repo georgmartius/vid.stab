@@ -25,6 +25,7 @@
 #define __TRANSFORMFIXEDPOINT_H
 
 #include "transformtype.h"
+#include "vidstab_api.h"
 #include <stdint.h>
 
 typedef int32_t fp8;
@@ -33,29 +34,29 @@ typedef int32_t fp16; // also ncot definition of interpolFun in transform.h
 struct _VSTransformData;
 
 /// does the actual transformation in Packed space
-int transformPacked(struct _VSTransformData* td, VSTransform t);
+VS_API int transformPacked(struct _VSTransformData* td, VSTransform t);
 
 /// does the actual transformation in Planar space
-int transformPlanar(struct _VSTransformData* td, VSTransform t);
+VS_API int transformPlanar(struct _VSTransformData* td, VSTransform t);
 
 
 /* forward deklarations, please see .c file for documentation*/
-void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateBiLinBorder(uint8_t *rv, fp16 x, fp16 y,
                             const uint8_t *img, int img_linesize,
                             int w, int h, uint8_t def);
-void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateBiCub(uint8_t *rv, fp16 x, fp16 y,
                       const uint8_t *img, int img_linesize,
                       int width, int height, uint8_t def);
-void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateBiLin(uint8_t *rv, fp16 x, fp16 y,
                       const uint8_t *img, int img_linesize,
                       int w, int h, uint8_t def);
-void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateLin(uint8_t *rv, fp16 x, fp16 y,
                     const uint8_t *img, int img_linesize,
                     int w, int h, uint8_t def);
-void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
                      const uint8_t *img, int img_linesize,
                      int w, int h, uint8_t def);
-void interpolateN(uint8_t *rv, fp16 x, fp16 y,
+VS_API void interpolateN(uint8_t *rv, fp16 x, fp16 y,
                   const uint8_t *img, int img_linesize,
                   int width, int height,
                   uint8_t N, uint8_t channel, uint8_t def);

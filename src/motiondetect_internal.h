@@ -29,7 +29,7 @@
 #define MOTIONDETECT_INTERNAL_H
 
 #include "motiondetect.h"
-
+#include "vidstab_api.h"
 /* type for a function that calculates the transformation of a certain field
  */
 typedef LocalMotion (*calcFieldTransFunc)(VSMotionDetect*, VSMotionDetectFields*,
@@ -40,41 +40,41 @@ typedef LocalMotion (*calcFieldTransFunc)(VSMotionDetect*, VSMotionDetectFields*
 typedef double (*contrastSubImgFunc)(VSMotionDetect*, const Field*);
 
 
-int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
+VS_API int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
                int fieldSize, int maxShift, int stepSize, short border,
                int spacing, double contrastThreshold );
 
-double contrastSubImgPlanar(VSMotionDetect* md, const Field* field);
-double contrastSubImgPacked(VSMotionDetect* md, const Field* field);
-double contrastSubImg(unsigned char* const I, const Field* field,
+VS_API double contrastSubImgPlanar(VSMotionDetect* md, const Field* field);
+VS_API double contrastSubImgPacked(VSMotionDetect* md, const Field* field);
+VS_API double contrastSubImg(unsigned char* const I, const Field* field,
                       int width, int height, int bytesPerPixel);
 
 
-int cmp_contrast_idx(const void *ci1, const void* ci2);
-VSVector selectfields(VSMotionDetect* md, VSMotionDetectFields* fields,
+VS_API int cmp_contrast_idx(const void *ci1, const void* ci2);
+VS_API VSVector selectfields(VSMotionDetect* md, VSMotionDetectFields* fields,
                       contrastSubImgFunc contrastfunc);
 
-LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fields,
+VS_API LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fields,
                                  const Field* field, int fieldnum);
-LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fields,
+VS_API LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fields,
                                  const Field* field, int fieldnum);
-LocalMotions calcTransFields(VSMotionDetect* md, VSMotionDetectFields* fields,
+VS_API LocalMotions calcTransFields(VSMotionDetect* md, VSMotionDetectFields* fields,
                              calcFieldTransFunc fieldfunc,
                              contrastSubImgFunc contrastfunc);
 
 
-void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion, int maxShift);
-void drawField(VSMotionDetect* md, const LocalMotion* motion, short box);
-void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, int color);
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
+VS_API void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion, int maxShift);
+VS_API void drawField(VSMotionDetect* md, const LocalMotion* motion, short box);
+VS_API void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, int color);
+VS_API void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
-void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,
+VS_API void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,
                    int x, int y, int sizex, int sizey, unsigned char color);
 
-void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
+VS_API void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
               Vec* a, Vec* b, int thickness, unsigned char color);
 
-unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
+VS_API unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
                                const Field* field, int width1, int width2, int height,
                                int bytesPerPixel,
                                int d_x, int d_y, unsigned int threshold);

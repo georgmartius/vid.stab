@@ -27,6 +27,7 @@
 #include "vidstabdefines.h"
 #include "vsvector.h"
 #include "frameinfo.h"
+#include "vidstab_api.h"
 
 /// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \
@@ -38,19 +39,19 @@
  * but useful when cascading calculations like
  * add_transforms_(mult_transform(&t1, 5.0), &t2)
  */
-VSTransform null_transform(void);
-VSTransform new_transform(double x, double y, double alpha,
+VS_API VSTransform null_transform(void);
+VS_API VSTransform new_transform(double x, double y, double alpha,
                           double zoom, double barrel, double rshutter, int extra);
-VSTransform add_transforms(const VSTransform* t1, const VSTransform* t2);
-VSTransform add_transforms_(const VSTransform t1, const VSTransform t2);
-VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2);
-VSTransform mult_transform(const VSTransform* t1, double f);
-VSTransform mult_transform_(const VSTransform t1, double f);
+VS_API VSTransform add_transforms(const VSTransform* t1, const VSTransform* t2);
+VS_API VSTransform add_transforms_(const VSTransform t1, const VSTransform t2);
+VS_API VSTransform sub_transforms(const VSTransform* t1, const VSTransform* t2);
+VS_API VSTransform mult_transform(const VSTransform* t1, double f);
+VS_API VSTransform mult_transform_(const VSTransform t1, double f);
 
-void storeVSTransform(FILE* f, const VSTransform* t);
+VS_API void storeVSTransform(FILE* f, const VSTransform* t);
 
 
-typedef struct _preparedtransform {
+typedef struct VS_API _preparedtransform {
   const VSTransform* t;
   double zcos_a;
   double zsin_a;
@@ -59,79 +60,79 @@ typedef struct _preparedtransform {
 } PreparedTransform;
 
 // transforms vector
-PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
+VS_API PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
 // transforms vector (attention, only integer)
-Vec transform_vec(const PreparedTransform* t, const Vec* v);
-void transform_vec_double(double *x, double* y, const PreparedTransform* t, const Vec* v);
+VS_API Vec transform_vec(const PreparedTransform* t, const Vec* v);
+VS_API void transform_vec_double(double *x, double* y, const PreparedTransform* t, const Vec* v);
 
 // subtract two vectors
-Vec sub_vec(Vec v1, Vec v2);
+VS_API Vec sub_vec(Vec v1, Vec v2);
 // adds two vectors
-Vec add_vec(Vec v1, Vec v2);
-Vec field_to_vec(Field f);
+VS_API Vec add_vec(Vec v1, Vec v2);
+VS_API Vec field_to_vec(Field f);
 
 /* compares a transform with respect to x (for sort function) */
-int cmp_trans_x(const void *t1, const void* t2);
+VS_API int cmp_trans_x(const void *t1, const void* t2);
 /* compares a transform with respect to y (for sort function) */
-int cmp_trans_y(const void *t1, const void* t2);
+VS_API int cmp_trans_y(const void *t1, const void* t2);
 /* static int cmp_trans_alpha(const void *t1, const void* t2); */
 
 /* compares two double values (for sort function)*/
-int cmp_double(const void *t1, const void* t2);
+VS_API int cmp_double(const void *t1, const void* t2);
 /* compares two int values (for sort function)*/
-int cmp_int(const void *t1, const void* t2);
+VS_API int cmp_int(const void *t1, const void* t2);
 
 
 /** square of a number */
-double sqr(double x);
+VS_API double sqr(double x);
 
 /* calculates the median of an array of transforms,
  * considering only x and y
  */
-VSTransform median_xy_transform(const VSTransform* transforms, int len);
+VS_API VSTransform median_xy_transform(const VSTransform* transforms, int len);
 /* median of a double array */
-double median(double* ds, int len);
+VS_API double median(double* ds, int len);
 /* mean of a double array */
-double mean(const double* ds, int len);
+VS_API double mean(const double* ds, int len);
 /* standard deviation of a double array */
-double stddev(const double* ds, int len, double mean);
+VS_API double stddev(const double* ds, int len, double mean);
 /* mean with cutted upper and lower pentile
  * (min and max are optionally returned)
  */
-double cleanmean(double* ds, int len, double* minimum, double* maximum);
+VS_API double cleanmean(double* ds, int len, double* minimum, double* maximum);
 /* calulcates the cleaned mean of an array of transforms,
  * considerung only x and y
  */
-VSTransform cleanmean_xy_transform(const VSTransform* transforms, int len);
+VS_API VSTransform cleanmean_xy_transform(const VSTransform* transforms, int len);
 
 /* calculates the cleaned (cutting of x-th percentil)
  * maximum and minimum of an array of transforms,
  * considerung only x and y
  */
-void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
+VS_API void cleanmaxmin_xy_transform(const VSTransform* transforms, int len,
                               int percentil,
                               VSTransform* min, VSTransform* max);
 
 /* calculates the required zoom value to have no borders visible
  */
-double transform_get_required_zoom(const VSTransform* transform, int width, int height);
+VS_API double transform_get_required_zoom(const VSTransform* transform, int width, int height);
 
 /* helper function to work with local motions */
 
-LocalMotion null_localmotion(void);
+VS_API LocalMotion null_localmotion(void);
 /// a new array of the v.x values is returned (vs_free has to be called)
-int* localmotions_getx(const LocalMotions* localmotions);
+VS_API int* localmotions_getx(const LocalMotions* localmotions);
 /// a new array of the v.y values is returned (vs_free has to be called)
-int* localmotions_gety(const LocalMotions* localmotions);
+VS_API int* localmotions_gety(const LocalMotions* localmotions);
 /// lm1 - lm2 only for the Vec (the remaining values are taken from lm1)
-LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2);
+VS_API LocalMotion sub_localmotion(const LocalMotion* lm1, const LocalMotion* lm2);
 
 /* calulcates the cleaned mean of the vector of localmotions
  * considerung only v.x and v.y
  */
-LocalMotion cleanmean_localmotions(const LocalMotions* localmotions);
+VS_API LocalMotion cleanmean_localmotions(const LocalMotions* localmotions);
 
-VSArray localmotionsGetMatch(const LocalMotions* localmotions);
+VS_API VSArray localmotionsGetMatch(const LocalMotions* localmotions);
 
 /* helper functions */
 

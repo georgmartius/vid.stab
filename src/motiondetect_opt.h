@@ -29,7 +29,7 @@
 #define MOTIONDETECT_OPT_H
 
 #include "motiondetect.h"
-
+#include "vidstab_api.h"
 #ifdef USE_SSE2_ASM //enable SSE2 inline asm code
 #define compareSubImg compareSubImg_thr_sse2_asm
 #elif defined(USE_SSE2)      //enable SSE2 code
@@ -39,15 +39,15 @@
 #endif
 
 #ifdef USE_SSE2
-double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
+VS_API double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
                            int width, int height);
 #endif
 
-double contrastSubImg_variance_C(unsigned char* const I, const Field* field,
+VS_API double contrastSubImg_variance_C(unsigned char* const I, const Field* field,
                         int width, int height);
 
 #ifdef USE_SSE2
-unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
+VS_API unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
                                     const Field* field, int width1, int width2, int height,
                                     int bytesPerPixel, int d_x, int d_y,
                                     unsigned int threshold);

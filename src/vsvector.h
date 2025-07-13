@@ -24,12 +24,13 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include "vidstab_api.h"
 
 /**
    A vector for arbitrary elements that resizes
 */
 typedef struct vsvector_ VSVector;
-struct vsvector_ {
+struct VS_API vsvector_ {
   void**  data;
   int    buffersize;
   int    nelems;
@@ -47,7 +48,7 @@ struct vsvector_ {
  *     VS_OK on success,
  *     VS_ERROR on error.
  */
-int vs_vector_init(VSVector *V, int buffersize);
+VS_API int vs_vector_init(VSVector *V, int buffersize);
 
 /**
  * vs_vector_fini:
@@ -60,7 +61,7 @@ int vs_vector_init(VSVector *V, int buffersize);
  *     VS_OK on success,
  *     VS_ERROR on error.
  */
-int vs_vector_fini(VSVector *V);
+VS_API int vs_vector_fini(VSVector *V);
 
 /**
  * vs_vector_del:
@@ -72,14 +73,14 @@ int vs_vector_fini(VSVector *V);
  *     VS_OK on success,
  *     VS_ERROR on error.
  */
-int vs_vector_del(VSVector *V);
+VS_API int vs_vector_del(VSVector *V);
 
 /**
  * vs_vector_zero:
  *    deletes all data pointed to by the vector elements.
  *    sets the number of elements to 0 but does not delete buffer
 */
-int vs_vector_zero(VSVector *V);
+VS_API int vs_vector_zero(VSVector *V);
 
 /**
  * vs_vector_size:
@@ -92,7 +93,7 @@ int vs_vector_zero(VSVector *V);
  *    -1 on error,
  *    the number of elements otherwise
  */
-int vs_vector_size(const VSVector *V);
+VS_API int vs_vector_size(const VSVector *V);
 
 
 /**
@@ -111,26 +112,26 @@ int vs_vector_size(const VSVector *V);
  *     VS_OK on success,
  *     VS_ERROR on error.
  */
-int vs_vector_append(VSVector *V, void *data);
+VS_API int vs_vector_append(VSVector *V, void *data);
 
 /**
  * vs_vector_append_dup:
  *  like vs_vector_append but copies data
  */
-int vs_vector_append_dup(VSVector *V, void *data, int data_size);
+VS_API int vs_vector_append_dup(VSVector *V, void *data, int data_size);
 
 
 /* vs_vector_set:
  *      the newly inserted element BECOMES the position `pos' in the vector.
  *      and the old item is returned
  */
-void* vs_vector_set(VSVector *V, int pos, void *data);
+VS_API void* vs_vector_set(VSVector *V, int pos, void *data);
 
 /* vs_vector_set_dup:
  *      the newly inserted element is copied and BECOMES the position `pos' in the vector
  *      and the old item is returned
  */
-void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
+VS_API void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
 
 /*
  * vs_vector_get:
@@ -143,57 +144,57 @@ void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
  *     NULL on error (requested element doesn't exist)
  *     a pointer to the data belonging to the requested vector item.
  */
-void *vs_vector_get(const VSVector *V, int pos);
+VS_API void *vs_vector_get(const VSVector *V, int pos);
 
 /*
  * vs_vector_filter:
  *      returns a new vector with elements that fulfill predicate
  *      pred(param, elem)
  */
-VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param);
+VS_API VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param);
 
 /*
  * vs_vector_concat:
  *      returns a new vector with elements of vector V1 and V2 after another
  */
-VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2);
+VS_API VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2);
 
 
 /**
    A simple fixed-size double vector
 */
 typedef struct vsarray_ VSArray;
-struct vsarray_ {
+struct VS_API vsarray_ {
   double* dat;
   int len;
 };
 
 /** creates an VSArray from a double array */
-VSArray vs_array(double vals[], int len);
+VS_API VSArray vs_array(double vals[], int len);
 
 /** allocates a new (zero initialized) double array */
-VSArray vs_array_new(int len);
+VS_API VSArray vs_array_new(int len);
 
 /** adds two vectors ands stores results into c (if zero length then allocated) */
-VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b);
+VS_API VSArray* vs_array_plus(VSArray* c, VSArray a, VSArray b);
 
 /** scales a vector by a factor and stores results into c (if zero length then allocated) */
-VSArray* vs_array_scale(VSArray* c, VSArray a, double f);
+VS_API VSArray* vs_array_scale(VSArray* c, VSArray a, double f);
 
 /** create a new deep copy of the vector */
-VSArray vs_array_copy(VSArray a);
+VS_API VSArray vs_array_copy(VSArray a);
 
 /** sets all elements of the vector to 0.0 */
-void vs_array_zero(VSArray* a);
+VS_API void vs_array_zero(VSArray* a);
 
 /** swaps the content of the two arrays */
-void vs_array_swap(VSArray* a, VSArray* b);
+VS_API void vs_array_swap(VSArray* a, VSArray* b);
 
 /** free data */
-void vs_array_free(VSArray a);
+VS_API void vs_array_free(VSArray a);
 
 /** print array to file */
-void vs_array_print(VSArray a, FILE* f);
+VS_API void vs_array_print(VSArray a, FILE* f);
 
 #endif /* VSVECTOR_H */
 

@@ -726,11 +726,13 @@ LocalMotions calcTransFields(VSMotionDetect* md,
 
   VSVector goodflds = selectfields(md, fields, contrastfunc);
   // use all "good" fields and calculate optimal match to previous frame
+  //MSVC requires the OpenMP loop index to be a signed integer, declared in the same function, and visible if not declared inside the loop.
+  int index;
 #ifdef USE_OMP
   omp_set_num_threads(md->conf.numThreads);
 #pragma omp parallel for shared(goodflds, md, localmotions)
 #endif
-  for(int index=0; index < vs_vector_size(&goodflds); index++){
+  for(index=0; index < vs_vector_size(&goodflds); index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;
     LocalMotion m;
     m = fieldfunc(md, fields, &fields->fields[i], i); // e.g. calcFieldTransPlanar

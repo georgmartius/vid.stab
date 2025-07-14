@@ -35,11 +35,12 @@
 #include "vidstabdefines.h"
 #include "vsvector.h"
 #include "frameinfo.h"
+#include "vidstab_api.h"
 
 #define ASCII_SERIALIZATION_MODE 1
 #define BINARY_SERIALIZATION_MODE 2
 
-typedef struct _vsmotiondetectconfig {
+typedef struct VS_API _vsmotiondetectconfig {
   /* meta parameter for maxshift and fieldsize between 1 and 15 */
   int         shakiness;
   int         accuracy;         // meta parameter for number of fields between 1 and 10
@@ -55,7 +56,7 @@ typedef struct _vsmotiondetectconfig {
 } VSMotionDetectConfig;
 
 /** structure for motion detection fields */
-typedef struct _vsmotiondetectfields {
+typedef struct VS_API _vsmotiondetectfields {
   /* maximum number of pixels we expect the shift of subsequent frames */
   int maxShift;
   int stepSize;                 // stepsize for detection
@@ -70,7 +71,7 @@ typedef struct _vsmotiondetectfields {
 } VSMotionDetectFields;
 
 /** data structure for motion detection part of deshaking*/
-typedef struct _vsmotiondetect {
+typedef struct VS_API _vsmotiondetect {
   VSFrameInfo fi;
 
   VSMotionDetectConfig conf;
@@ -115,13 +116,13 @@ static const char vs_motiondetect_help[] = ""
 
 /** returns the default config
  */
-VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName);
+VS_API VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName);
 
 /** initialized the VSMotionDetect structure and allocates memory
  *  for the frames and stuff
  *  @return VS_OK on success otherwise VS_ERROR
  */
-int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf,
+VS_API int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf,
                        const VSFrameInfo* fi);
 
 /**
@@ -130,18 +131,18 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf,
  *  is stored internally
  *  @param motions: calculated local motions. (must be deleted manually)
  * */
-int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame);
+VS_API int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame);
 
 /** Deletes internal data structures.
  * In order to use the VSMotionDetect again, you have to call vsMotionDetectInit
  */
-void vsMotionDetectionCleanup(VSMotionDetect* md);
+VS_API void vsMotionDetectionCleanup(VSMotionDetect* md);
 
 /// returns the current config
-void vsMotionDetectGetConfig(VSMotionDetectConfig* conf, const VSMotionDetect* md);
+VS_API void vsMotionDetectGetConfig(VSMotionDetectConfig* conf, const VSMotionDetect* md);
 
 /// returns the frame info
-const VSFrameInfo* vsMotionDetectGetFrameInfo(const VSMotionDetect* md);
+VS_API const VSFrameInfo* vsMotionDetectGetFrameInfo(const VSMotionDetect* md);
 
 #endif  /* MOTIONDETECT_H */
 

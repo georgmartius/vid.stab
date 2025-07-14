@@ -25,7 +25,7 @@
 #define __TRANSFORM_INTERNAL_H
 
 #include "transform.h"
-
+#include "vidstab_api.h"
 #include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"
@@ -37,11 +37,11 @@ const char* getInterpolationTypeName(VSInterpolType type);
 /** performs the smoothing of the camera path and modifies the transforms
     to compensate for the jiggle
     */
-int cameraPathOptimization(VSTransformData* td, VSTransformations* trans);
+VS_API int cameraPathOptimization(VSTransformData* td, VSTransformations* trans);
 
-int cameraPathAvg(VSTransformData* td, VSTransformations* trans);
-int cameraPathGaussian(VSTransformData* td, VSTransformations* trans);
-int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans);
+VS_API int cameraPathAvg(VSTransformData* td, VSTransformations* trans);
+VS_API int cameraPathGaussian(VSTransformData* td, VSTransformations* trans);
+VS_API int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans);
 
 #endif
 

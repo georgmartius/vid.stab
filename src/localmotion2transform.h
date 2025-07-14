@@ -29,18 +29,18 @@
 #include "transform.h"
 #include "transformtype.h"
 #include "serialize.h"
-
+#include "vidstab_api.h"
 
 /** converts for each frame the localmotions into a transform
  */
-int vsLocalmotions2Transforms(VSTransformData* td,
+VS_API int vsLocalmotions2Transforms(VSTransformData* td,
                               const VSManyLocalMotions* motions,
                               VSTransformations* trans );
 
 /** calculates rotation angle for the given transform and
  * field with respect to the given center-point
  */
-double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
+VS_API double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
 
 /** calculates the transformation that caused the observed motions.
     Using a simple cleaned-means approach to eliminate outliers.
@@ -51,7 +51,7 @@ double vsCalcAngle(const LocalMotion* lm, int center_x, int center_y);
     calculate rotation angle as cleaned mean of all angles
     compensate for possibly off-center rotation
 */
-VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modname,
+VS_API VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modname,
                                        const LocalMotions* motions);
 
 
@@ -60,7 +60,7 @@ VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modname,
     Outliers are removed by repeated gaussianizing error distribution.
     (File for exporting transforms)
 */
-VSTransform vsMotionsToTransform(VSTransformData* td,
+VS_API VSTransform vsMotionsToTransform(VSTransformData* td,
                                  const LocalMotions* motions,
                                  FILE* f);
 
@@ -79,7 +79,7 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
  * Return Value:
  *     Optimized parameters
  */
-VSArray vsGradientDescent(double (*eval)(VSArray, void*),
+VS_API VSArray vsGradientDescent(double (*eval)(VSArray, void*),
                          VSArray params, void* dat,
                          int N, VSArray stepsizes, double threshold, double* residual);
 

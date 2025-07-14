@@ -26,7 +26,15 @@ option(USE_OMP "use parallelization use OMP" ON)
 
 set(CMAKE_C_STANDARD 99)
 
-add_definitions(-Wall -Wno-pointer-sign)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+  add_definitions(-Wall -Wno-pointer-sign)
+elseif(MSVC)
+  add_definitions(/W3)
+endif()
+
+if(NOT WIN32)
+  add_definitions(-fPIC)
+endif()
 
 if(NOT WIN32)
   add_definitions(-fPIC)
@@ -38,10 +46,15 @@ endif()
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
-if(SSE2_FOUND)
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
-endif()
+if (NOT MSVC)
+  if(SSE2_FOUND)
+      add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+endif ()
 
+endif()
+if(MSVC AND USE_OMP)
+  add_compile_options(/openmp)
+endif()
 if(USE_OMP AND OPENMP_FOUND)
 add_definitions(${OpenMP_C_FLAGS} -DUSE_OMP)
 endif()
@@ -63,7 +76,15 @@ add_library (vidstab ${SOURCES})
 set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})
 
 
-target_link_libraries(vidstab m)
+if(MSVC)
+  target_compile_definitions(vidstab PRIVATE VIDSTAB_EXPORTS)
+endif()
+target_include_directories(vidstab PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
+if (NOT MSVC)
+  target_link_libraries(vidstab m)
+endif ()
 set(PKG_EXTRA_LIBS -lm)
 if(USE_OMP AND OPENMP_FOUND)
 if(TARGET OpenMP::OpenMP_C)

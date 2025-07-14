@@ -30,7 +30,7 @@
 #include "transformtype.h"
 #include "motiondetect.h"
 #include "transform.h"
-
+#include "vidstab_api.h"
 
 /// Vector of LocalMotions
 typedef VSVector VSManyLocalMotions;
@@ -39,29 +39,29 @@ typedef VSVector VSManyLocalMotions;
     ((LocalMotions*)vs_vector_get(manylocalmotions,index))
 
 /// guess the serialization mode of the local motions file
-int vsGuessSerializationMode(FILE* f);
+VS_API int vsGuessSerializationMode(FILE* f);
 
 /// stores local motions to file
-int vsStoreLocalmotions(FILE* f, const LocalMotions* lms, const int serializationMode);
+VS_API int vsStoreLocalmotions(FILE* f, const LocalMotions* lms, const int serializationMode);
 
 /// restores local motions from file
-LocalMotions vsRestoreLocalmotions(FILE* f, const int serializationMode);
+VS_API LocalMotions vsRestoreLocalmotions(FILE* f, const int serializationMode);
 
 
 /// writes the header to the file that is to be holding the local motions
-int vsPrepareFile(const VSMotionDetect* td, FILE* f);
+VS_API int vsPrepareFile(const VSMotionDetect* td, FILE* f);
 
 /// appends the given localmotions to the file
-int vsWriteToFile(const VSMotionDetect* td, FILE* f, const LocalMotions* lms);
+VS_API int vsWriteToFile(const VSMotionDetect* td, FILE* f, const LocalMotions* lms);
 
 /// reads the header of the file and return the version number (used by readLocalmotionsFile)
-int vsReadFileVersion(FILE* f, const int serializationMode);
+VS_API int vsReadFileVersion(FILE* f, const int serializationMode);
 
 /*
  * reads the next set of localmotions from the file, return VS_ERROR on error or
  * if nothing is read (used by readLocalmotionsFile)
  */
-int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode);
+VS_API int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode);
 
 /*
  * reads the entire file of localmotions, return VS_ERROR on error or if nothing is read
@@ -72,10 +72,10 @@ int vsReadFromFile(FILE* f, LocalMotions* lms, const int serializationMode);
  *   Data lines have the structure: Frame NUM (<LocalMotions>)
  *   where LocalMotions ::= List [(LM v.x v.y f.x f.y f.size contrast match),...]
  */
-int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* lms);
+VS_API int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* lms);
 
 // read the transformations from the given file (Deprecated format)
-int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* trans);
+VS_API int vsReadOldTransforms(const VSTransformData* td, FILE* f , VSTransformations* trans);
 
 
 #endif

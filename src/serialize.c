@@ -73,7 +73,7 @@ static double byteSwapDouble(double v)
     defined(__ARMEL__) || \
     defined(__THUMBEL__) || \
     defined(__AARCH64EL__) || \
-    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || defined(_WIN32)
 // It's a little-endian target architecture
 #define __IS_LITTLE_ENDIAN__
 #else

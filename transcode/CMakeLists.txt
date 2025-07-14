@@ -10,14 +10,17 @@ set(TRANSCODE_ROOT ../../transcode)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
+if (NOT MSVC)
+	add_definitions(-Wall -Wno-pointer-sign -DTRANSCODE -std=gnu99)
+	if(SSE2_FOUND)
+		add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
+	endif()
+endif ()
 
-add_definitions(-Wall -Wno-pointer-sign -DTRANSCODE -std=gnu99)
 
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
-if(SSE2_FOUND)
-add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
-endif()
+
 
 # Make sure the compiler can find include files from transcode
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ )

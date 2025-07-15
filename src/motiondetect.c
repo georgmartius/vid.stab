@@ -889,21 +889,22 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
+  int k_len = field->size * bytesPerPixel;
+  int p1Stride = (width1 - field->size) * bytesPerPixel;
+  int p2Stride = (width2 - field->size) * bytesPerPixel;
   unsigned int sum = 0;
 
   p1 = I1 + ((field->x - s2) + (field->y - s2) * width1) * bytesPerPixel;
   p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width2)
     * bytesPerPixel;
   for (j = 0; j < field->size; j++) {
-    for (k = 0; k < field->size * bytesPerPixel; k++) {
-      sum += abs((int) *p1 - (int) *p2);
-      p1++;
-      p2++;
-    }
-    if( sum > threshold) // no need to calculate any longer: worse than the best match
+    for (k = 0; k < k_len; ++k, ++p1, ++p2) {
+      sum += abs((int)*p1 - (int)*p2);
+    }    
+    if(sum > threshold) // no need to calculate any longer: worse than the best match
       break;
-    p1 += (width1 - field->size) * bytesPerPixel;
-    p2 += (width2 - field->size) * bytesPerPixel;
+    p1 += p1Stride;
+    p2 += p2Stride;
   }
   return sum;
 }

@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.6)
 project (vid.stab.transcode)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/../CMakeModules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../CMakeModules/")
 
 # set your transcode path here!
 set(TRANSCODE_ROOT ../../transcode)

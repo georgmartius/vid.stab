@@ -176,6 +176,7 @@ static int stabilize_configure(TCModuleInstance *self,
         optstr_get(options, "fileformat", "%d", &md->serializationMode);
         optstr_get(options, "result",     "%[^:]", sd->result);
         optstr_get(options, "shakiness",  "%d", &conf.shakiness);
+        optstr_get(options, "seek_range", "%d", &conf.seek_range);
         optstr_get(options, "accuracy",   "%d", &conf.accuracy);
         optstr_get(options, "stepsize",   "%d", &conf.stepSize);
         optstr_get(options, "algo",       "%d", &conf.algo);
@@ -193,6 +194,7 @@ static int stabilize_configure(TCModuleInstance *self,
     if (verbose) {
         tc_log_info(MOD_NAME, "Image Stabilization Settings:");
         tc_log_info(MOD_NAME, "     shakiness = %d", conf.shakiness);
+        tc_log_info(MOD_NAME, "    seek_range = %d", conf.seek_range);
         tc_log_info(MOD_NAME, "      accuracy = %d", conf.accuracy);
         tc_log_info(MOD_NAME, "      stepsize = %d", conf.stepSize);
         tc_log_info(MOD_NAME, "          algo = %d", conf.algo);
@@ -303,6 +305,7 @@ static int stabilize_inspect(TCModuleInstance *self,
     vsMotionDetectGetConfig(&conf,md);
 
     CHECKPARAM("shakiness","shakiness=%d", conf.shakiness);
+    CHECKPARAM("seek_range","seek_range=%d", conf.seek_range);
     CHECKPARAM("accuracy", "accuracy=%d",  conf.accuracy);
     CHECKPARAM("stepsize", "stepsize=%d",  conf.stepSize);
     CHECKPARAM("algo",     "algo=%d",      conf.algo);

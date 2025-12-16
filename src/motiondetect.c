@@ -60,6 +60,7 @@ VSMotionDetectConfig vsMotionDetectGetDefaultConfig(const char* modName){
   conf.stepSize          = 6;
   conf.accuracy          = 15;
   conf.shakiness         = 5;
+  conf.seek_range        = -1;
   conf.virtualTripod     = 0;
   conf.contrastThreshold = 0.25;
   conf.show              = 0;
@@ -130,7 +131,11 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
 //  md->fieldSize = VS_MAX(4,VS_MIN(minDimension/6, (minDimension*md->conf.shakiness)/40));
 
   // fixed size and shift now
-  int maxShift      = VS_MAX(16, minDimension/7);
+  int maxShift;
+  if ( md->conf.seek_range < 0 )
+    maxShift = VS_MAX(16, minDimension/7);
+  else 
+    maxShift = md->conf.seek_range;
   int fieldSize     = VS_MAX(16, minDimension/10);
   int fieldSizeFine = VS_MAX(6, minDimension/60);
 #if defined(USE_SSE2) || defined(USE_SSE2_ASM)
@@ -288,8 +293,8 @@ int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
   fs->useOffset = 0;
   fs->contrastThreshold = contrastThreshold;
 
-  int rows = VS_MAX(3,(md->fi.height - fs->maxShift*2)/(size+spacing)-1);
-  int cols = VS_MAX(3,(md->fi.width - fs->maxShift*2)/(size+spacing)-1);
+  int rows = VS_MAX(3,(md->fi.height - fs->fieldSize*2)/(size+spacing)-1);
+  int cols = VS_MAX(3,(md->fi.width - fs->fieldSize*2)/(size+spacing)-1);
   // make sure that the remaining rows have the same length
   fs->fieldNum = rows * cols;
   fs->fieldRows = rows;
@@ -304,7 +309,7 @@ int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
     // have to be away from the image boundary
     // (stepsize is added in case shift is increased through stepsize)
     if(keepBorder)
-      border = size / 2 + fs->maxShift + fs->stepSize;
+      border = size / 2 + fs->fieldSize + fs->stepSize;
     int step_x = (md->fi.width  - 2 * border) / VS_MAX(cols-1,1);
     int step_y = (md->fi.height - 2 * border) / VS_MAX(rows-1,1);
     for (j = 0; j < rows; j++) {

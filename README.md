@@ -102,6 +102,8 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
   <dd>Set the path to the file used to write the transforms information. Default value is <b>transforms.trf</b>.</dd>
   <dt><b>shakiness</b></dt>
   <dd>Set the shakiness of input video or quickness of camera. It accepts an integer in the range 1-10, a value of 1 means little shakiness, a value of 10 means strong shakiness. Default value is 5.</dd>
+  <dt><b>seek_range</b></dt>
+  <dd>Set the pixel range in which to seek for matches. Default value (-1) means that the range is (1/7) of the smaller dimension of the input. Accepts integers from 0 to 1000</dd>
   <dt><b>accuracy</b></dt>
   <dd>Set the accuracy of the detection process. It must be a value in the range 1-15. A value of 1 means low accuracy, a value of 15 means high accuracy. Default value is 15.</dd>
   <dt><b>stepsize</b></dt>

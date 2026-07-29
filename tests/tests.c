@@ -30,6 +30,7 @@
 
 #include "generate.c"
 
+#include "test_frameinfo.c"
 #include "test_transform.c"
 #include "test_compareimg.c"
 #include "test_motiondetect.c"
@@ -90,6 +91,10 @@ int main(int argc, char** argv){
     UNIT(openmp());
   }
 #endif
+
+  if(all || contains(argv,argc,"--testFI", "frameinfo dimension validation")){
+    UNIT(test_frameinfo());
+  }
 
   if(all || contains(argv,argc,"--testTI", "transform_implementation")){
     UNIT(test_transform_implementation(&testdata));

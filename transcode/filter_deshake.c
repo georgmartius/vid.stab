@@ -184,8 +184,12 @@ static int deshake_configure(TCModuleInstance *self,
 
   // init VSMotionDetect part
   VSFrameInfo fi;
-  vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
-                transcode2ourPF(sd->vob->im_v_codec));
+  if (!vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                       transcode2ourPF(sd->vob->im_v_codec))) {
+    tc_log_error(MOD_NAME, "unsupported pixel format or frame size %ix%i",
+                 sd->vob->ex_v_width, sd->vob->ex_v_height);
+    return TC_ERROR;
+  }
 
   VSMotionDetectConfig  mdconf = vsMotionDetectGetDefaultConfig(MOD_NAME);
   VSTransformConfig tdconf     = vsTransformGetDefaultConfig(MOD_NAME);
@@ -204,8 +208,12 @@ static int deshake_configure(TCModuleInstance *self,
 
   // init trasform part
   VSFrameInfo fi_dest;
-  vsFrameInfoInit(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
-                transcode2ourPF(sd->vob->im_v_codec));
+  if (!vsFrameInfoInit(&fi_dest, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                       transcode2ourPF(sd->vob->im_v_codec))) {
+    tc_log_error(MOD_NAME, "unsupported pixel format or frame size %ix%i",
+                 sd->vob->ex_v_width, sd->vob->ex_v_height);
+    return TC_ERROR;
+  }
 
   if (options != NULL) {
     // for some reason this plugin is called in the old fashion

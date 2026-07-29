@@ -35,7 +35,6 @@ int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pForma
   fi->log2ChromaW = 0;
   fi->log2ChromaH = 0;
   fi->bytesPerPixel=1;
-  assert(width%2==0 && height%2==0);
   switch(pFormat){
    case PF_GRAY8:
     fi->planes=1;
@@ -77,6 +76,32 @@ int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pForma
     fi->planes = 0;
     break;
    default:
+    fi->pFormat=0;
+    return 0;
+  }
+  /* Runtime validation (an assert() would be compiled away by -DNDEBUG in
+     release builds, letting bad dimensions through into the chroma plane
+     arithmetic and off the end of the allocation).
+
+     Only dimensions that are genuinely incompatible with the format's
+     chroma subsampling are rejected: vsFrameAllocate() sizes the chroma
+     planes with a truncating shift (width >> log2ChromaW) while the
+     transform code uses CHROMA_SIZE() which rounds up, so the two only
+     agree when the dimension is a multiple of the subsampling factor.
+     Formats without subsampling (PF_GRAY8, PF_YUV444P, the packed RGB
+     formats) impose no restriction at all, and e.g. PF_YUV422P only
+     constrains the width. */
+  if(width<=0 || height<=0){
+    vs_log_error("vid.stab","invalid frame dimensions %ix%i: "
+                 "width and height must be positive\n", width, height);
+    fi->pFormat=0;
+    return 0;
+  }
+  if(width % (1<<fi->log2ChromaW) != 0 || height % (1<<fi->log2ChromaH) != 0){
+    vs_log_error("vid.stab","invalid frame dimensions %ix%i for pixel format %i: "
+                 "width must be a multiple of %i and height a multiple of %i "
+                 "for this chroma subsampling\n", width, height, (int)pFormat,
+                 1<<fi->log2ChromaW, 1<<fi->log2ChromaH);
     fi->pFormat=0;
     return 0;
   }

@@ -149,8 +149,12 @@ static int stabilize_configure(TCModuleInstance *self,
 
     VSMotionDetect* md = &(sd->md);
     VSFrameInfo fi;
-    vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
-                  transcode2ourPF(vob->im_v_codec));
+    if (!vsFrameInfoInit(&fi, sd->vob->ex_v_width, sd->vob->ex_v_height,
+                         transcode2ourPF(vob->im_v_codec))) {
+        tc_log_error(MOD_NAME, "unsupported pixel format or frame size %ix%i",
+                     sd->vob->ex_v_width, sd->vob->ex_v_height);
+        return TC_ERROR;
+    }
 
     VSMotionDetectConfig conf = vsMotionDetectGetDefaultConfig(MOD_NAME);
 

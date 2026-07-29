@@ -109,10 +109,14 @@ static int transform_configure(TCModuleInstance *self,
 
     VSFrameInfo fi_src;
     VSFrameInfo fi_dest;
-    vsFrameInfoInit(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
-                  transcode2ourPF(fd->vob->im_v_codec));
-    vsFrameInfoInit(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
-                  transcode2ourPF(fd->vob->im_v_codec));
+    if (!vsFrameInfoInit(&fi_src, fd->vob->ex_v_width, fd->vob->ex_v_height,
+                         transcode2ourPF(fd->vob->im_v_codec)) ||
+        !vsFrameInfoInit(&fi_dest, fd->vob->ex_v_width, fd->vob->ex_v_height,
+                         transcode2ourPF(fd->vob->im_v_codec))) {
+        tc_log_error(MOD_NAME, "unsupported pixel format or frame size %ix%i",
+                     fd->vob->ex_v_width, fd->vob->ex_v_height);
+        return TC_ERROR;
+    }
 
     VSTransformConfig conf = vsTransformGetDefaultConfig(MOD_NAME);
     conf.verbose = verbose;

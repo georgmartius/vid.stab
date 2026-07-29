@@ -141,7 +141,11 @@ int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){
   // with the transformed version
   td->dest = *dest;
   if(src==dest || td->srcMalloced){ // in place operation: we have to copy the src first
-    if(vsFrameIsNull(&td->src)) {
+    // We must own td->src before copying into it. Testing vsFrameIsNull() here
+    // is not enough: after a previous frame took the else branch below, td->src
+    // still aliases *that* caller's buffer, so the copy would write into memory
+    // we do not own (e.g. a decoder reference frame still in use). See #144.
+    if(!td->srcMalloced) {
       vsFrameAllocate(&td->src,&td->fiSrc);
       td->srcMalloced = 1;
     }

@@ -11,5 +11,11 @@ cmake_install.cmake
 install_manifest.txt
 
 # Don't include the build directory and compiled Mac dynamic libraries.
-build 
+build
 *.dylib
+
+# Outputs and binaries produced by the test suite
+*.pgm
+/tests/tests
+/tests/lmtest
+/tests/lmstest

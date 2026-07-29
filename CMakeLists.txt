@@ -36,10 +36,6 @@ if(NOT WIN32)
   add_definitions(-fPIC)
 endif()
 
-if(NOT WIN32)
-  add_definitions(-fPIC)
-endif()
-
 if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES AND NOT SSE2_FOUND)
   add_definitions(-march=armv8-a+fp+simd+crypto+crc)
 endif()

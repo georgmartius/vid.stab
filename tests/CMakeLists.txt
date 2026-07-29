@@ -2,7 +2,7 @@
 #  very fast: faster than orc code at imgcompare without any options.
 #  library needs libimf.so (link statically?)
 
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.14)
 project (vid.stab)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../CMakeModules/")

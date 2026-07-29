@@ -34,6 +34,7 @@
 #include "test_compareimg.c"
 #include "test_motiondetect.c"
 #include "test_store_restore.c"
+#include "test_serialize_robust.c"
 #include "test_contrast.c"
 #include "test_boxblur.c"
 #include "test_omp.c"
@@ -123,6 +124,10 @@ int main(int argc, char** argv){
     UNIT(test_store_restore(&testdata, ASCII_SERIALIZATION_MODE));
     UNIT(test_store_restore(&testdata, BINARY_SERIALIZATION_MODE));
     UNIT(test_store_restore(&testdata, 0)); // test default binary selection
+  }
+
+  if(all || contains(argv,argc,"--testSRO", "serialization robustness")){
+    UNIT(test_serialize_robust());
   }
 
   if(all || contains(argv,argc,"--testCT", "contrastImg")){

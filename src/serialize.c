@@ -82,6 +82,14 @@ static double byteSwapDouble(double v)
 
 const char* modname = "vid.stab - serialization";
 
+/*
+ * sanity limit for the number of localmotions of a single frame in the binary
+ * format. Even 8k material with the smallest measurement fields stays far
+ * below this; a larger value means the file is corrupt and we must not try to
+ * allocate/parse it (which would also flood the log with parse errors).
+ */
+#define VS_MAX_LOCALMOTIONS_PER_FRAME (1<<20)
+
 int vsPrepareFileText(const VSMotionDetect* md, FILE* f);
 int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f);
 int vsWriteToFileText(const VSMotionDetect* md, FILE* f, const LocalMotions* lms);
@@ -93,7 +101,7 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm);
 LocalMotions vsRestoreLocalmotionsText(FILE* f);
 LocalMotions vsRestoreLocalmotionsBinary(FILE* f);
 LocalMotion restoreLocalmotionText(FILE* f);
-LocalMotion restoreLocalmotionBinary(FILE* f);
+int restoreLocalmotionBinary(FILE* f, LocalMotion* lm);
 int vsReadFileVersionText(FILE* f);
 int vsReadFileVersionBinary(FILE* f);
 int vsReadFromFileText(FILE* f, LocalMotions* lms);
@@ -171,10 +179,33 @@ int storeLocalmotionBinary(FILE* f, const LocalMotion* lm) {
   return 1;
 }
 
+/*
+ * logs why reading a binary record failed. A truncated file is by far the most
+ * common cause: a FILE* that was opened in text mode (missing "b" in the fopen
+ * mode string) makes MSVCRT stop reading at the first 0x1A (Ctrl-Z) byte, and
+ * such bytes occur in nearly every binary transform file. See issue #104.
+ */
+static void logBinaryReadError(FILE* f, const char* what){
+  if(f && feof(f)){
+    vs_log_error(modname, "Cannot parse %s: unexpected end of file. The "
+                 "transform file is truncated or corrupt. Make sure it is "
+                 "written and read through a file handle opened in *binary* "
+                 "mode (fopen(..., \"wb\") / fopen(..., \"rb\")).\n", what);
+  } else {
+    vs_log_error(modname, "Cannot parse %s: read error or malformed record!\n",
+                 what);
+  }
+}
+
 /// restore local motion from file
 LocalMotion restoreLocalmotion(FILE* f, const int serializationMode){
   if(serializationMode == BINARY_SERIALIZATION_MODE) {
-    return restoreLocalmotionBinary(f);
+    LocalMotion lm;
+    if(!restoreLocalmotionBinary(f, &lm)){
+      logBinaryReadError(f, "localmotion");
+      return null_localmotion();
+    }
+    return lm;
   } else {
     return restoreLocalmotionText(f);
   }
@@ -196,22 +227,16 @@ LocalMotion restoreLocalmotionText(FILE* f){
   return lm;
 }
 
-LocalMotion restoreLocalmotionBinary(FILE* f){
-  LocalMotion lm;
-
-  if (readInt16(&lm.v.x, f)<=0) goto parse_error_handling;
-  if (readInt16(&lm.v.y, f)<=0) goto parse_error_handling;
-  if (readInt16(&lm.f.x, f)<=0) goto parse_error_handling;
-  if (readInt16(&lm.f.y, f)<=0) goto parse_error_handling;
-  if (readInt16(&lm.f.size, f)<=0) goto parse_error_handling;
-  if (readDouble(&lm.contrast, f)<=0) goto parse_error_handling;
-  if (readDouble(&lm.match, f)<=0) goto parse_error_handling;
-
-  return lm;
-
-parse_error_handling:
-  vs_log_error(modname, "Cannot parse localmotion!\n");
-  return null_localmotion();
+/// reads one binary localmotion record, returns 1 on success and 0 on failure
+int restoreLocalmotionBinary(FILE* f, LocalMotion* lm){
+  if (readInt16(&lm->v.x, f)<=0) return 0;
+  if (readInt16(&lm->v.y, f)<=0) return 0;
+  if (readInt16(&lm->f.x, f)<=0) return 0;
+  if (readInt16(&lm->f.y, f)<=0) return 0;
+  if (readInt16(&lm->f.size, f)<=0) return 0;
+  if (readDouble(&lm->contrast, f)<=0) return 0;
+  if (readDouble(&lm->match, f)<=0) return 0;
+  return 1;
 }
 
 int vsStoreLocalmotions(FILE* f, const LocalMotions* lms, const int serializationMode){
@@ -289,18 +314,30 @@ LocalMotions vsRestoreLocalmotionsBinary(FILE* f){
   int len;
   vs_vector_init(&lms,0);
   if(readInt32(&len, f) <= 0) {
-    vs_log_error(modname, "Cannot parse localmotions list!\n");
+    logBinaryReadError(f, "localmotions list");
+    return lms;
+  }
+  if (len<0 || len>VS_MAX_LOCALMOTIONS_PER_FRAME){
+    vs_log_error(modname, "Implausible number of localmotions (%i): the "
+                 "transform file is corrupt (see the note on binary file "
+                 "handles in serialize.h)!\n", len);
     return lms;
   }
   if (len>0){
     vs_vector_init(&lms,len);
     for (i=0; i<len; i++){
-      LocalMotion lm = restoreLocalmotion(f,BINARY_SERIALIZATION_MODE);
+      LocalMotion lm;
+      if(!restoreLocalmotionBinary(f,&lm)){
+        /* report only once instead of flooding the log for every record */
+        logBinaryReadError(f, "localmotion");
+        break;
+      }
       vs_vector_append_dup(&lms,&lm,sizeof(LocalMotion));
     }
   }
   if(len != vs_vector_size(&lms)){
-    vs_log_error(modname, "Cannot parse the given number of localmotions!\n");
+    vs_log_error(modname, "Cannot parse the given number of localmotions "
+                 "(got %i of %i)!\n", vs_vector_size(&lms), len);
   }
   return lms;
 }
@@ -434,7 +471,11 @@ int vsReadFromFileText(FILE* f, LocalMotions* lms){
     char l[1024];
     if(fgets(l, sizeof(l), f)==0) return VS_ERROR;
     return vsReadFromFile(f,lms,ASCII_SERIALIZATION_MODE);
-  } else if(c=='\n' || c==' ') {
+  } else if(c=='\n' || c=='\r' || c==' ' || c=='\t') {
+    /* tolerate CR (and tabs): an ascii transform file written through a
+       text-mode handle on Windows has CRLF line endings, and it must remain
+       readable through a binary-mode handle (which is required for the binary
+       format, see serialize.h) */
     return vsReadFromFile(f,lms,ASCII_SERIALIZATION_MODE);
   } else if(c==EOF) {
     return VS_ERROR;

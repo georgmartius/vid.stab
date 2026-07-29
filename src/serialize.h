@@ -32,6 +32,27 @@
 #include "transform.h"
 #include "vidstab_api.h"
 
+/*
+ * IMPORTANT - contract for all FILE* passed to the functions below:
+ *
+ * The stream MUST be opened in BINARY mode, i.e. fopen(path, "wb") for
+ * writing and fopen(path, "rb") for reading.
+ *
+ * The default (BINARY_SERIALIZATION_MODE) transform file format contains
+ * arbitrary binary data (int16/int32/double). On platforms that distinguish
+ * text and binary streams (Windows/MSVCRT, but also OS/2, DOS, ...) a stream
+ * opened in text mode mangles that data:
+ *   - reading stops at the first 0x1A (Ctrl-Z) byte, which is interpreted as
+ *     end-of-file. Such a byte occurs in practically every transform file
+ *     (~0.15% of all bytes, mostly inside the double mantissas), so the file
+ *     is silently truncated after a few frames and parsing fails with
+ *     "Cannot parse localmotion!" - see issue #104.
+ *   - 0x0A bytes are expanded to 0x0D 0x0A on writing, so the file is not
+ *     portable to a reader that (correctly) uses a binary stream.
+ * Note that on POSIX systems text and binary mode are identical, which is why
+ * a caller that forgets the "b" only breaks on Windows.
+ */
+
 /// Vector of LocalMotions
 typedef VSVector VSManyLocalMotions;
 /// helper macro to access a localmotions vector in the VSVector of all Frames

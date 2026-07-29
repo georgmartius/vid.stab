@@ -1,6 +1,43 @@
 include(CheckCCompilerFlag)
 
-if (MSVC)
+# SSE is an x86-only feature set, so detection must be done for the TARGET
+# architecture, never for the build host.  When cross-compiling (e.g. from an
+# x86_64 host to riscv64 or arm) any host-based or host-compiler-based probe
+# yields a false positive and "-msse2" ends up on a compiler that rejects it.
+# See https://github.com/georgmartius/vid.stab/issues/109
+set(_SSE_TARGET_IS_X86 FALSE)
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+      # Explicit (possibly universal) architecture list: only enable SSE if every
+      # requested architecture is x86.
+      set(_SSE_TARGET_IS_X86 TRUE)
+      foreach(_sse_arch IN LISTS CMAKE_OSX_ARCHITECTURES)
+            if(NOT _sse_arch MATCHES "^(x86_64h?|i[3-6]86)$")
+                  set(_SSE_TARGET_IS_X86 FALSE)
+            endif()
+      endforeach()
+      unset(_sse_arch)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^([xX]86(_64)?|[iI][3-6]86|AMD64|amd64|[eE][mM]64[tT])$")
+      set(_SSE_TARGET_IS_X86 TRUE)
+endif()
+
+if(NOT _SSE_TARGET_IS_X86)
+      if(CMAKE_CROSSCOMPILING)
+            message(STATUS "Cross-compiling for non-x86 target "
+                    "'${CMAKE_SYSTEM_PROCESSOR}': skipping SSE detection")
+      else()
+            message(STATUS "Non-x86 target '${CMAKE_SYSTEM_PROCESSOR}': "
+                    "skipping SSE detection")
+      endif()
+
+      # Define the variables (as false) rather than leaving them unset, so that
+      # if(SSE2_FOUND) in the callers behaves sanely.  No FORCE: an explicit
+      # -DSSE2_FOUND=... from the user is preserved.
+      set(SSE2_FOUND   FALSE CACHE BOOL "SSE2 available on target")
+      set(SSE3_FOUND   FALSE CACHE BOOL "SSE3 available on target")
+      set(SSSE3_FOUND  FALSE CACHE BOOL "SSSE3 available on target")
+      set(SSE4_1_FOUND FALSE CACHE BOOL "SSE4.1 available on target")
+
+elseif (MSVC)
       message(STATUS "MSVC detected, enabling default SSE2+ support")
 
       set(SSE2_FOUND TRUE CACHE BOOL "SSE2 available on target" FORCE)
@@ -77,3 +114,5 @@ if(NOT SSE4_1_FOUND)
 endif()
 
 mark_as_advanced(SSE2_FOUND SSE3_FOUND SSSE3_FOUND SSE4_1_FOUND)
+
+unset(_SSE_TARGET_IS_X86)

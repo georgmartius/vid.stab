@@ -725,27 +725,39 @@ LocalMotions calcTransFields(VSMotionDetect* md,
 #endif
 
   VSVector goodflds = selectfields(md, fields, contrastfunc);
+  int numfields = vs_vector_size(&goodflds);
+  /* Each thread stores its result in its own slot, so that the order of the
+     resulting local motions only depends on the order of goodflds and not on
+     the thread scheduling (issue #111). */
+  LocalMotion* motionbuf = (LocalMotion*)vs_malloc(sizeof(LocalMotion) * (numfields > 0 ? numfields : 1));
+
   // use all "good" fields and calculate optimal match to previous frame
   //MSVC requires the OpenMP loop index to be a signed integer, declared in the same function, and visible if not declared inside the loop.
   int index;
 #ifdef USE_OMP
   omp_set_num_threads(md->conf.numThreads);
-#pragma omp parallel for shared(goodflds, md, localmotions)
+#pragma omp parallel for shared(goodflds, md, motionbuf)
 #endif
-  for(index=0; index < vs_vector_size(&goodflds); index++){
+  for(index=0; index < numfields; index++){
     int i = ((contrast_idx*)vs_vector_get(&goodflds,index))->index;
     LocalMotion m;
     m = fieldfunc(md, fields, &fields->fields[i], i); // e.g. calcFieldTransPlanar
     if(m.match >= 0){
       m.contrast = ((contrast_idx*)vs_vector_get(&goodflds,index))->contrast;
 #ifdef STABVERBOSE
+#pragma omp critical(localmotions_debugout)
       fprintf(file, "%i %i\n%f %f %f %f\n \n\n", m.f.x, m.f.y,
               m.f.x + m.v.x, m.f.y + m.v.y, m.match, m.contrast);
 #endif
-#pragma omp critical(localmotions_append)
-      vs_vector_append_dup(&localmotions, &m, sizeof(LocalMotion));
     }
+    motionbuf[index] = m;
   }
+  /* serially append in field order: deterministic, independent of thread count */
+  for(index=0; index < numfields; index++){
+    if(motionbuf[index].match >= 0)
+      vs_vector_append_dup(&localmotions, &motionbuf[index], sizeof(LocalMotion));
+  }
+  vs_free(motionbuf);
   vs_vector_del(&goodflds);
 
 #ifdef STABVERBOSE

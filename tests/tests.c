@@ -39,6 +39,7 @@
 #include "test_omp.c"
 #include "test_gradientoptimizer.c"
 #include "test_localmotion2transform.c"
+#include "test_determinism.c"
 
 #define FRAMENUM 5
 
@@ -131,6 +132,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
+  }
+
+  if(all || contains(argv,argc,"--testDET", "deterministic output")){
+    UNIT(test_determinism(&testdata));
   }
 
   // free

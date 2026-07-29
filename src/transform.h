@@ -60,6 +60,12 @@ typedef enum { VS_Zero, VS_Linear, VS_BiLinear, VS_BiCubic, VS_NBInterPolTypes} 
 VS_API const char* getInterpolationTypeName(VSInterpolType type);
 
 typedef enum { VSKeepBorder = 0, VSCropBorder } VSBorderType;
+/** algorithm used to optimize (smooth) the camera path.
+ *  Attention: the numeric values are part of the API/ABI (e.g. ffmpeg's
+ *  'optalgo' option passes these integers), so they must not be renumbered.
+ *  VSOptimalL1 is *not implemented*: requesting it logs a warning and
+ *  VSGaussian is used instead (see issue #71).
+ */
 typedef enum { VSOptimalL1 = 0, VSGaussian, VSAvg } VSCamPathAlgo;
 
 /**
@@ -102,7 +108,10 @@ typedef struct VS_API _VSTransformConfig {
     int            simpleMotionCalculation;
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
-    VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
+    /* algorithm to use for camera path optimization.
+       Note: VSOptimalL1 is not implemented; it is treated as VSGaussian
+       (with a warning). Default is VSGaussian. */
+    VSCamPathAlgo  camPathAlgo;
 } VSTransformConfig;
 
 typedef struct VS_API _VSTransformData {
@@ -153,6 +162,10 @@ static const char vs_transform_help[] = ""
     "    'interpol'  type of interpolation: 0: no interpolation, \n"
     "                1: linear (horizontal), 2: bi-linear (def), \n"
     "                3: bi-cubic\n"
+    "    'optalgo'   camera path optimization algorithm:\n"
+    "                0: optimal L1 (NOT IMPLEMENTED, falls back to 1),\n"
+    "                1: gaussian kernel low-pass filter (def),\n"
+    "                2: sliding average\n"
     "    'sharpen'   amount of sharpening: 0: no sharpening (def: 0.8)\n"
     "                uses filter unsharp with 5x5 matrix\n"
     "    'tripod'    virtual tripod mode (=relative=0:smoothing=0)\n"

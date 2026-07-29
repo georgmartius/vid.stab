@@ -41,7 +41,8 @@ VS_API int cameraPathOptimization(VSTransformData* td, VSTransformations* trans)
 
 VS_API int cameraPathAvg(VSTransformData* td, VSTransformations* trans);
 VS_API int cameraPathGaussian(VSTransformData* td, VSTransformations* trans);
-VS_API int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans);
+/* Note: there is no cameraPathOptimalL1(). The L1-optimal camera path
+   (VSOptimalL1) is not implemented, see issue #71. */
 
 #endif
 

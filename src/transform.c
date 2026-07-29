@@ -66,7 +66,10 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.simpleMotionCalculation = 0;
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
-  conf.camPathAlgo        = VSOptimalL1;
+  /* VSOptimalL1 (==0) is not implemented, so the default is Gaussian.
+     Note: a caller that zero-initializes the config still ends up requesting
+     VSOptimalL1 and will get the "not implemented" warning below. */
+  conf.camPathAlgo        = VSGaussian;
   return conf;
 }
 
@@ -104,8 +107,15 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
 
   td->conf.interpolType = VS_MAX(VS_MIN(td->conf.interpolType,VS_BiCubic),VS_Zero);
 
-  // not yet implemented
-  if(td->conf.camPathAlgo==VSOptimalL1) td->conf.camPathAlgo=VSGaussian;
+  /* The L1-optimal camera path algorithm is not implemented. Tell the user
+     instead of silently doing something else than what was requested. */
+  if(td->conf.camPathAlgo==VSOptimalL1){
+    vs_log_warn(td->conf.modName,
+                "camera path algorithm 'optimal L1' (optalgo=%i) is not implemented, "
+                "using 'gaussian' (optalgo=%i) instead\n",
+                (int)VSOptimalL1, (int)VSGaussian);
+    td->conf.camPathAlgo=VSGaussian;
+  }
 
   switch(td->conf.interpolType){
    case VS_Zero:     td->interpolate = &interpolateZero; break;
@@ -224,9 +234,10 @@ void vsTransformationsCleanup(VSTransformations* trans){
 int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
   switch(td->conf.camPathAlgo){
    case VSAvg: return cameraPathAvg(td,trans);
-   case VSOptimalL1: // not yet implenented
+     // VSOptimalL1 is not implemented; vsTransformDataInit already replaced it
+     // by VSGaussian (and warned about it). Handled here only for completeness.
+   case VSOptimalL1:
    case VSGaussian: return cameraPathGaussian(td,trans);
-//   case VSOptimalL1: return cameraPathOptimalL1(td,trans);
   }
   return VS_ERROR;
 }

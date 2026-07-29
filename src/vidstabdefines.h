@@ -46,16 +46,36 @@
 
 #define VS_DEBUG 2
 
+/**** Pixel access ***********************************************************
+ *
+ * UNIT CONVENTION (holds for all PIX* macros below, for VSFrame::linesize and
+ * for every function in this library that takes a linesize):
+ *
+ *   `linesize` is the distance between the start of two consecutive rows
+ *   measured in BYTES -- exactly like FFmpeg's AVFrame::linesize. It may be
+ *   larger than width*bytesPerPixel (padding).
+ *
+ * Consequently only the COLUMN index is scaled by the number of channels
+ * (N == bytesPerPixel for the packed formats), never the row offset:
+ *
+ *   byte offset = x*N + y*linesize + channel
+ *
+ * Never pass a linesize that was pre-divided by the number of channels.
+ *****************************************************************************/
+
 /// pixel in single layer image
 #define PIXEL(img, linesize, x, y, w, h, def) \
   (((x) < 0 || (y) < 0 || (x) >= (w) || (y) >= (h)) ? (def) : img[(x) + (y) * (linesize)])
 /// pixel in single layer image without rangecheck
 #define PIX(img, linesize, x, y) (img[(x) + (y) * (linesize)])
 /// pixel in N-channel image. channel in {0..N-1}
-#define PIXELN(img, linesize, x, y, w, h, N, channel, def) \
-  (((x) < 0 || (y) < 0 || (x) >= (w) || (y) >= (h)) ? (def) : img[((x) + (y) * (linesize))*(N) + (channel)])
+#define PIXELN(img, linesize, x, y, w, h, N, channel, def)                     \
+  (((x) < 0 || (y) < 0 || (x) >= (w) || (y) >= (h)                             \
+    || (channel) < 0 || (channel) >= (N))                                      \
+   ? (def) : img[(x)*(N) + (y) * (linesize) + (channel)])
 /// pixel in N-channel image without rangecheck. channel in {0..N-1}
-#define PIXN(img, linesize, x, y, N, channel) (img[((x) + (y) * (linesize))*(N) + (channel)])
+#define PIXN(img, linesize, x, y, N, channel) \
+  (img[(x)*(N) + (y) * (linesize) + (channel)])
 
 /**** Configurable memory and logging functions. Defined in libvidstab.c ****/
 

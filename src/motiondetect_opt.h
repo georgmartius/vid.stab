@@ -39,23 +39,24 @@
 #endif
 
 #ifdef USE_SSE2
+/// \param linesize distance between two rows in BYTES (see vidstabdefines.h)
 VS_API double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
-                           int width, int height);
+                           int linesize, int height);
 #endif
 
 VS_API double contrastSubImg_variance_C(unsigned char* const I, const Field* field,
-                        int width, int height);
+                        int linesize, int height);
 
 #ifdef USE_SSE2
 VS_API unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
-                                    const Field* field, int width1, int width2, int height,
+                                    const Field* field, int linesize1, int linesize2, int height,
                                     int bytesPerPixel, int d_x, int d_y,
                                     unsigned int threshold);
 #endif
 
 #ifdef USE_SSE2_ASM
 unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,
-                                        const Field* field, int width1, int width2,
+                                        const Field* field, int linesize1, int linesize2,
                                         int height, int bytesPerPixel,
                                         int d_x, int d_y, unsigned int threshold);
 #endif

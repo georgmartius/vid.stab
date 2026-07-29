@@ -336,28 +336,30 @@ double contrastSubImgPlanar(VSMotionDetect* md, const Field* field) {
 }
 
 /**
-   \see contrastSubImg_Michelson three times called with bytesPerPixel=3
-   for all channels
+   \see contrastSubImg called once per colour channel with the packed
+   bytesPerPixel as the pixel stride. Only the three colour channels are used,
+   a (constant) alpha channel would only dilute the result.
 */
 double contrastSubImgPacked(VSMotionDetect* md, const Field* field) {
   unsigned char* const I = md->curr.data[0];
-  int linesize2 = md->curr.linesize[0]/3; // linesize in pixels
-  return (contrastSubImg(I, field, linesize2, md->fi.height, 3)
-          + contrastSubImg(I + 1, field, linesize2, md->fi.height, 3)
-          + contrastSubImg(I + 2, field, linesize2, md->fi.height, 3)) / 3;
+  int linesize = md->curr.linesize[0]; // linesize in bytes
+  int bpp      = md->fi.bytesPerPixel;
+  return (contrastSubImg(I,     field, linesize, md->fi.height, bpp)
+          + contrastSubImg(I + 1, field, linesize, md->fi.height, bpp)
+          + contrastSubImg(I + 2, field, linesize, md->fi.height, bpp)) / 3;
 }
 
 /**
    calculates Michelson-contrast in the given small part of the given image
    to be more compatible with the absolute difference formula this is scaled by 0.1
 
-   \param I pointer to framebuffer
+   \param I pointer to framebuffer (offset to the wanted channel for packed data)
    \param field Field specifies position(center) and size of subimage
-   \param width width of frame (linesize in pixels)
+   \param linesize distance between two rows in BYTES (see vidstabdefines.h)
    \param height height of frame
-   \param bytesPerPixel calc contrast for only for first channel
+   \param bytesPerPixel distance between two pixels in bytes, 1 for planar
 */
-double contrastSubImg(unsigned char* const I, const Field* field, int width,
+double contrastSubImg(unsigned char* const I, const Field* field, int linesize,
                       int height, int bytesPerPixel) {
   int k, j;
   unsigned char* p = NULL;
@@ -365,14 +367,14 @@ double contrastSubImg(unsigned char* const I, const Field* field, int width,
   unsigned char mini = 255;
   unsigned char maxi = 0;
 
-  p = I + ((field->x - s2) + (field->y - s2) * width) * bytesPerPixel;
+  p = I + (field->x - s2) * bytesPerPixel + (field->y - s2) * linesize;
   for (j = 0; j < field->size; j++) {
     for (k = 0; k < field->size; k++) {
       mini = (mini < *p) ? mini : *p;
       maxi = (maxi > *p) ? maxi : *p;
       p += bytesPerPixel;
     }
-    p += (width - field->size) * bytesPerPixel;
+    p += linesize - field->size * bytesPerPixel;
   }
   return (maxi - mini) / (maxi + mini + 0.1); // +0.1 to avoid division by 0
 }
@@ -548,8 +550,9 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
   int tx = 0;
   int ty = 0;
   uint8_t *I_c = md->curr.data[0], *I_p = md->prev.data[0];
-  int width1 = md->curr.linesize[0]/3; // linesize in pixels
-  int width2 = md->prev.linesize[0]/3; // linesize in pixels
+  // linesizes are in bytes, compareSubImg() scales the column by bytesPerPixel
+  int linesize_c = md->curr.linesize[0], linesize_p = md->prev.linesize[0];
+  int bpp = md->fi.bytesPerPixel;
   int i, j;
   int stepSize = fs->stepSize;
   int maxShift = fs->maxShift;
@@ -557,11 +560,18 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
   Vec offset = { 0, 0};
   LocalMotion lm = null_localmotion();
   if(fs->useOffset){
+    // Todo: we could put the preparedtransform into fs
     PreparedTransform pt = prepare_transform(&fs->offset, &md->fi);
-    offset = transform_vec(&pt, (Vec*)field);
+    Vec fieldpos = {field->x, field->y};
+    // offset is used as a *relative* shift below, so subtract the field position
+    //  (transform_vec returns an absolute position). Same as calcFieldTransPlanar.
+    offset = sub_vec(transform_vec(&pt, &fieldpos), fieldpos);
     // is the field still in the frame
-    if(unlikely(offset.x-maxShift-stepSize < 0 || offset.x+maxShift+stepSize >= md->fi.width ||
-                offset.y-maxShift-stepSize < 0 || offset.y+maxShift+stepSize >= md->fi.height)){
+    int s2 = field->size/2;
+    if(unlikely(fieldpos.x+offset.x-s2-maxShift-stepSize < 0 ||
+                fieldpos.x+offset.x+s2+maxShift+stepSize >= md->fi.width ||
+                fieldpos.y+offset.y-s2-maxShift-stepSize < 0 ||
+                fieldpos.y+offset.y+s2+maxShift+stepSize >= md->fi.height)){
       lm.match=-1;
       return lm;
     }
@@ -570,15 +580,15 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
   /* Here we improve speed by checking first the most probable position
      then the search paths are most effectively cut. (0,0) is a simple start
   */
-  unsigned int minerror = compareSubImg(I_c, I_p, field, width1, width2, md->fi.height,
-                                        3, offset.x, offset.y, UINT_MAX);
+  unsigned int minerror = compareSubImg(I_c, I_p, field, linesize_c, linesize_p, md->fi.height,
+                                        bpp, offset.x, offset.y, UINT_MAX);
   // check all positions...
   for (i = -maxShift; i <= maxShift; i += stepSize) {
     for (j = -maxShift; j <= maxShift; j += stepSize) {
       if( i==0 && j==0 )
         continue; //no need to check this since already done
-      unsigned int error = compareSubImg(I_c, I_p, field, width1, width2,
-                                         md->fi.height, 3, i + offset.x, j + offset.y, minerror);
+      unsigned int error = compareSubImg(I_c, I_p, field, linesize_c, linesize_p,
+                                         md->fi.height, bpp, i + offset.x, j + offset.y, minerror);
       if (error < minerror) {
         minerror = error;
         tx = i;
@@ -594,8 +604,8 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
       for (j = tyc - r; j <= tyc + r; j += 1) {
         if (i == txc && j == tyc)
           continue; //no need to check this since already done
-        unsigned int error = compareSubImg(I_c, I_p, field, width1, width2,
-                                           md->fi.height, 3, i + offset.x, j + offset.y, minerror);
+        unsigned int error = compareSubImg(I_c, I_p, field, linesize_c, linesize_p,
+                                           md->fi.height, bpp, i + offset.x, j + offset.y, minerror);
         if (error < minerror) {
           minerror = error;
           tx = i;
@@ -894,7 +904,7 @@ void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
 
 /// plain C implementation of compareSubImg
 unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width1, int width2, int height,
+                               const Field* field, int linesize1, int linesize2, int height,
            int bytesPerPixel, int d_x, int d_y,
            unsigned int threshold) {
   int k, j;
@@ -903,9 +913,9 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
   int s2 = field->size / 2;
   unsigned int sum = 0;
 
-  p1 = I1 + ((field->x - s2) + (field->y - s2) * width1) * bytesPerPixel;
-  p2 = I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y) * width2)
-    * bytesPerPixel;
+  p1 = I1 + (field->x - s2) * bytesPerPixel + (field->y - s2) * linesize1;
+  p2 = I2 + (field->x - s2 + d_x) * bytesPerPixel
+    + (field->y - s2 + d_y) * linesize2;
   for (j = 0; j < field->size; j++) {
     for (k = 0; k < field->size * bytesPerPixel; k++) {
       sum += abs((int) *p1 - (int) *p2);
@@ -914,8 +924,8 @@ unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
     }
     if( sum > threshold) // no need to calculate any longer: worse than the best match
       break;
-    p1 += (width1 - field->size) * bytesPerPixel;
-    p2 += (width2 - field->size) * bytesPerPixel;
+    p1 += linesize1 - field->size * bytesPerPixel;
+    p2 += linesize2 - field->size * bytesPerPixel;
   }
   return sum;
 }

@@ -46,8 +46,10 @@ VS_API int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
 
 VS_API double contrastSubImgPlanar(VSMotionDetect* md, const Field* field);
 VS_API double contrastSubImgPacked(VSMotionDetect* md, const Field* field);
+/// \param linesize distance between two rows in BYTES (see vidstabdefines.h)
+/// \param bytesPerPixel distance between two pixels in bytes, 1 for planar
 VS_API double contrastSubImg(unsigned char* const I, const Field* field,
-                      int width, int height, int bytesPerPixel);
+                      int linesize, int height, int bytesPerPixel);
 
 
 VS_API int cmp_contrast_idx(const void *ci1, const void* ci2);
@@ -74,8 +76,10 @@ VS_API void drawRectangle(unsigned char* I, int width, int height, int bytesPerP
 VS_API void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
               Vec* a, Vec* b, int thickness, unsigned char color);
 
+/// \param linesize1,linesize2 distance between two rows in BYTES of I1 resp. I2
+/// \param bytesPerPixel distance between two pixels in bytes, 1 for planar
 VS_API unsigned int compareSubImg_thr(unsigned char* const I1, unsigned char* const I2,
-                               const Field* field, int width1, int width2, int height,
+                               const Field* field, int linesize1, int linesize2, int height,
                                int bytesPerPixel,
                                int d_x, int d_y, unsigned int threshold);
 

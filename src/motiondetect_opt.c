@@ -45,7 +45,7 @@
    \see contrastSubImg using SSE2 optimization, Planar (1 byte per channel) only
 */
 double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
-                           int width, int height)
+                           int linesize, int height)
 {
   int k, j;
   unsigned char* p = NULL;
@@ -53,7 +53,7 @@ double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
 
   static unsigned char full[16] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-  p = I + ((field->x - s2) + (field->y - s2)*width);
+  p = I + (field->x - s2) + (field->y - s2)*linesize;
 
   __m128i mmin, mmax;
 
@@ -68,7 +68,7 @@ double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
       mmax = _mm_max_epu8(mmax, xmm0);
       p += 16;
     }
-    p += (width - field->size);
+    p += linesize - field->size;
   }
 
   __m128i xmm1;
@@ -98,7 +98,7 @@ double contrastSubImg1_SSE(unsigned char* const I, const Field* field,
 
 /// plain C implementation of variance based contrastSubImg
 double contrastSubImg_variance_C(unsigned char* const I,
-                                 const Field* field, int width, int height) {
+                                 const Field* field, int linesize, int height) {
   int k, j;
   unsigned char* p = NULL;
   unsigned char* pstart = NULL;
@@ -108,13 +108,13 @@ double contrastSubImg_variance_C(unsigned char* const I,
   int var=0;
   int numpixel = field->size*field->size;
 
-  pstart = I + ((field->x - s2) + (field->y - s2) * width);
+  pstart = I + (field->x - s2) + (field->y - s2) * linesize;
   p = pstart;
   for (j = 0; j < field->size; j++) {
     for (k = 0; k < field->size; k++, p++) {
       sum+=*p;
     }
-    p += (width - field->size);
+    p += linesize - field->size;
   }
   mean=sum/numpixel;
   p = pstart;
@@ -122,7 +122,7 @@ double contrastSubImg_variance_C(unsigned char* const I,
     for (k = 0; k < field->size; k++, p++) {
       var+=abs(*p-mean);
     }
-    p += (width - field->size);
+    p += linesize - field->size;
   }
   return (double)var/numpixel/255.0;
 }
@@ -130,7 +130,7 @@ double contrastSubImg_variance_C(unsigned char* const I,
 #ifdef USE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
                                     const Field* field,
-                                    int width1, int width2, int height,
+                                    int linesize1, int linesize2, int height,
                                     int bytesPerPixel, int d_x, int d_y,
                                     unsigned int treshold) {
   int k, j;
@@ -149,8 +149,8 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
   xmmsum = _mm_setzero_si128();
   xmmmask = _mm_loadu_si128((__m128i const*)mask);
 
-  p1=I1 + ((field->x - s2) + (field->y - s2)*width1)*bytesPerPixel;
-  p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width2)*bytesPerPixel;
+  p1=I1 + (field->x - s2)*bytesPerPixel + (field->y - s2)*linesize1;
+  p2=I2 + (field->x - s2 + d_x)*bytesPerPixel + (field->y - s2 + d_y)*linesize2;
   for (j = 0; j < field->size; j++){
     for (k = 0; k < field->size * bytesPerPixel; k+=16){
       {
@@ -201,8 +201,8 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
     }
     if (sum > treshold)
       break;
-    p1 += (width1 - field->size) * bytesPerPixel;
-    p2 += (width2 - field->size) * bytesPerPixel;
+    p1 += linesize1 - field->size * bytesPerPixel;
+    p2 += linesize2 - field->size * bytesPerPixel;
   }
 
 #if (SSE2_CMP_SUM_ROWS != 1) && (SSE2_CMP_SUM_ROWS != 2) && (SSE2_CMP_SUM_ROWS != 4) \
@@ -239,7 +239,7 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
 #ifdef USE_SSE2_ASM
 unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,
                                         const Field* field,
-                                        int width1, int width2, int height,
+                                        int linesize1, int linesize2, int height,
                                         int bytesPerPixel, int d_x, int d_y,
                                         unsigned int treshold) {
   unsigned char* p1 = NULL;
@@ -248,8 +248,8 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
   unsigned int sum = 0;
 
   static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
-  p1=I1 + ((field->x - s2) + (field->y - s2)*width1)*bytesPerPixel;
-  p2=I2 + ((field->x - s2 + d_x) + (field->y - s2 + d_y)*width2)*bytesPerPixel;
+  p1=I1 + (field->x - s2)*bytesPerPixel + (field->y - s2)*linesize1;
+  p2=I2 + (field->x - s2 + d_x)*bytesPerPixel + (field->y - s2 + d_y)*linesize2;
   asm (
     "xor %0,%0\n"
     "pxor %%xmm4,%%xmm4\n"         //8 x 16bit partial sums
@@ -313,10 +313,10 @@ unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* 
     "jnz 1b\n"                   //if not, continue looping
     "3:\n"
     :"=r"(sum)
-    :"r"(p1),"r"(p2),"r"(mask),"g"(field->size * bytesPerPixel / 16),"g"((unsigned char*)((width1 - field->size) * bytesPerPixel)),"g"(field->size), "g"(treshold), "0"(sum)
+    :"r"(p1),"r"(p2),"r"(mask),"g"(field->size * bytesPerPixel / 16),"g"((unsigned char*)(long)(linesize1 - field->size * bytesPerPixel)),"g"(field->size), "g"(treshold), "0"(sum)
     :"%xmm0","%xmm1","%xmm2","%xmm3","%xmm4","%ecx","%edx"
     );
-  // TODO width2 is not properly used here
+  // TODO linesize2 is not properly used here
   return sum;
 }
 #endif // USE_SSE2_ASM

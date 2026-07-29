@@ -157,8 +157,9 @@ void _FLT(interpolateZero)(uint8_t *rv, float x, float y,
  *            x,y: the source coordinates in the image img. Note this
  *                 are real-value coordinates, that's why we interpolate
  *            img: source image
- *   width,height: dimension of image
- *              N: number of channels
+ *   img_linesize: distance between two rows in BYTES (see vidstabdefines.h)
+ *   width,height: dimension of image in PIXELS
+ *              N: number of channels (bytes per pixel)
  *        channel: channel number (0..N-1)
  *            def: default value if coordinates are out of range
  * Return value:  None
@@ -169,6 +170,8 @@ void _FLT(interpolateN)(uint8_t *rv, float x, float y,
                         uint8_t N, uint8_t channel,
                         uint8_t def)
 {
+  // myfloor() below floors, so negative coordinates stay negative and are
+  //  rejected by the range check inside PIXELN
   if (x < - 1 || x > width || y < -1 || y > height) {
     *rv = def;
   } else {
@@ -232,7 +235,8 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
         float y_s  = -sin(-t.alpha) * x_d1
           + cos(-t.alpha) * y_d1 + c_s_y -t.y;
         for (z = 0; z < channels; z++) { // iterate over colors
-          uint8_t *dest = &D_2[x + y * td->destbuf.linesize[0]+z];
+          // linesize is in bytes, only the column is scaled by the channel count
+          uint8_t *dest = &D_2[x * channels + y * td->destbuf.linesize[0] + z];
           _FLT(interpolateN)(dest, x_s, y_s, D_1, td->src.linesize[0],
                              td->fiSrc.width, td->fiSrc.height,
                              channels, z, crop ? 16 : *dest);
@@ -252,15 +256,15 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
                            td->fiSrc.width, td->fiSrc.height, channels, z, -1);
           if (p == -1) {
             if (crop == 1)
-              D_2[(x + y * td->destbuf.linesize[0])*channels+z] = 16;
+              D_2[x * channels + y * td->destbuf.linesize[0] + z] = 16;
           } else {
-            D_2[(x + y * td->destbuf.linesize[0])*channels+z] = (uint8_t)p;
+            D_2[x * channels + y * td->destbuf.linesize[0] + z] = (uint8_t)p;
           }
         }
       }
     }
   }
-  return 1;
+  return VS_OK; // was `return 1`, which is not VS_OK (== 0)
 }
 
 /**

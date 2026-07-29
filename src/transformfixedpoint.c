@@ -221,8 +221,9 @@ inline void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
  *            x,y: the source coordinates in the image img. Note this
  *                 are real-value coordinates, that's why we interpolate
  *            img: source image
- *   width,height: dimension of image
- *              N: number of channels
+ *   img_linesize: distance between two rows in BYTES (see vidstabdefines.h)
+ *   width,height: dimension of image in PIXELS
+ *              N: number of channels (bytes per pixel)
  *        channel: channel number (0..N-1)
  *            def: default value if coordinates are out of range
  * Return value:  None
@@ -235,15 +236,18 @@ inline void interpolateN(uint8_t *rv, fp16 x, fp16 y,
 {
   int32_t ix_f = fp16ToI(x);
   int32_t iy_f = fp16ToI(y);
+  // fp16ToI is an arithmetic shift, so it floors: negative x give negative ix_f
   if (ix_f < 0 || ix_f > width-1 || iy_f < 0 || iy_f > height - 1) {
     *rv = def;
   } else {
     int32_t ix_c = ix_f + 1;
     int32_t iy_c = iy_f + 1;
-    short v1 = PIXN(img, img_linesize, ix_c, iy_c, N, channel);
-    short v2 = PIXN(img, img_linesize, ix_c, iy_f, N, channel);
-    short v3 = PIXN(img, img_linesize, ix_f, iy_c, N, channel);
-    short v4 = PIXN(img, img_linesize, ix_f, iy_f, N, channel);
+    /* the "ceil" neighbours may be one past the last row/column; use the
+       range checked accessor, their interpolation weight is 0 in that case */
+    short v1 = PIXELN(img, img_linesize, ix_c, iy_c, width, height, N, channel, def);
+    short v2 = PIXELN(img, img_linesize, ix_c, iy_f, width, height, N, channel, def);
+    short v3 = PIXELN(img, img_linesize, ix_f, iy_c, width, height, N, channel, def);
+    short v4 = PIXELN(img, img_linesize, ix_f, iy_f, width, height, N, channel, def);
     fp16 x_f = iToFp16(ix_f);
     fp16 x_c = iToFp16(ix_c);
     fp16 y_f = iToFp16(iy_f);
@@ -269,6 +273,16 @@ int transformPacked(VSTransformData* td, VSTransform t)
 {
   int x = 0, y = 0, k = 0;
   uint8_t *D_1, *D_2;
+
+  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
+    // identity: like transformPlanar, do not run the interpolation at all
+    if(vsFramesEqual(&td->src,&td->destbuf))
+      return VS_OK; // noop
+    else {
+      vsFrameCopy(&td->destbuf, &td->src, &td->fiSrc);
+      return VS_OK;
+    }
+  }
 
   D_1  = td->src.data[0];
   D_2  = td->destbuf.data[0];
@@ -300,7 +314,8 @@ int transformPacked(VSTransformData* td, VSTransform t)
       fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
 
       for (k = 0; k < channels; k++) { // iterate over colors
-        uint8_t *dest = &D_2[x + y * td->destbuf.linesize[0]+k];
+        // linesize is in bytes, only the column is scaled by the channel count
+        uint8_t *dest = &D_2[x * channels + y * td->destbuf.linesize[0] + k];
         interpolateN(dest, x_s, y_s, D_1, td->src.linesize[0],
                      td->fiSrc.width, td->fiSrc.height,
                      channels, k, td->conf.crop ? 16 : *dest);

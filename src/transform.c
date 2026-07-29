@@ -301,6 +301,8 @@ int cameraPathGaussian(VSTransformData* td, VSTransformations* trans){
                   );
       }
     }
+    vs_array_free(kernel);
+    vs_free(ts2);
   }
   return VS_OK;
 }

@@ -230,7 +230,13 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
       // through out those with bad match (worse than mean of coarse scan)
       VSArray matchQualities1 = localmotionsGetMatch(&motionscoarse);
       double meanMatch = cleanmean(matchQualities1.dat, matchQualities1.len, NULL, NULL);
-      motionsfine      = vs_vector_filter(&motions2, lm_match_better, &meanMatch);
+      // note: we copy the selected motions (instead of vs_vector_filter, which
+      //  would share the elements with motions2 and leak the rejected ones)
+      for(int i=0; i < vs_vector_size(&motions2); i++){
+        LocalMotion* m = LMGet(&motions2,i);
+        if(lm_match_better(&meanMatch, m))
+          vs_vector_append_dup(&motionsfine, m, sizeof(LocalMotion));
+      }
       if(0){
         printf("\nMatches: mean:  %f | ", meanMatch);
         vs_array_print(matchQualities1, stdout);
@@ -238,7 +244,10 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
         VSArray matchQualities2 = localmotionsGetMatch(&motions2);
         vs_array_print(matchQualities2, stdout);
         printf("\n");
+        vs_array_free(matchQualities2);
       }
+      vs_array_free(matchQualities1);
+      vs_vector_del(&motions2);
     }
     if (md->conf.show) { // draw fields and transforms into frame.
       int num_motions_fine = vs_vector_size(&motionsfine);
@@ -257,6 +266,10 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
         drawFieldTrans(md, LMGet(&motionsfine,i), 64);
     }
     *motions = vs_vector_concat(&motionscoarse,&motionsfine);
+    // the concatenation took over the elements, so only release the
+    //  now unused vector buffers (not the elements themselves)
+    vs_vector_fini(&motionscoarse);
+    vs_vector_fini(&motionsfine);
     //*motions = motionscoarse;
     //*motions = motionsfine;
   } else {

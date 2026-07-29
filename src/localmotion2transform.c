@@ -118,13 +118,13 @@ double intMean(const int* ds, int len) {
 // only calcates means transform to initialise gradient descent
 VSTransform meanMotions(VSTransformData* td, const LocalMotions* motions){
   int len = vs_vector_size(motions);
-  int* xs = localmotions_getx(motions);
-  int* ys = localmotions_gety(motions);
   VSTransform t = null_transform();
   if(motions==0 || len==0) {
     t.extra = 1; // prob. blank frame or too low contrast, ignore later
     return t;
   }
+  int* xs = localmotions_getx(motions);
+  int* ys = localmotions_gety(motions);
   t.x = intMean(xs,len);
   t.y = intMean(ys,len);
   vs_free(xs);
@@ -283,11 +283,11 @@ VSTransform vsSimpleMotionsToTransform(VSFrameInfo fi, const char* modName,
   VSTransform t = null_transform();
   if(motions==0) return t;
   int num_motions=vs_vector_size(motions);
+  if(num_motions < 1)
+    return t;
   double *angles = (double*) vs_malloc(sizeof(double) * num_motions);
   LocalMotion meanmotion;
   int i;
-  if(num_motions < 1)
-    return t;
 
   // calc center point of all remaining fields
   for (i = 0; i < num_motions; i++) {

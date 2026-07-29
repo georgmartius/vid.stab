@@ -475,6 +475,7 @@ int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
     }
     if(index<1){
       vs_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
+      vs_vector_del(&lms); // the motions are not stored, so release them
     } else {
       vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
     }

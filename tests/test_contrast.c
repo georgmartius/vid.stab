@@ -42,5 +42,41 @@ void test_contrastImg(const TestData* testdata){
     }
     test_bool(contrastC[i]==contrastOpt[i]);
   }
+
+  /* Sweep several field sizes and positions, not just one.
+     Sizes must be multiples of 16: contrastSubImg1_SSE loads 16 bytes per
+     inner iteration ("k += 16"), any other size reads past the field.
+     vsMotionDetectInit() guarantees that in production
+     (see src/motiondetect.c: "fieldSize = (fieldSize / 16 + 1) * 16").
+     Exact equality is required, not an epsilon: both functions reduce the
+     field to an 8 bit min and max and then evaluate the identical expression
+     (maxi-mini)/(maxi+mini+0.1); with identical integer inputs and no
+     reassociation of float ops the doubles are bit-identical. */
+  {
+    static const int sizes[] = {16, 32, 48, 64, 80};
+    static const int pos[][2] = { {400,300}, {200,200}, {900,500}, {640,360} };
+    int s, p, fr;
+    fprintf(stderr,"********** Contrast C vs SSE2 over sizes/positions:\n");
+    for(fr=0; fr<2; fr++){
+      for(s=0; s<(int)(sizeof(sizes)/sizeof(sizes[0])); s++){
+        for(p=0; p<(int)(sizeof(pos)/sizeof(pos[0])); p++){
+          Field ff;
+          ff.size = sizes[s];
+          ff.x = pos[p][0];
+          ff.y = pos[p][1];
+          double cC = contrastSubImg(testdata->frames[fr].data[0], &ff,
+                                     testdata->frames[fr].linesize[0],
+                                     testdata->fi.height, 1);
+          double cO = contrastSubImg1_SSE(testdata->frames[fr].data[0], &ff,
+                                          testdata->frames[fr].linesize[0],
+                                          testdata->fi.height);
+          if(cC != cO)
+            fprintf(stderr,"  CONTRAST MISMATCH frame=%i size=%i pos=(%i,%i): "
+                    "C=%.17g SSE2=%.17g\n", fr, ff.size, ff.x, ff.y, cC, cO);
+          test_bool(cC == cO);
+        }
+      }
+    }
+  }
 #endif
 }

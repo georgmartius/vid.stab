@@ -1,13 +1,23 @@
 #define NUMCMP 2000
 
+/* Compares the (possibly SIMD) compareSubImg against the plain C reference
+   compareSubImg_thr and asserts that they agree exactly.
+   field.size MUST be a multiple of 16: the SSE2 implementation advances 16
+   bytes per inner iteration ("k += 16"), so any other size makes it read
+   beyond the field and the results legitimately differ. Production code never
+   does that because vsMotionDetectInit() rounds fieldSize up to a multiple of
+   16 when SSE2 is enabled (see src/motiondetect.c:
+   "fieldSize = (fieldSize / 16 + 1) * 16").
+   The threshold is INT_MAX here, so neither implementation can exit early and
+   strict equality is the correct assertion. */
 int checkCompareImg(VSMotionDetect* md, const VSFrame* frame){
   int i;
-  int error;
+  unsigned int error, errorRef;
   uint8_t *Y_c;
   Field field;
   field.x=400;
   field.y=400;
-  field.size=12;
+  field.size=64; /* multiple of 16, see comment above */
 
   Y_c = frame->data[0];
   int linesize = frame->linesize[0];
@@ -17,8 +27,15 @@ int checkCompareImg(VSMotionDetect* md, const VSFrame* frame){
     error = compareSubImg(Y_c, Y_c, &field,
                           linesize, linesize, md->fi.height,
                           1, i, 0, INT_MAX);
-    fprintf(stderr,"mismatch %i: %i\n", i, error);
+    errorRef = compareSubImg_thr(Y_c, Y_c, &field,
+                                 linesize, linesize, md->fi.height,
+                                 1, i, 0, INT_MAX);
+    fprintf(stderr,"mismatch %i: opt %u, C %u\n", i, error, errorRef);
+    test_bool(error == errorRef);
   }
+  /* a shift of 0 against the identical image must give a difference of 0 */
+  test_bool(compareSubImg(Y_c, Y_c, &field, linesize, linesize, md->fi.height,
+                          1, 0, 0, INT_MAX) == 0);
   return 1;
 }
 
@@ -52,13 +69,17 @@ int runcompare( cmpSubImgFunc cmpsubfunc,
                         2, i%200, i/200, INT_MAX);
   }
   int end = timeOfDayinMS();
-  if(diffsRef)
+  if(diffsRef){
+    int reported = 0;
     for(i=0; i<numruns; i++){
-      if(diffs[i]!=diffsRef[i]){
-        fprintf(stderr, "ERROR! Ref difference %i, Opt difference %i\n",
-                diffsRef[i], diffs[i]);
+      if(diffs[i]!=diffsRef[i] && reported++ < 10){
+        fprintf(stderr, "ERROR! run %i: Ref difference %i, Opt difference %i\n",
+                i, diffsRef[i], diffs[i]);
       }
+      /* threshold is INT_MAX above, so no early exit: must be exactly equal */
+      test_bool(diffs[i]==diffsRef[i]);
     }
+  }
   return end-start;
 }
 

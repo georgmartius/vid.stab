@@ -67,7 +67,18 @@ typedef struct VS_API vsframe {
 // use it to calculate the CHROMA sizes (rounding is correct)
 #define CHROMA_SIZE(width,log2sub)  (-(-(width) >> (log2sub)))
 
-/// initializes the frameinfo for the given format
+/** initializes the frameinfo for the given format.
+
+    The dimensions must be compatible with the chroma subsampling of the
+    requested format, i.e. width must be a multiple of 1<<log2ChromaW and
+    height a multiple of 1<<log2ChromaH. Formats without subsampling
+    (PF_GRAY8, PF_YUV444P and the packed formats) accept any positive size,
+    so odd widths/heights are fine for those.
+
+    @return non-zero (1) on success, 0 if the pixel format is unknown or the
+            dimensions are invalid for it. Note the boolean convention: this
+            is *not* VS_OK/VS_ERROR.
+ */
 VS_API int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pFormat);
 
 

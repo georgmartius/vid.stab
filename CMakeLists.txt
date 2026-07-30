@@ -12,7 +12,10 @@ find_package(OpenMP)
 set(MAJOR_VERSION 1)
 set(MINOR_VERSION 2)
 set(PATCH_VERSION 0)
-set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}${PATCH_VERSION})
+# note the separator between minor and patch: without it this produced "1.20"
+# for 1.2.0 (and "1.10" for 1.1.0), which is what ends up in the Version field
+# of the generated vidstab.pc
+set(VIDSTAB_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 # Default to release builds if no explicit build type specified.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

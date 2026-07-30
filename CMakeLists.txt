@@ -26,7 +26,6 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
        ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
-option(USE_GLPK "use GLPK as the LP solver for the L1 optimal camera path" ON)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -64,19 +63,29 @@ set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
   src/boxblur.c src/vsvector.c)
 
-# The L1 optimal camera path (Grundmann et al. 2011) needs a linear program
-# solver.  Without one the VSOptimalL1 setting silently falls back to the
-# gaussian filter, so the solver stays entirely optional.
-if(USE_GLPK)
+# --- LP solver backend for the L1 optimal camera path -------------------------
+# The built-in interior point solver keeps vid.stab dependency free; GLPK can be
+# selected instead and serves as the cross-check in the test suite.
+set(VIDSTAB_LPSOLVER "builtin" CACHE STRING
+    "LP solver for the L1 optimal camera path: builtin or glpk")
+set_property(CACHE VIDSTAB_LPSOLVER PROPERTY STRINGS builtin glpk)
+
+set(LP_SOURCES src/l1campathoptimization.c src/lpsolver_ipm.c)
+set(LP_DEFS -DUSE_IPM -DVS_HAVE_LPSOLVER)
+set(LP_BACKEND "built-in interior point")
+if(VIDSTAB_LPSOLVER STREQUAL "glpk")
   find_package(GLPK)
+  if(GLPK_FOUND)
+    set(LP_SOURCES src/l1campathoptimization.c src/lpsolver_glpk.c)
+    set(LP_DEFS -DUSE_GLPK -DVS_HAVE_LPSOLVER)
+    set(LP_BACKEND "GLPK ${GLPK_VERSION}")
+  else()
+    message(WARNING "VIDSTAB_LPSOLVER=glpk but GLPK was not found, using the built-in solver")
+  endif()
 endif()
-if(GLPK_FOUND)
-  list(APPEND SOURCES src/l1campathoptimization.c src/lpsolver_glpk.c)
-  add_definitions(-DUSE_GLPK -DVS_HAVE_LPSOLVER)
-  message(STATUS "L1 optimal camera path enabled (GLPK ${GLPK_VERSION})")
-else()
-  message(STATUS "L1 optimal camera path disabled (no LP solver found)")
-endif()
+add_definitions(${LP_DEFS})
+message(STATUS "L1 optimal camera path LP solver: ${LP_BACKEND}")
+list(APPEND SOURCES ${LP_SOURCES})
 
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
@@ -100,7 +109,7 @@ if (NOT MSVC)
   target_link_libraries(vidstab m)
 endif ()
 set(PKG_EXTRA_LIBS -lm)
-if(GLPK_FOUND)
+if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
   target_link_libraries(vidstab GLPK::GLPK)
   set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lglpk")
 endif()

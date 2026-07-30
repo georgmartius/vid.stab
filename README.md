@@ -12,6 +12,10 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
 
  * Fast detection of subsequent transformations e.g. translation and rotations up to a given extent.
  * Low pass filtered smoothing with adjustable horizon.
+ * L1-optimal camera path (Grundmann et al., CVPR 2011): the stabilized path is
+   composed of static, linear and parabolic segments, giving a result that looks
+   like it came off a dolly or a crane rather than off a low-pass filter. Solved
+   as a linear program with a built-in solver, so it needs no extra dependency.
  * Detection algorithms:
   * Smart and fast multi measurement fields algorithm with contrast selection.
   * Brute force algorithm only for translations.
@@ -30,6 +34,11 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
  * A Linux-based system
  * ffmpeg source code
  * Cmake
+
+The L1-optimal camera path is solved with a built-in interior point solver and
+needs nothing else. GLPK can be used instead with `cmake -DVIDSTAB_LPSOLVER=glpk`;
+the test suite runs against either and cross-checks both against the reference
+implementation in `docs/l1campath-reference.py`.
 
 ## Installation Instructions
 

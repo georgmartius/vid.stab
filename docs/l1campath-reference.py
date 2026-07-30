@@ -194,6 +194,28 @@ def frame_pairs(N):
     return np.array(F)
 
 
+def true_objective(F, upd, **kw):
+    """Objective evaluated directly from the update transforms, the same way
+    objectiveOf() in l1campathoptimization.c does it.  The value linprog
+    reports also contains the slack variables, which a solver that stops just
+    short of optimality has not pushed all the way down, so it is not
+    comparable across solvers; this is."""
+    conf = dict(DEFAULTS); conf.update(kw)
+    N = len(F)
+    lay = Layout(N)
+    flat = np.asarray(upd).reshape(-1)
+    weights = (conf["w1"], conf["w2"], conf["w3"])
+    total = 0.0
+    for order in (1, 2, 3):
+        for t in range(N - order):
+            r = residual(order, F, t, lay)
+            for p in (X, Y, A, B):
+                lin, konst = r[p]
+                val = konst + sum(c * flat[j] for j, c in lin.items())
+                total += weights[order-1] * (conf["w_affine"] if p in (A, B) else 1.0) * abs(val)
+    return total
+
+
 def diffnorm(P, order):
     d = P * np.array([1.0, 1.0, 100.0, 100.0])
     for _ in range(order):
@@ -204,12 +226,17 @@ def diffnorm(P, order):
 if __name__ == "__main__":
     W, H = 640.0, 480.0
 
-    N = 24
-    F = frame_pairs(N)
-    upd, obj = solve(F, W, H)
-    print(f"N = {N}, reference objective = {obj:.10g}")
+    for N in (24, 200):
+        F = frame_pairs(N)
+        upd, obj = solve(F, W, H)
+        print(f"N = {N:3d}: linprog reported {obj:.10g}, true objective "
+              f"{true_objective(F, upd):.12g}")
     print()
-    print("  #define L1_REFERENCE_OBJECTIVE %.12g" % obj)
+    print("  /* tests/test_campathopt.c */")
+    for N, name in ((24, "L1_REFERENCE_OBJECTIVE_24"), (200, "L1_REFERENCE_OBJECTIVE_200")):
+        F = frame_pairs(N)
+        upd, _ = solve(F, W, H)
+        print("  #define %s %.12g" % (name, true_objective(F, upd)))
     print()
 
     for N in (60, 200):

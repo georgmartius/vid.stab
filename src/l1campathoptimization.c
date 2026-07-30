@@ -102,11 +102,19 @@ VSTransform transformLStoAZ(const VSTransformLS* t){
  *   group 2:  e^2_t,     t = 0 .. N-3   slack bounding |D^2(P)|
  *   group 3:  e^3_t,     t = 0 .. N-4   slack bounding |D^3(P)|
  *
- * Rows (8 per order and time step: 4 parameters x lower/upper):
- *   order 1:  t = 0 .. N-2
- *   order 2:  t = 0 .. N-3
- *   order 3:  t = 0 .. N-4
- *   then 8 inclusion rows per t = 0 .. N-1 (4 crop corners x 2 coordinates)
+ * Rows are grouped by time step, 8 inclusion rows (4 crop corners x 2
+ * coordinates) followed by 8 rows for every derivative order that is still
+ * defined at t (4 parameters x lower/upper bound):
+ *
+ *   t = 0 .. N-4 : inclusion, order 1, order 2, order 3   (32 rows)
+ *   t = N-3      : inclusion, order 1, order 2            (24 rows)
+ *   t = N-2      : inclusion, order 1                     (16 rows)
+ *   t = N-1      : inclusion                              ( 8 rows)
+ *
+ * Grouping by time rather than by order is what keeps the constraint matrix
+ * banded: a row at time t only touches B_t .. B_{t+3}, so two rows share a
+ * column only if their time steps are at most 3 apart.  The interior point
+ * backend relies on that to factorize the normal equations in O(N).
  * ************************************************************************** */
 
 enum { PX = 0, PY = 1, PA = 2, PB = 3 };
@@ -118,20 +126,32 @@ int vs_l1_col(int group, int t, int param, int N){
   return 4 * (group * N - (group * (group - 1)) / 2) + 4 * t + param;
 }
 
-/** row of the smoothness constraint of the given order (1..3).
-    upperorlower is 0 for the lower and 1 for the upper bound.
-    Passing order 4 with t = param = 0 yields the first inclusion row. */
-int vs_l1_row(int order, int t, int param, int upperorlower, int N){
-  return 8 * ((order - 1) * N - (order * (order - 1)) / 2)
-         + 8 * t + 2 * param + upperorlower;
+/** number of rows belonging to time step t */
+static int vs_l1_rowsAt(int t, int N){
+  return 8 + (t < N - 1 ? 8 : 0) + (t < N - 2 ? 8 : 0) + (t < N - 3 ? 8 : 0);
+}
+
+/** index of the first row of time step t */
+int vs_l1_rowBase(int t, int N){
+  /* every time step before N-3 contributes the full 32 rows */
+  int full = (t < N - 3) ? t : (N - 3);
+  int base = 32 * full;
+  for (int k = N - 3; k < t; k++) base += vs_l1_rowsAt(k, N);
+  return base;
 }
 
 /** inclusion row k = 0..7 of time step t */
-static int vs_l1_rowCorner(int t, int k, int N){
-  return vs_l1_row(4, 0, 0, 0, N) + 8 * t + k;
+int vs_l1_rowCorner(int t, int k, int N){
+  return vs_l1_rowBase(t, N) + k;
 }
 
-int vs_l1_numrows(int N){ return vs_l1_row(4, 0, 0, 0, N) + 8 * N; }
+/** row of the smoothness constraint of the given order (1..3).
+    upperorlower is 0 for the lower and 1 for the upper bound. */
+int vs_l1_row(int order, int t, int param, int upperorlower, int N){
+  return vs_l1_rowBase(t, N) + 8 * order + 2 * param + upperorlower;
+}
+
+int vs_l1_numrows(int N){ return vs_l1_rowBase(N - 1, N) + 8; }
 int vs_l1_numcols(int N){ return vs_l1_col(3, N - 3, 0, N); }
 
 /** upper bound on the number of nonzero matrix entries:
@@ -247,6 +267,91 @@ static void emitPair(VSLinProg* lp, int rowlo, int rowup, int ecol,
   vs_lp_set_row_bounds(lp, rowup, -VS_LP_INF, -e->konst);
 }
 
+/** value of a residual at a given point */
+static double exprEval(const L1Expr* e, const double* x){
+  double s = e->konst;
+  for (int i = 0; i < e->n; i++) s += e->val[i] * x[e->col[i]];
+  return s;
+}
+
+/** Objective of a candidate solution, evaluated directly from B rather than
+    taken from the solver.
+
+    The slack variables of the program are only pushed down to |residual| by the
+    objective, so a solver that stops slightly short of optimality reports a
+    value that is not the objective of the B it returns -- it can even be below
+    the true optimum.  Recomputing here makes the number exact and comparable
+    across backends. */
+static double objectiveOf(const VSTransformLS* F, int N, const VSL1Config* conf,
+                          const double* Bflat){
+  const double weight[3] = { conf->w1, conf->w2, conf->w3 };
+  double total = 0.0;
+  L1Expr r[4];
+  for (int order = 1; order <= 3; order++) {
+    for (int t = 0; t < N - order; t++) {
+      buildResidual(r, order, F, t, N);
+      for (int p = PX; p <= PB; p++) {
+        double w = weight[order - 1] * ((p == PA || p == PB) ? conf->wAffine : 1.0);
+        total += w * fabs(exprEval(&r[p], Bflat));
+      }
+    }
+  }
+  return total;
+}
+
+/** Removes any residual constraint violation.
+
+    The inclusion and proximity constraints are only satisfied up to whatever
+    accuracy the solver reached.  Both describe a convex set that contains the
+    identity transform, so shrinking B_t towards the identity restores
+    feasibility exactly, and because the violation is tiny the shrink factor is
+    1 or a hair below it.  This is what turns "the LP said so" into an actual
+    guarantee that the crop window never leaves the frame. */
+static void enforceFeasibility(VSTransformLS* B, int N, const VSL1Config* conf){
+  const double x2 = conf->frameWidth  / 2.0;
+  const double y2 = conf->frameHeight / 2.0;
+  const double cw = x2 * conf->cropRatio;
+  const double ch = y2 * conf->cropRatio;
+  const double cornerx[4] = { -cw,  cw, cw, -cw };
+  const double cornery[4] = { -ch, -ch, ch,  ch };
+
+  for (int t = 0; t < N; t++) {
+    double lambda = 1.0;
+    /* value at the identity, and the difference to the candidate, for every
+       constraint; feasibility is affine in lambda */
+    double idv[12], curv[12], lo[12], up[12];
+    int n = 0;
+    for (int i = 0; i < 4; i++) {
+      double ix, iy, bx, by;
+      VSTransformLS id = id_transformLS();
+      transformLS_vec(&ix, &iy, &id,   cornerx[i], cornery[i]);
+      transformLS_vec(&bx, &by, &B[t], cornerx[i], cornery[i]);
+      idv[n] = ix; curv[n] = bx; lo[n] = -x2; up[n] = x2; n++;
+      idv[n] = iy; curv[n] = by; lo[n] = -y2; up[n] = y2; n++;
+    }
+    idv[n] = 1.0; curv[n] = B[t].a; lo[n] = conf->minScale; up[n] = conf->maxScale; n++;
+    idv[n] = 0.0; curv[n] = B[t].b; lo[n] = -conf->maxSkewDev; up[n] = conf->maxSkewDev; n++;
+
+    for (int i = 0; i < n; i++) {
+      double d = curv[i] - idv[i];
+      if (d > 0.0 && curv[i] > up[i]) {
+        double l = (up[i] - idv[i]) / d;
+        if (l < lambda) lambda = l;
+      } else if (d < 0.0 && curv[i] < lo[i]) {
+        double l = (lo[i] - idv[i]) / d;
+        if (l < lambda) lambda = l;
+      }
+    }
+    if (lambda < 0.0) lambda = 0.0;
+    if (lambda < 1.0) {
+      B[t].x = lambda * B[t].x;
+      B[t].y = lambda * B[t].y;
+      B[t].a = 1.0 + lambda * (B[t].a - 1.0);
+      B[t].b = lambda * B[t].b;
+    }
+  }
+}
+
 /* ************************************************************************* */
 
 VSL1Config vsL1GetDefaultConfig(void){
@@ -286,9 +391,16 @@ int vsCameraPathOptimalL1LS(const VSTransformLS* F, int N, VSTransformLS* B,
 
   /* --- columns: B is free except for the proximity bounds, the slacks are
      non-negative and carry the whole objective --------------------------- */
+  const double x2 = conf->frameWidth  / 2.0;
+  const double y2 = conf->frameHeight / 2.0;
   for (int t = 0; t < N; t++) {
-    vs_lp_set_col_bounds(lp, vs_l1_col(0, t, PX, N), -VS_LP_INF, VS_LP_INF);
-    vs_lp_set_col_bounds(lp, vs_l1_col(0, t, PY, N), -VS_LP_INF, VS_LP_INF);
+    /* |B.x| <= x2 and |B.y| <= y2 are implied by the inclusion rows below:
+       averaging the two rows of a pair of opposite corners cancels the a and b
+       terms and leaves exactly these bounds.  Stating them explicitly costs
+       nothing, tightens the relaxation, and gives every variable of the
+       program a finite lower bound, which the interior point backend needs. */
+    vs_lp_set_col_bounds(lp, vs_l1_col(0, t, PX, N), -x2, x2);
+    vs_lp_set_col_bounds(lp, vs_l1_col(0, t, PY, N), -y2, y2);
     /* proximity constraints, section 2.1 of the paper: keep the update
        transform close to the identity so the crop does not distort */
     vs_lp_set_col_bounds(lp, vs_l1_col(0, t, PA, N),
@@ -325,8 +437,6 @@ int vsCameraPathOptimalL1LS(const VSTransformLS* F, int N, VSTransformLS* B,
   /* --- inclusion rows: all four corners of the crop rectangle, transformed
      by B_t, have to stay inside the frame rectangle (eq. 8, in coordinates
      relative to the frame centre) ---------------------------------------- */
-  const double x2 = conf->frameWidth  / 2.0;
-  const double y2 = conf->frameHeight / 2.0;
   const double cw = x2 * conf->cropRatio;
   const double ch = y2 * conf->cropRatio;
   const double cornerx[4] = { -cw,  cw, cw, -cw };
@@ -364,8 +474,22 @@ int vsCameraPathOptimalL1LS(const VSTransformLS* F, int N, VSTransformLS* B,
     B[t].b     = vs_lp_get_col_value(lp, vs_l1_col(0, t, PB, N));
     B[t].extra = 0;
   }
-  if (objective) *objective = vs_lp_get_obj_value(lp);
   vs_lp_free(lp);
+
+  enforceFeasibility(B, N, conf);
+  if (objective) {
+    double* Bflat = (double*)vs_malloc(sizeof(double) * 4 * N);
+    if (Bflat) {
+      for (int t = 0; t < N; t++) {
+        Bflat[vs_l1_col(0, t, PX, N)] = B[t].x;
+        Bflat[vs_l1_col(0, t, PY, N)] = B[t].y;
+        Bflat[vs_l1_col(0, t, PA, N)] = B[t].a;
+        Bflat[vs_l1_col(0, t, PB, N)] = B[t].b;
+      }
+      *objective = objectiveOf(F, N, conf, Bflat);
+      vs_free(Bflat);
+    }
+  }
   return VS_OK;
 }
 

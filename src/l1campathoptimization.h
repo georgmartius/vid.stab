@@ -141,6 +141,8 @@ VS_API VSL1Config vsL1ConfigFromTransformConfig(const VSTransformData* td);
 #ifdef TESTING
 /* index helpers, exposed for the unit tests */
 int vs_l1_row(int order, int t, int param, int upperorlower, int N);
+int vs_l1_rowCorner(int t, int k, int N);
+int vs_l1_rowBase(int t, int N);
 int vs_l1_col(int group, int t, int param, int N);
 int vs_l1_numrows(int N);
 int vs_l1_numcols(int N);

@@ -35,7 +35,14 @@
  *
  *  The point of this thin layer is that the construction of the camera path
  *  LP in l1campathoptimization.c is independent of which solver is used,
- *  so a backend can be swapped in without touching the model.
+ *  so a backend can be swapped in without touching the model.  Two exist:
+ *  lpsolver_ipm.c (built in, the default) and lpsolver_glpk.c.
+ *
+ *  A backend may impose extra requirements on the model.  The built-in one
+ *  needs every variable and every row to be bounded on at least one side, and
+ *  it needs the rows ordered so that the matrix is banded -- both of which the
+ *  camera path program satisfies by construction.  It reports an error rather
+ *  than guessing if they do not hold.
  */
 
 /// any bound with |value| >= VS_LP_INF counts as infinite

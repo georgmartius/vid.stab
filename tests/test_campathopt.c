@@ -8,9 +8,10 @@
 #include "l1campathoptimization.h"
 #include "lpsolver.h"
 
-/* objective of the N=24 instance below, produced by
+/* optimal objectives of the two instances below, produced by
    docs/l1campath-reference.py (scipy/HiGHS) */
-#define L1_REFERENCE_OBJECTIVE 1981.95228567
+#define L1_REFERENCE_OBJECTIVE_24  1981.95228567
+#define L1_REFERENCE_OBJECTIVE_200 23046.0705989
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -78,14 +79,18 @@ static VSL1Config campath_testconfig(double width, double height){
 void test_l1_indices(void){
   for (int N = 4; N <= 9; N++) {
     int expected = 0;
-    for (int order = 1; order <= 3; order++)
-      for (int t = 0; t < N - order; t++)
+    for (int t = 0; t < N; t++) {
+      test_bool(vs_l1_rowBase(t, N) == expected);
+      for (int k = 0; k < 8; k++)
+        test_bool(vs_l1_rowCorner(t, k, N) == expected++);
+      for (int order = 1; order <= 3; order++) {
+        if (t >= N - order) continue;
         for (int p = 0; p < 4; p++)
           for (int ul = 0; ul < 2; ul++)
             test_bool(vs_l1_row(order, t, p, ul, N) == expected++);
-    /* the inclusion rows follow directly after the smoothness rows */
-    test_bool(vs_l1_row(4, 0, 0, 0, N) == expected);
-    test_bool(vs_l1_numrows(N) == expected + 8 * N);
+      }
+    }
+    test_bool(vs_l1_numrows(N) == expected);
 
     expected = 0;
     for (int group = 0; group <= 3; group++)
@@ -210,7 +215,6 @@ static void test_l1_run(int N, double w1, double w2, double w3, const char* what
 }
 
 void test_l1_campath(void){
-  fprintf(stderr, "  LP backend: %s\n", vs_lp_backend_name());
   test_l1_run(60,  10.0, 1.0, 100.0, "default weights");
   test_l1_run(200, 10.0, 1.0, 100.0, "default weights");
   /* fig. 8 of the paper: each single term on its own */
@@ -221,26 +225,38 @@ void test_l1_campath(void){
   test_l1_run(4,   10.0, 1.0, 100.0, "minimal length");
 }
 
-/** The objective value of a fixed instance, cross-checked against an
-    independent implementation of the same LP (scipy/HiGHS, see
-    docs/l1campath-reference.py).  This catches a drift in the model that the
-    property checks above would still accept. */
-void test_l1_reference(void){
-  const int N = 24;
+/** The objective of two fixed instances, cross-checked against an independent
+    implementation of the same program (scipy/HiGHS, see
+    docs/l1campath-reference.py).  This is what catches a drift in the model
+    that the property checks above would still accept.
+
+    Since the returned update transforms are always feasible, the objective can
+    never fall meaningfully below the optimum; it may sit slightly above it when
+    the solver stops short of full convergence, which the built-in interior
+    point method does on longer sequences. */
+static void test_l1_reference_at(int N, double reference, double tolerance){
   VSTransformLS* F = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
   VSTransformLS* B = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
   campath_frame_pairs(F, N);
   VSL1Config conf = campath_testconfig(640.0, 480.0);
   double objective = -1.0;
-  test_bool(vsCameraPathOptimalL1LS(F, N, B, &conf, &objective) == VS_OK);
-
-  const double reference = L1_REFERENCE_OBJECTIVE;
-  fprintf(stderr, "  objective %.9g, reference %.9g, rel. deviation %.3g\n",
-          objective, reference, fabs(objective - reference) / reference);
-  test_bool(fabs(objective - reference) <= 1e-6 * reference);
-
+  int status = vsCameraPathOptimalL1LS(F, N, B, &conf, &objective);
+  test_bool(status == VS_OK);
+  if (status == VS_OK) {
+    double rel = (objective - reference) / reference;
+    fprintf(stderr, "  N=%3i objective %.10g, optimum %.10g, %+.2e relative\n",
+            N, objective, reference, rel);
+    test_bool(rel > -1e-9);          // a feasible point cannot beat the optimum
+    test_bool(rel < tolerance);
+  }
   vs_free(F);
   vs_free(B);
+}
+
+void test_l1_reference(void){
+  fprintf(stderr, "  LP backend: %s\n", vs_lp_backend_name());
+  test_l1_reference_at(24,  L1_REFERENCE_OBJECTIVE_24,  1e-6);
+  test_l1_reference_at(200, L1_REFERENCE_OBJECTIVE_200, 1e-3);
 }
 
 /** The library level entry point: relative transforms in, update transforms

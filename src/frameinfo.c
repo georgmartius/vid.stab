@@ -66,14 +66,18 @@ int vsFrameInfoInit(VSFrameInfo* fi, int width, int height, VSPixelFormat pForma
     fi->log2ChromaH = 1;
     fi->planes = 4;
     break;
+    /* For the packed formats everything lives in plane 0 (see VSFrame), so
+       there is exactly one plane. It must not be 0: all the plane loops are
+       `for(plane=0; plane<fi->planes; plane++)`, with planes==0 nothing gets
+       allocated and nothing gets copied. */
    case PF_RGB24:
    case PF_BGR24:
     fi->bytesPerPixel=3;
-    fi->planes = 0;
+    fi->planes = 1;
     break;
    case PF_RGBA:
     fi->bytesPerPixel=4;
-    fi->planes = 0;
+    fi->planes = 1;
     break;
    default:
     fi->pFormat=0;
@@ -163,7 +167,8 @@ void vsFrameCopyPlane(VSFrame* dest, const VSFrame* src,
   else {
     uint8_t* d = dest->data[plane];
     const uint8_t* s = src->data[plane];
-    int w = fi->width  >> vsGetPlaneWidthSubS(fi, plane);
+    // number of *bytes* per row of actual image data (bytesPerPixel is 1 for planar)
+    int w = (fi->width  >> vsGetPlaneWidthSubS(fi, plane)) * fi->bytesPerPixel;
     for (; h>0; h--) {
       memcpy(d,s,sizeof(uint8_t) * w);
       d += dest->linesize[plane];

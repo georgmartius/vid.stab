@@ -42,6 +42,7 @@
 #include "test_gradientoptimizer.c"
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
+#include "test_packed.c"
 
 #define FRAMENUM 5
 
@@ -138,6 +139,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testCT", "contrastImg")){
     UNIT(test_contrastImg(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testPK", "packed pixel formats")){
+    UNIT(test_packed());
   }
 
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){

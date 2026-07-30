@@ -379,6 +379,33 @@ double contrastSubImg(unsigned char* const I, const Field* field, int linesize,
   return (maxi - mini) / (maxi + mini + 0.1); // +0.1 to avoid division by 0
 }
 
+/* Where to centre the search for one field, as a *displacement* of the field
+   centre (that is what compareSubImg()'s d_x/d_y and LocalMotion.v are).
+   fs->offset is the transform found by the coarse scan; transform_vec() maps a
+   point to its new *absolute* position, so the original position has to be
+   subtracted to turn it into a displacement.
+   Returns 0 if the shifted field plus its search window would leave the frame,
+   in which case the field has to be discarded. Shared by the planar and the
+   packed variant below so that the two cannot drift apart again.
+*/
+static int fieldSearchOffset(Vec* offset, const VSMotionDetect* md,
+                             const VSMotionDetectFields* fs, const Field* field) {
+  offset->x = 0;
+  offset->y = 0;
+  if (!fs->useOffset)
+    return 1;
+  // Todo: we could put the preparedtransform into fs
+  PreparedTransform pt = prepare_transform(&fs->offset, &md->fi);
+  Vec fieldpos = {field->x, field->y};
+  *offset = sub_vec(transform_vec(&pt, &fieldpos), fieldpos);
+  // is the field still in the frame?
+  int border = field->size/2 + fs->maxShift + fs->stepSize;
+  int x = fieldpos.x + offset->x;
+  int y = fieldpos.y + offset->y;
+  return !(x - border < 0 || x + border >= md->fi.width ||
+           y - border < 0 || y + border >= md->fi.height);
+}
+
 /* calculates the optimal transformation for one field in Planar frames
  * (only luminance)
  */
@@ -392,22 +419,11 @@ LocalMotion calcFieldTransPlanar(VSMotionDetect* md, VSMotionDetectFields* fs,
   int i, j;
   int stepSize = fs->stepSize;
   int maxShift = fs->maxShift;
-  Vec offset = { 0, 0};
+  Vec offset;
   LocalMotion lm = null_localmotion();
-  if(fs->useOffset){
-    // Todo: we could put the preparedtransform into fs
-    PreparedTransform pt = prepare_transform(&fs->offset, &md->fi);
-    Vec fieldpos = {field->x, field->y};
-    offset = sub_vec(transform_vec(&pt, &fieldpos), fieldpos);
-    // is the field still in the frame
-    int s2 = field->size/2;
-    if(unlikely(fieldpos.x+offset.x-s2-maxShift-stepSize < 0 ||
-                fieldpos.x+offset.x+s2+maxShift+stepSize >= md->fi.width ||
-                fieldpos.y+offset.y-s2-maxShift-stepSize < 0 ||
-                fieldpos.y+offset.y+s2+maxShift+stepSize >= md->fi.height)){
-      lm.match=-1;
-      return lm;
-    }
+  if(unlikely(!fieldSearchOffset(&offset, md, fs, field))){
+    lm.match=-1;
+    return lm;
   }
 
 #ifdef STABVERBOSE
@@ -557,24 +573,11 @@ LocalMotion calcFieldTransPacked(VSMotionDetect* md, VSMotionDetectFields* fs,
   int stepSize = fs->stepSize;
   int maxShift = fs->maxShift;
 
-  Vec offset = { 0, 0};
+  Vec offset;
   LocalMotion lm = null_localmotion();
-  if(fs->useOffset){
-    // Todo: we could put the preparedtransform into fs
-    PreparedTransform pt = prepare_transform(&fs->offset, &md->fi);
-    Vec fieldpos = {field->x, field->y};
-    // offset is used as a *relative* shift below, so subtract the field position
-    //  (transform_vec returns an absolute position). Same as calcFieldTransPlanar.
-    offset = sub_vec(transform_vec(&pt, &fieldpos), fieldpos);
-    // is the field still in the frame
-    int s2 = field->size/2;
-    if(unlikely(fieldpos.x+offset.x-s2-maxShift-stepSize < 0 ||
-                fieldpos.x+offset.x+s2+maxShift+stepSize >= md->fi.width ||
-                fieldpos.y+offset.y-s2-maxShift-stepSize < 0 ||
-                fieldpos.y+offset.y+s2+maxShift+stepSize >= md->fi.height)){
-      lm.match=-1;
-      return lm;
-    }
+  if(unlikely(!fieldSearchOffset(&offset, md, fs, field))){
+    lm.match=-1;
+    return lm;
   }
 
   /* Here we improve speed by checking first the most probable position

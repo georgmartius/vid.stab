@@ -25,7 +25,8 @@
 #ifndef LIBVIDSTAB_H
 #define LIBVIDSTAB_H
 
-#define LIBVIDSTAB_VERSION "v1.1 (2015-05-16)"
+/* Keep in sync with MAJOR/MINOR/PATCH_VERSION in the top-level CMakeLists.txt */
+#define LIBVIDSTAB_VERSION "v1.2.0"
 
 #include "frameinfo.h"
 #include "motiondetect.h"

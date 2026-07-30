@@ -164,9 +164,10 @@ int main(int argc, char** argv){
   }
 
   // free
+  /* testdata was zeroed above, so unallocated frames have NULL planes and
+     vsFrameFree() handles those safely; no NULL check on the address needed. */
   for(int i=0; i<FRAMENUM; i++){
-    if(&testdata.frames[i])
-      vsFrameFree(&testdata.frames[i]);
+    vsFrameFree(&testdata.frames[i]);
   }
 
   return unittest_summary();

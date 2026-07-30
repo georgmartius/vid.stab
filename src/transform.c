@@ -26,6 +26,7 @@
 #include "transform.h"
 #include "transform_internal.h"
 #include "transformtype_operations.h"
+#include "l1campathoptimization.h"
 
 #include "transformfixedpoint.h"
 #ifdef TESTING
@@ -68,6 +69,10 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
   conf.camPathAlgo        = VSOptimalL1;
+  conf.pathD1Weight       = 10.0;
+  conf.pathD2Weight       = 1.0;
+  conf.pathD3Weight       = 100.0;
+  conf.pathMaxZoom        = 15.0;
   return conf;
 }
 
@@ -104,9 +109,6 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
     td->conf.maxShift = td->fiDest.height/2;
 
   td->conf.interpolType = VS_MAX(VS_MIN(td->conf.interpolType,VS_BiCubic),VS_Zero);
-
-  // not yet implemented
-  if(td->conf.camPathAlgo==VSOptimalL1) td->conf.camPathAlgo=VSGaussian;
 
   switch(td->conf.interpolType){
    case VS_Zero:     td->interpolate = &interpolateZero; break;
@@ -229,9 +231,18 @@ void vsTransformationsCleanup(VSTransformations* trans){
 int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
   switch(td->conf.camPathAlgo){
    case VSAvg: return cameraPathAvg(td,trans);
-   case VSOptimalL1: // not yet implenented
+   case VSOptimalL1:
+#ifdef VS_HAVE_LPSOLVER
+    /* cameraPathOptimalL1 leaves trans untouched unless it succeeds, so
+       falling back to the gaussian filter is safe.  It fails for absolute
+       transforms, for sequences shorter than 4 frames, and if the LP turns
+       out to be infeasible. */
+    if(cameraPathOptimalL1(td,trans)==VS_OK) return VS_OK;
+    vs_log_msg(td->conf.modName,
+               "L1 camera path optimization unavailable, using gaussian filter");
+#endif // without an LP solver we always use the gaussian filter
+    /* fall through */
    case VSGaussian: return cameraPathGaussian(td,trans);
-//   case VSOptimalL1: return cameraPathOptimalL1(td,trans);
   }
   return VS_ERROR;
 }

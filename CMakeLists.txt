@@ -26,6 +26,7 @@ option(BUILD_SHARED_LIBS "build shared libraries instead of static libraries"
        ON)
 
 option(USE_OMP "use parallelization use OMP" ON)
+option(USE_GLPK "use GLPK as the LP solver for the L1 optimal camera path" ON)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -63,6 +64,20 @@ set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
   src/boxblur.c src/vsvector.c)
 
+# The L1 optimal camera path (Grundmann et al. 2011) needs a linear program
+# solver.  Without one the VSOptimalL1 setting silently falls back to the
+# gaussian filter, so the solver stays entirely optional.
+if(USE_GLPK)
+  find_package(GLPK)
+endif()
+if(GLPK_FOUND)
+  list(APPEND SOURCES src/l1campathoptimization.c src/lpsolver_glpk.c)
+  add_definitions(-DUSE_GLPK -DVS_HAVE_LPSOLVER)
+  message(STATUS "L1 optimal camera path enabled (GLPK ${GLPK_VERSION})")
+else()
+  message(STATUS "L1 optimal camera path disabled (no LP solver found)")
+endif()
+
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
   src/localmotion2transform.h src/boxblur.h src/vsvector.h )
@@ -85,6 +100,10 @@ if (NOT MSVC)
   target_link_libraries(vidstab m)
 endif ()
 set(PKG_EXTRA_LIBS -lm)
+if(GLPK_FOUND)
+  target_link_libraries(vidstab GLPK::GLPK)
+  set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lglpk")
+endif()
 if(USE_OMP AND OPENMP_FOUND)
 if(TARGET OpenMP::OpenMP_C)
 target_link_libraries(vidstab OpenMP::OpenMP_C)

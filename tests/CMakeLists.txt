@@ -29,13 +29,26 @@ endif()
 # Make sure the compiler can find include files from transcode
 include_directories (../src)
 
+option(USE_GLPK "use GLPK as the LP solver for the L1 optimal camera path" ON)
+if(USE_GLPK)
+  find_package(GLPK)
+endif()
+if(GLPK_FOUND)
+  set(LP_SOURCES ../src/l1campathoptimization.c ../src/lpsolver_glpk.c)
+  add_definitions(-DUSE_GLPK -DVS_HAVE_LPSOLVER)
+endif()
+
 add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
-  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/boxblur.c)
+  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/boxblur.c
+  ${LP_SOURCES})
 
 target_link_libraries(tests m)
+if(GLPK_FOUND)
+target_link_libraries(tests GLPK::GLPK)
+endif()
 if(USE_OMP)
 target_link_libraries(tests gomp)
 endif()

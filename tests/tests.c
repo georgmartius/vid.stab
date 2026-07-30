@@ -45,6 +45,9 @@
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
 #include "test_packed.c"
+#ifdef VS_HAVE_LPSOLVER
+#include "test_campathopt.c"
+#endif
 
 #define FRAMENUM 5
 
@@ -162,6 +165,16 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testDET", "deterministic output")){
     UNIT(test_determinism(&testdata));
   }
+
+#ifdef VS_HAVE_LPSOLVER
+  if(all || contains(argv,argc,"--testL1", "L1 optimal camera path")){
+    UNIT(test_l1_indices());
+    UNIT(test_l1_transformLS());
+    UNIT(test_l1_campath());
+    UNIT(test_l1_reference());
+    UNIT(test_l1_campath_transforms(&testdata));
+  }
+#endif
 
   // free
   /* testdata was zeroed above, so unallocated frames have NULL planes and

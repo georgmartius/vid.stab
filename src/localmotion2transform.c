@@ -228,7 +228,12 @@ VSArray vsGradientDescent(double (*eval)(VSArray, void*),
   for(int i=0; i< N*dim && v > threshold; i++){
     int k=i%dim;
     VSArray x2 = vs_array_copy(x);
-    double h = rand()%2 ? 1e-6 : -1e-6;
+    /* Alternate the sign of the finite-difference step deterministically.
+       Using rand() here made the result depend on the global RNG state and
+       therefore differ between runs (issue #111). Alternating per sweep over
+       the dimensions preserves the original behaviour of probing from both
+       sides without introducing randomness. */
+    double h = ((i/dim)%2) ? 1e-6 : -1e-6;
     x2.dat[k]+=h;
     double v2 = eval(x2, dat);
     vs_array_zero(&grad);

@@ -31,6 +31,7 @@
 #include "generate.c"
 
 #include "test_transform.c"
+#include "test_transform_prepare.c"
 #include "test_compareimg.c"
 #include "test_motiondetect.c"
 #include "test_store_restore.c"
@@ -98,6 +99,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testTP", "transform_performance")){
     UNIT(test_transform_performance(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testTPR", "transform_prepare buffer ownership")){
+    UNIT(test_transform_prepare());
   }
 
   if(all || contains(argv,argc,"--testBB", "boxblur")){

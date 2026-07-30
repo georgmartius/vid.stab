@@ -34,6 +34,7 @@
 #include "test_transform.c"
 #include "test_transform_prepare.c"
 #include "test_compareimg.c"
+#include "test_simd_equivalence.c"
 #include "test_motiondetect.c"
 #include "test_store_restore.c"
 #include "test_serialize_robust.c"
@@ -122,6 +123,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testCIP", "compareImg_performance")){
     UNIT(test_compareImg_performance(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testSIMD", "SSE2 vs C equivalence")){
+    UNIT(test_simd_equivalence(&testdata));
   }
 
   if(all || contains(argv,argc,"--testMD", "motionDetect")){

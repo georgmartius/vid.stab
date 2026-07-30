@@ -364,7 +364,7 @@ VSL1Config vsL1GetDefaultConfig(void){
   c.wAffine     = 100.0;
   c.frameWidth  = 0.0;
   c.frameHeight = 0.0;
-  c.cropRatio   = 0.9;
+  c.cropRatio   = 1.0 / 1.15;   // matches the pathMaxZoom default of 15 percent
   c.minScale    = 1.0;
   c.maxScale    = 1.1;
   c.maxSkewDev  = 0.1;
@@ -497,14 +497,24 @@ int vsCameraPathOptimalL1LS(const VSTransformLS* F, int N, VSTransformLS* B,
 
 VSL1Config vsL1ConfigFromTransformConfig(const VSTransformData* td){
   VSL1Config c = vsL1GetDefaultConfig();
-  c.w1          = td->conf.pathD1Weight;
-  c.w2          = td->conf.pathD2Weight;
-  c.w3          = td->conf.pathD3Weight;
-  c.frameWidth  = td->fiSrc.width;
-  c.frameHeight = td->fiSrc.height;
+  /* Not every caller goes through vsTransformGetDefaultConfig(): the ffmpeg
+     filter fills VSTransformConfig field by field from its option table, so
+     fields it does not know about arrive as zero.  All weights zero would make
+     the objective identically zero and every feasible path optimal, and a crop
+     of zero percent would leave the optimization no room at all -- neither is
+     something anybody can have meant, so fall back to the defaults. */
+  if (td->conf.pathD1Weight > 0.0 || td->conf.pathD2Weight > 0.0 ||
+      td->conf.pathD3Weight > 0.0) {
+    c.w1 = VS_MAX(td->conf.pathD1Weight, 0.0);
+    c.w2 = VS_MAX(td->conf.pathD2Weight, 0.0);
+    c.w3 = VS_MAX(td->conf.pathD3Weight, 0.0);
+  }
   /* pathMaxZoom is the zoom in percent that the optimization may use up, so
      the crop window is that much smaller than the frame */
-  c.cropRatio   = 1.0 / (1.0 + VS_MAX(td->conf.pathMaxZoom, 0.0) / 100.0);
+  if (td->conf.pathMaxZoom > 0.0)
+    c.cropRatio = 1.0 / (1.0 + td->conf.pathMaxZoom / 100.0);
+  c.frameWidth  = td->fiSrc.width;
+  c.frameHeight = td->fiSrc.height;
   c.verbose     = td->conf.verbose;
   return c;
 }

@@ -265,6 +265,20 @@ void test_l1_campath_transforms(TestData* testdata){
   const int N = 50;
   VSTransformConfig conf = vsTransformGetDefaultConfig("test_l1");
   conf.camPathAlgo = VSOptimalL1;
+  /* A caller that does not know about the new fields leaves them at zero (the
+     ffmpeg filter fills the config field by field); that must not produce a
+     degenerate program. */
+  {
+    VSTransformConfig zeroed = conf;
+    zeroed.pathD1Weight = zeroed.pathD2Weight = zeroed.pathD3Weight = 0.0;
+    zeroed.pathMaxZoom = 0.0;
+    VSTransformData ztd;
+    test_bool(vsTransformDataInit(&ztd, &zeroed, &testdata->fi, &testdata->fi) == VS_OK);
+    VSL1Config zc = vsL1ConfigFromTransformConfig(&ztd);
+    test_bool(zc.w1 > 0.0 && zc.w3 > 0.0);
+    test_bool(zc.cropRatio > 0.0 && zc.cropRatio < 1.0);
+    vsTransformDataCleanup(&ztd);
+  }
   VSTransformData td;
   test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
 

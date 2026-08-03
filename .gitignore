@@ -19,3 +19,5 @@ build
 /tests/tests
 /tests/lmtest
 /tests/lmstest
+tests/build/
+tests/testdata/

@@ -128,3 +128,13 @@ void generateCircleSquareFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat 
     }
   }
 }
+
+void dumpFramesAsPPM(const VSFrame* frames, const VSFrameInfo* fi, int numFrames,
+                     const char* prefix){
+  int i;
+  char name[512];
+  for(i=0; i<numFrames; i++){
+    sprintf(name, "%s%03i.ppm", prefix, i);
+    test_bool(storePPMImage(name, &frames[i], fi));
+  }
+}

@@ -165,6 +165,32 @@ int main(int argc, char** argv){
     UNIT(test_synthetic_circles_squares());
   }
 
+  if(contains(argv,argc,"--dumpSynthetic", "dump synthetic frames as PPM for visual inspection")){
+    int fmt;
+    char dir[256], prefix[512];
+    for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
+      VSFrameInfo fi;
+      VSFrame frames[SYN_NUM_FRAMES];
+      int i;
+
+      sprintf(dir, "testdata/synthetic/%s", synFormatName(SYN_FORMATS[fmt]));
+      sprintf(prefix, "mkdir -p %s", dir);
+      system(prefix);
+
+      generateCircleFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
+      sprintf(prefix, "%s/circles", dir);
+      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, prefix);
+      for(i=0; i<SYN_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+
+      generateCircleSquareFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
+      sprintf(prefix, "%s/circles_squares", dir);
+      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, prefix);
+      for(i=0; i<SYN_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+
+      fprintf(stderr, "dumped synthetic PPM frames to %s\n", dir);
+    }
+  }
+
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
   }

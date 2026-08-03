@@ -1,4 +1,14 @@
 #include <assert.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#ifdef _WIN32
+#include <direct.h>
+#define TEST_MKDIR(p) _mkdir(p)
+#else
+#define TEST_MKDIR(p) mkdir(p, 0755)
+#endif
 
 #include "testutils.h"
 #include "libvidstab.h"
@@ -250,6 +260,46 @@ int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi)
   return 1;
 }
 
+
+/** mkdir -p, one path component at a time; an existing directory is not an
+    error */
+static int testMkdirP(char* path){
+  char* p;
+  for(p = path+1; *p; p++){
+    if(*p == '/'){
+      *p = '\0';
+      if(TEST_MKDIR(path) != 0 && errno != EEXIST){
+        vs_log_error("TEST", "Can't create output directory '%s'", path);
+        return 0;
+      }
+      *p = '/';
+    }
+  }
+  if(TEST_MKDIR(path) != 0 && errno != EEXIST){
+    vs_log_error("TEST", "Can't create output directory '%s'", path);
+    return 0;
+  }
+  return 1;
+}
+
+const char* testOut(const char* name){
+  /* a ring, so that more than one result can be alive at a time */
+  static char bufs[8][512];
+  static int next = 0;
+  char* buf = bufs[next];
+  char dir[512];
+  char* slash;
+  next = (next+1) % 8;
+
+  snprintf(buf, sizeof(bufs[0]), TEST_OUTPUT_DIR "/%s", name);
+  /* the directory the file goes into -- always at least TEST_OUTPUT_DIR, since
+     we just prefixed it, so the separator is there */
+  snprintf(dir, sizeof(dir), "%s", buf);
+  slash = strrchr(dir, '/');
+  *slash = '\0';
+  testMkdirP(dir);
+  return buf;
+}
 
 int storePGMImage(const char* filename, const uint8_t* data, VSFrameInfo fi ) {
   FILE *f = fopen (filename,"wb");

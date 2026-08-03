@@ -22,8 +22,8 @@ void test_boxblur(const TestData* testdata){
   fprintf(stderr,"********** boxblur speedtest:\n");
   time = runboxblur(testdata->frames[4], dest, testdata->fi, numruns);
   fprintf(stderr,"***C    time for %i runs: %i ms\n", numruns, time);
-  storePGMImage("boxblured.pgm", dest.data[0], testdata->fi);
-  storePGMImage("orig4.pgm", testdata->frames[4].data[0], testdata->fi);
+  storePGMImage(testOut("boxblured.pgm"), dest.data[0], testdata->fi);
+  storePGMImage(testOut("orig4.pgm"), testdata->frames[4].data[0], testdata->fi);
   // timeref=time;
   /* omp_set_dynamic( 0 ); */
   /* omp_set_num_threads( 2); */

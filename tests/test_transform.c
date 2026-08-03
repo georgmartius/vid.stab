@@ -112,8 +112,8 @@ void test_transform_performance(const TestData* testdata){
             numruns, timeC );
 
     if(it==VS_BiLinear){
-      storePGMImage("transformed.pgm", td.dest.data[0], testdata->fi);
-      storePGMImage("transformed_u.pgm", td.dest.data[1], testdata->fi_color);
+      storePGMImage(testOut("transformed.pgm"), td.dest.data[0], testdata->fi);
+      storePGMImage(testOut("transformed_u.pgm"), td.dest.data[1], testdata->fi_color);
       fprintf(stderr,"stored transformed.pgm\n");
     }
     vsFrameCopy(&cfinal,&td.dest,&testdata->fi);
@@ -135,8 +135,8 @@ void test_transform_performance(const TestData* testdata){
     fprintf(stderr,"***FP  elapsed time for %i runs: %i ms ****\n",
             numruns, timeCFP );
     if(it==VS_BiLinear){
-      storePGMImage("transformed_FP.pgm", td.dest.data[0], testdata->fi);
-      storePGMImage("transformed_u_FP.pgm", td.dest.data[1], testdata->fi_color);
+      storePGMImage(testOut("transformed_FP.pgm"), td.dest.data[0], testdata->fi);
+      storePGMImage(testOut("transformed_u_FP.pgm"), td.dest.data[1], testdata->fi_color);
       fprintf(stderr,"stored transformed_FP.pgm\n");
     }
     fprintf(stderr,"***Speedup %3.2f\n", (double)timeC/timeCFP);

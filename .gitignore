@@ -17,10 +17,9 @@ install_manifest.txt
 build
 *.dylib
 
-# Outputs and binaries produced by the test suite
-*.pgm
+# Outputs and binaries produced by the test suite.
+# Everything the tests write goes into their output directory, see
+# TEST_OUTPUT_DIR / testOut() in tests/testutils.h.
+testout/
 /tests/tests
-/tests/lmtest
-/tests/lmstest
 tests/build/
-tests/testdata/

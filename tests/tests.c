@@ -89,11 +89,11 @@ int main(int argc, char** argv){
     UNIT(generateFrames(&testdata, FRAMENUM));
   }
   if(contains(argv,argc,"--store", "Store frames to files")!=0){
-    storePGMImage("test1.pgm", testdata.frames[0].data[0], testdata.fi);
-    storePGMImage("test2.pgm", testdata.frames[1].data[0], testdata.fi);
-    storePGMImage("test3.pgm", testdata.frames[2].data[0], testdata.fi);
-    storePGMImage("test4.pgm", testdata.frames[3].data[0], testdata.fi);
-    storePGMImage("test5.pgm", testdata.frames[4].data[0], testdata.fi);
+    storePGMImage(testOut("test1.pgm"), testdata.frames[0].data[0], testdata.fi);
+    storePGMImage(testOut("test2.pgm"), testdata.frames[1].data[0], testdata.fi);
+    storePGMImage(testOut("test3.pgm"), testdata.frames[2].data[0], testdata.fi);
+    storePGMImage(testOut("test4.pgm"), testdata.frames[3].data[0], testdata.fi);
+    storePGMImage(testOut("test5.pgm"), testdata.frames[4].data[0], testdata.fi);
   }
 
 #ifdef USE_OMP
@@ -170,30 +170,26 @@ int main(int argc, char** argv){
 
   if(contains(argv,argc,"--dumpSynthetic", "dump synthetic frames as PPM for visual inspection")){
     int fmt;
-    char dir[256], prefix[512];
+    char prefix[512];
     for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
       VSFrameInfo fi;
       VSFrame frames[SYN_NUM_FRAMES];
       int i;
-
-      sprintf(dir, "testdata/synthetic/%s", synFormatName(SYN_FORMATS[fmt]));
-      sprintf(prefix, "mkdir -p %s", dir);
-      if(system(prefix) != 0){
-        fprintf(stderr, "mkdir failed for %s\n", dir);
-        continue;
-      }
+      /* testOut() creates the per-format directory on the way */
+      const char* fmtname = synFormatName(SYN_FORMATS[fmt]);
 
       generateCircleFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
-      sprintf(prefix, "%s/circles", dir);
-      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, prefix);
+      sprintf(prefix, "synthetic/%s/circles", fmtname);
+      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, testOut(prefix));
       for(i=0; i<SYN_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
 
       generateCircleSquareFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
-      sprintf(prefix, "%s/circles_squares", dir);
-      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, prefix);
+      sprintf(prefix, "synthetic/%s/circles_squares", fmtname);
+      dumpFramesAsPPM(frames, &fi, SYN_NUM_FRAMES, testOut(prefix));
       for(i=0; i<SYN_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
 
-      fprintf(stderr, "dumped synthetic PPM frames to %s\n", dir);
+      fprintf(stderr, "dumped synthetic PPM frames to %s/synthetic/%s\n",
+              TEST_OUTPUT_DIR, fmtname);
     }
   }
 

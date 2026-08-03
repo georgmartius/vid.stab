@@ -17,6 +17,22 @@ void fillArrayWithNoise(unsigned char* buffer, int length, float corr);
 void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y,
                     int sizex, int sizey, unsigned char color);
 
+void fillFrameRGB(VSFrame* frame, const VSFrameInfo* fi, uint8_t r, uint8_t g, uint8_t b);
+
+void setPixelRGB(VSFrame* frame, const VSFrameInfo* fi, int x, int y,
+                 uint8_t r, uint8_t g, uint8_t b);
+
+void getPixelRGB(const VSFrame* frame, const VSFrameInfo* fi, int x, int y,
+                 uint8_t* r, uint8_t* g, uint8_t* b);
+
+void paintCircleRGB(VSFrame* frame, const VSFrameInfo* fi, int cx, int cy, int radius,
+                    uint8_t r, uint8_t g, uint8_t b);
+
+void paintSquareRGB(VSFrame* frame, const VSFrameInfo* fi, int x, int y, int size,
+                    uint8_t r, uint8_t g, uint8_t b);
+
+int storePPMImage(const char* filename, const VSFrame* frame, const VSFrameInfo* fi);
+
 inline static unsigned char randPixel(){
   return rand()%256;
 }

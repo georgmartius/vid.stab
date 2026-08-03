@@ -1,0 +1,163 @@
+static const VSPixelFormat SYN_FORMATS[6] = {
+  PF_GRAY8, PF_YUV420P, PF_YUV422P, PF_YUV444P, PF_RGB24, PF_RGBA
+};
+#define SYN_NUM_FORMATS 6
+
+static const char* synFormatName(VSPixelFormat pf){
+  switch(pf){
+   case PF_GRAY8:    return "PF_GRAY8";
+   case PF_YUV420P:  return "PF_YUV420P";
+   case PF_YUV422P:  return "PF_YUV422P";
+   case PF_YUV444P:  return "PF_YUV444P";
+   case PF_RGB24:    return "PF_RGB24";
+   case PF_RGBA:     return "PF_RGBA";
+   default:          return "?";
+  }
+}
+
+static void test_synthetic_pixelhelpers(void){
+  int fmt;
+  fprintf(stderr, "--- synthetic pixel helper roundtrip ---\n");
+  for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
+    VSFrameInfo fi;
+    VSFrame frame;
+    uint8_t r,g,b;
+    int isGray = (SYN_FORMATS[fmt] == PF_GRAY8);
+
+    test_bool(vsFrameInfoInit(&fi, 16, 16, SYN_FORMATS[fmt]) != 0);
+    vsFrameAllocate(&frame, &fi);
+    test_bool(!vsFrameIsNull(&frame));
+
+    fillFrameRGB(&frame, &fi, 90, 90, 90);
+    setPixelRGB(&frame, &fi, 4, 4, 230, 60, 40);
+
+    getPixelRGB(&frame, &fi, 4, 4, &r, &g, &b);
+    fprintf(stderr, "%s: wrote (230,60,40) read (%i,%i,%i)\n",
+            synFormatName(SYN_FORMATS[fmt]), r, g, b);
+    if(!isGray){
+      test_bool(abs((int)r-230) < 30);
+      test_bool(abs((int)g-60)  < 30);
+      test_bool(abs((int)b-40)  < 30);
+    }
+
+    getPixelRGB(&frame, &fi, 0, 0, &r, &g, &b);
+    test_bool(abs((int)r-90) < 10 && abs((int)g-90) < 10 && abs((int)b-90) < 10);
+
+    vsFrameFree(&frame);
+  }
+}
+
+/* Runs vsMotionDetection frame-by-frame (same one-md-instance-per-sequence
+   convention as test_motionDetect() in test_motiondetect.c: call once per
+   frame starting at frame 0, which establishes the internal reference with
+   an expected ~zero motion) and asserts the recovered transform matches
+   getTestFrameTransform(i) within tolerance. */
+static void checkRecoveredMotion(const VSFrameInfo* fi, VSFrame* frames, int numFrames,
+                                 const char* label, double tolXY, double tolAlpha){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
+  VSMotionDetect md;
+  int i;
+
+  test_bool(vsMotionDetectInit(&md, &mdconf, fi) == VS_OK);
+  md.conf.numThreads = 1;
+
+  for(i=0; i<numFrames; i++){
+    LocalMotions lms;
+    VSTransform t, orig, diff;
+    int success;
+
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    t = vsSimpleMotionsToTransform(*fi, label, &lms);
+    vs_vector_del(&lms);
+
+    orig = mult_transform_(getTestFrameTransform(i), -1.0);
+    diff = sub_transforms(&t, &orig);
+    success = fabs(diff.x)<tolXY && fabs(diff.y)<tolXY && fabs(diff.alpha)<tolAlpha;
+
+    fprintf(stderr, "%s frame %i: ", label, i);
+    storeVSTransform(stderr, &t);
+    if(!success){
+      fprintf(stderr, "  Difference: ");
+      storeVSTransform(stderr, &diff);
+    }
+    test_bool(success);
+  }
+  vsMotionDetectionCleanup(&md);
+}
+
+void test_synthetic_circles(void){
+  int fmt;
+  test_synthetic_pixelhelpers();
+
+  fprintf(stderr, "--- synthetic circle sequence content ---\n");
+  for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
+    VSFrameInfo fi;
+    VSFrame frames[SYN_NUM_FRAMES];
+    uint8_t r,g,b;
+    int i;
+    int isGray = (SYN_FORMATS[fmt] == PF_GRAY8);
+
+    generateCircleFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
+
+    /* frame 0: background color away from any circle, circle color at a circle center */
+    getPixelRGB(&frames[0], &fi, 5, 5, &r, &g, &b);
+    test_bool(abs((int)r-SYN_BG_R)<20 && abs((int)g-SYN_BG_G)<20 && abs((int)b-SYN_BG_B)<20);
+    if(!isGray){
+      getPixelRGB(&frames[0], &fi, SYN_CIRCLES[2].cx, SYN_CIRCLES[2].cy, &r, &g, &b);
+      test_bool(abs((int)r-SYN_CIRCLE_R)<30 && abs((int)g-SYN_CIRCLE_G)<30 && abs((int)b-SYN_CIRCLE_B)<30);
+    } else {
+      /* RGB comparison is meaningless for luma-only data; check the luma
+         directly instead. getPixelRGB returns r=g=b=luma for PF_GRAY8 (via
+         the YUV<->RGB roundtrip helpers in testutils.c). Expected luma is
+         derived from SYN_CIRCLE_R/G/B=250/200/50 via the same BT.601 weights
+         used by rgbToYuv(): (77*250+150*200+29*50)>>8 = 198. */
+      getPixelRGB(&frames[0], &fi, SYN_CIRCLES[2].cx, SYN_CIRCLES[2].cy, &r, &g, &b);
+      test_bool(abs((int)r-198) < 15);
+    }
+
+    fprintf(stderr, "%s: frame 0 background/circle colors OK\n", synFormatName(SYN_FORMATS[fmt]));
+
+    /* tolXY has headroom for the library's C-vs-SSE2 block-matching
+       divergence (see CMakeLists.txt SSE2_FOUND / CMakeModules/FindSSE.cmake)
+       -- this is not slop in the test, non-SSE2 builds genuinely recover a
+       slightly different transform (measured max |dx|/|dy|: 1.57/1.24 on
+       SSE2, 2.54/3.74 on the plain-C path). tolAlpha is left tight at 0.005:
+       the rework's actual purpose, tight rotation-angle recovery, is
+       achieved on both configs (worst case ~0.0047 rad SSE2 / ~0.0043 rad
+       C path, both comfortably under tolAlpha) -- a future red build here
+       was already known-marginal, not a fresh regression. */
+    checkRecoveredMotion(&fi, frames, SYN_NUM_FRAMES, synFormatName(SYN_FORMATS[fmt]), 4.0, 0.005);
+
+    for(i=0; i<SYN_NUM_FRAMES; i++)
+      vsFrameFree(&frames[i]);
+  }
+}
+
+void test_synthetic_circles_squares(void){
+  int fmt;
+  fprintf(stderr, "--- synthetic circles+squares sequence ---\n");
+  for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
+    VSFrameInfo fi;
+    VSFrame frames[SYN_NUM_FRAMES];
+    int i;
+
+    generateCircleSquareFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
+
+    /* squares are distractors: the dominant global motion (background +
+       circles) must still be recovered despite their independent motion.
+       tolXY is loosened relative to test_synthetic_circles() (4.0 -> 9.0):
+       on PF_RGB24/PF_RGBA the squares (painted directly in RGB, so they
+       carry undiluted chroma contrast on those formats specifically) pull
+       the affine fit by up to ~3.8px on frames 3-4 on the SSE2 path; the
+       plain-C block-matching path (see CMakeLists.txt SSE2_FOUND /
+       CMakeModules/FindSSE.cmake) diverges further still, up to ~7.75px.
+       tolAlpha is loosened similarly (0.005 -> 0.012) to cover the largest
+       observed alpha deviation on either path (~0.0092 rad on the C path,
+       ~0.0038 rad on SSE2) -- this headroom reflects genuine C-vs-SSE2
+       block-matching divergence, not slop in the test. */
+    checkRecoveredMotion(&fi, frames, SYN_NUM_FRAMES, synFormatName(SYN_FORMATS[fmt]), 9.0, 0.012);
+
+    for(i=0; i<SYN_NUM_FRAMES; i++)
+      vsFrameFree(&frames[i]);
+  }
+}

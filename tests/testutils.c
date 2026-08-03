@@ -16,6 +16,129 @@ void paintRectangle(unsigned char* buffer, const VSFrameInfo* fi, int x, int y, 
   }
 }
 
+static uint8_t clip255(int v){
+  return (uint8_t)(v<0 ? 0 : (v>255 ? 255 : v));
+}
+
+/* BT.601-style fixed point RGB<->YUV conversion. Not required to be bit-exact:
+   only used to give synthetic test shapes a consistent, visually distinct
+   color across every pixel format, and for the optional PPM dump. */
+static void rgbToYuv(uint8_t r, uint8_t g, uint8_t b, uint8_t* y, uint8_t* u, uint8_t* v){
+  int yy = (77*r + 150*g + 29*b) >> 8;
+  int uu = 128 + ((-43*(int)r - 85*(int)g + 128*(int)b) >> 8);
+  int vv = 128 + ((128*(int)r - 107*(int)g - 21*(int)b) >> 8);
+  *y = clip255(yy);
+  *u = clip255(uu);
+  *v = clip255(vv);
+}
+
+static void yuvToRgb(uint8_t y, uint8_t u, uint8_t v, uint8_t* r, uint8_t* g, uint8_t* b){
+  int d = (int)u - 128;
+  int e = (int)v - 128;
+  *r = clip255((int)y + ((91881*e) >> 16));
+  *g = clip255((int)y - ((22554*d + 46802*e) >> 16));
+  *b = clip255((int)y + ((116130*d) >> 16));
+}
+
+void setPixelRGB(VSFrame* frame, const VSFrameInfo* fi, int x, int y,
+                 uint8_t r, uint8_t g, uint8_t b){
+  if(x<0 || y<0 || x>=fi->width || y>=fi->height) return;
+  if(fi->pFormat < PF_PACKED){
+    uint8_t yy,uu,vv;
+    rgbToYuv(r,g,b,&yy,&uu,&vv);
+    frame->data[0][y*frame->linesize[0] + x] = yy;
+    if(fi->planes >= 3){
+      int cx = x >> vsGetPlaneWidthSubS(fi,1);
+      int cy = y >> vsGetPlaneHeightSubS(fi,1);
+      frame->data[1][cy*frame->linesize[1] + cx] = uu;
+      frame->data[2][cy*frame->linesize[2] + cx] = vv;
+    }
+  }else{
+    uint8_t* p = frame->data[0] + y*frame->linesize[0] + x*fi->bytesPerPixel;
+    switch(fi->pFormat){
+     case PF_RGB24: p[0]=r; p[1]=g; p[2]=b; break;
+     case PF_BGR24: p[0]=b; p[1]=g; p[2]=r; break;
+     case PF_RGBA:  p[0]=r; p[1]=g; p[2]=b; p[3]=255; break;
+     default: break;
+    }
+  }
+}
+
+void getPixelRGB(const VSFrame* frame, const VSFrameInfo* fi, int x, int y,
+                 uint8_t* r, uint8_t* g, uint8_t* b){
+  if(x<0 || y<0 || x>=fi->width || y>=fi->height) { *r=*g=*b=0; return; }
+  if(fi->pFormat < PF_PACKED){
+    uint8_t yy = frame->data[0][y*frame->linesize[0] + x];
+    uint8_t uu = 128, vv = 128;
+    if(fi->planes >= 3){
+      int cx = x >> vsGetPlaneWidthSubS(fi,1);
+      int cy = y >> vsGetPlaneHeightSubS(fi,1);
+      uu = frame->data[1][cy*frame->linesize[1] + cx];
+      vv = frame->data[2][cy*frame->linesize[2] + cx];
+    }
+    yuvToRgb(yy,uu,vv,r,g,b);
+  }else{
+    const uint8_t* p = frame->data[0] + y*frame->linesize[0] + x*fi->bytesPerPixel;
+    switch(fi->pFormat){
+     case PF_RGB24: *r=p[0]; *g=p[1]; *b=p[2]; break;
+     case PF_BGR24: *b=p[0]; *g=p[1]; *r=p[2]; break;
+     case PF_RGBA:  *r=p[0]; *g=p[1]; *b=p[2]; break;
+     default: *r=*g=*b=0; break;
+    }
+  }
+}
+
+void fillFrameRGB(VSFrame* frame, const VSFrameInfo* fi, uint8_t r, uint8_t g, uint8_t b){
+  int x,y;
+  for(y=0; y<fi->height; y++)
+    for(x=0; x<fi->width; x++)
+      setPixelRGB(frame, fi, x, y, r, g, b);
+}
+
+void paintCircleRGB(VSFrame* frame, const VSFrameInfo* fi, int cx, int cy, int radius,
+                    uint8_t r, uint8_t g, uint8_t b){
+  int x,y;
+  int r2 = radius*radius;
+  for(y=cy-radius; y<=cy+radius; y++){
+    for(x=cx-radius; x<=cx+radius; x++){
+      int dx=x-cx, dy=y-cy;
+      if(dx*dx+dy*dy <= r2)
+        setPixelRGB(frame, fi, x, y, r, g, b);
+    }
+  }
+}
+
+void paintSquareRGB(VSFrame* frame, const VSFrameInfo* fi, int x, int y, int size,
+                    uint8_t r, uint8_t g, uint8_t b){
+  int i,j;
+  for(j=y; j<y+size; j++)
+    for(i=x; i<x+size; i++)
+      setPixelRGB(frame, fi, i, j, r, g, b);
+}
+
+int storePPMImage(const char* filename, const VSFrame* frame, const VSFrameInfo* fi){
+  FILE* f = fopen(filename, "wb");
+  int x,y;
+  if(!f){
+    vs_log_error("TEST", "Can't open image file '%s'", filename);
+    return 0;
+  }
+  fprintf(f, "P6\n# CREATOR test suite of vid.stab\n%i %i\n255\n", fi->width, fi->height);
+  for(y=0; y<fi->height; y++){
+    for(x=0; x<fi->width; x++){
+      uint8_t rgb[3];
+      getPixelRGB(frame, fi, x, y, &rgb[0], &rgb[1], &rgb[2]);
+      if(fwrite(rgb, 3, 1, f) != 1){
+        vs_log_error("TEST", "Can't write to image file '%s'", filename);
+        fclose(f);
+        return 0;
+      }
+    }
+  }
+  fclose(f);
+  return 1;
+}
+
 /// corr: correlation length of noise
 void fillArrayWithNoise(unsigned char* buffer, int length, float corr){
   unsigned char avg=randPixel();

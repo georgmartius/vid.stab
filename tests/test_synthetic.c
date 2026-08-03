@@ -47,6 +47,44 @@ static void test_synthetic_pixelhelpers(void){
   }
 }
 
+/* Runs vsMotionDetection frame-by-frame (same one-md-instance-per-sequence
+   convention as test_motionDetect() in test_motiondetect.c: call once per
+   frame starting at frame 0, which establishes the internal reference with
+   an expected ~zero motion) and asserts the recovered transform matches
+   getTestFrameTransform(i) within tolerance. */
+static void checkRecoveredMotion(const VSFrameInfo* fi, VSFrame* frames, int numFrames,
+                                 const char* label, double tolXY, double tolAlpha){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
+  VSMotionDetect md;
+  int i;
+
+  test_bool(vsMotionDetectInit(&md, &mdconf, fi) == VS_OK);
+  md.conf.numThreads = 1;
+
+  for(i=0; i<numFrames; i++){
+    LocalMotions lms;
+    VSTransform t, orig, diff;
+    int success;
+
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    t = vsSimpleMotionsToTransform(*fi, label, &lms);
+    vs_vector_del(&lms);
+
+    orig = mult_transform_(getTestFrameTransform(i), -1.0);
+    diff = sub_transforms(&t, &orig);
+    success = fabs(diff.x)<tolXY && fabs(diff.y)<tolXY && fabs(diff.alpha)<tolAlpha;
+
+    fprintf(stderr, "%s frame %i: ", label, i);
+    storeVSTransform(stderr, &t);
+    if(!success){
+      fprintf(stderr, "  Difference: ");
+      storeVSTransform(stderr, &diff);
+    }
+    test_bool(success);
+  }
+  vsMotionDetectionCleanup(&md);
+}
+
 void test_synthetic_circles(void){
   int fmt;
   test_synthetic_pixelhelpers();
@@ -70,6 +108,8 @@ void test_synthetic_circles(void){
     }
 
     fprintf(stderr, "%s: frame 0 background/circle colors OK\n", synFormatName(SYN_FORMATS[fmt]));
+
+    checkRecoveredMotion(&fi, frames, SYN_NUM_FRAMES, synFormatName(SYN_FORMATS[fmt]), 2.0, 0.005);
 
     for(i=0; i<SYN_NUM_FRAMES; i++)
       vsFrameFree(&frames[i]);

@@ -10,6 +10,9 @@ Makefile
 cmake_install.cmake
 install_manifest.txt
 
+
+.idea
+
 # Don't include the build directory and compiled Mac dynamic libraries.
 build
 *.dylib
@@ -19,3 +22,5 @@ build
 /tests/tests
 /tests/lmtest
 /tests/lmstest
+tests/build/
+tests/testdata/

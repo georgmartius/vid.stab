@@ -29,7 +29,38 @@
  *           very same (tx,ty) and the same final minerror.
  */
 
-#ifdef USE_SSE2
+#if defined(VS_HAVE_SSE2) || defined(VS_HAVE_AVX2) || defined(VS_HAVE_AVX512) \
+ || defined(VS_HAVE_NEON)
+#define SIMD_HAVE_ANY_KERNEL 1
+#endif
+
+#ifdef SIMD_HAVE_ANY_KERNEL
+
+/* The table of kernels to check.  Every kernel compiled into this build is
+   checked against the plain C reference, independently of which one the
+   runtime dispatcher would actually pick on this machine -- that is the whole
+   point, since the dispatcher can only ever select one of them per run. */
+typedef struct {
+  const char*         name;
+  vsCompareSubImgFn   cmp;
+  vsContrastSubImg1Fn con;
+} SimdKernel;
+
+static const SimdKernel simd_kernels[] = {
+#ifdef VS_HAVE_SSE2
+  { "SSE2",   compareSubImg_thr_sse2,   contrastSubImg1_SSE    },
+#endif
+#ifdef VS_HAVE_AVX2
+  { "AVX2",   compareSubImg_thr_avx2,   contrastSubImg1_avx2   },
+#endif
+#ifdef VS_HAVE_AVX512
+  { "AVX512", compareSubImg_thr_avx512, contrastSubImg1_avx512 },
+#endif
+#ifdef VS_HAVE_NEON
+  { "NEON",   compareSubImg_thr_neon,   contrastSubImg1_neon   },
+#endif
+};
+#define SIMD_NUM_KERNELS ((int)(sizeof(simd_kernels)/sizeof(simd_kernels[0])))
 
 /* only multiples of 16 are valid, see file header */
 static const int simd_field_sizes[]  = { 16, 32, 48, 64, 80 };
@@ -42,7 +73,7 @@ static const int simd_field_pos[][2] = { {400,300}, {200,200}, {900,500}, {640,3
 /* mimics the search of calcFieldTransPlanar (non-spiral variant):
    start at (0,0), then scan with a tightening minerror that is handed to the
    compare function as threshold. Returns the selected shift and the minerror. */
-static void simd_argmin_scan(cmpSubImgFunc cmpsubfunc,
+static void simd_argmin_scan(vsCompareSubImgFn cmpsubfunc,
                              unsigned char* I1, unsigned char* I2,
                              const Field* field, int width1, int width2, int height,
                              int maxShift, int stepSize,
@@ -71,7 +102,7 @@ static void simd_argmin_scan(cmpSubImgFunc cmpsubfunc,
 
 /* threshold == UINT_MAX: no early exit possible on either side,
    so the returned sums must be bit-for-bit equal. */
-static void simd_test_compare_strict(const TestData* testdata){
+static void simd_test_compare_strict(const TestData* testdata, const SimdKernel* k){
   int s, p, dx, dy;
   int mismatches = 0;
   unsigned char* I1 = testdata->frames[0].data[0];
@@ -80,7 +111,7 @@ static void simd_test_compare_strict(const TestData* testdata){
   int w2 = testdata->frames[1].linesize[0];
   int h  = testdata->fi.height;
 
-  fprintf(stderr,"*** compareSubImg: strict equality (threshold=UINT_MAX)\n");
+  fprintf(stderr,"*** [%s] compareSubImg: strict equality (threshold=UINT_MAX)\n", k->name);
   for (s = 0; s < SIMD_NUM_FIELD_SIZES; s++) {
     for (p = 0; p < SIMD_NUM_FIELD_POS; p++) {
       Field f;
@@ -91,11 +122,11 @@ static void simd_test_compare_strict(const TestData* testdata){
         for (dx = -16; dx <= 16; dx += 8) {     /* includes 0 */
           unsigned int refval = compareSubImg_thr(I1, I2, &f, w1, w2, h,
                                                  1, dx, dy, UINT_MAX);
-          unsigned int optval = compareSubImg_thr_sse2(I1, I2, &f, w1, w2, h,
-                                                       1, dx, dy, UINT_MAX);
+          unsigned int optval = k->cmp(I1, I2, &f, w1, w2, h,
+                                          1, dx, dy, UINT_MAX);
           if (refval != optval && mismatches++ < 10)
-            fprintf(stderr,"  MISMATCH size=%i pos=(%i,%i) d=(%i,%i): C=%u SSE2=%u\n",
-                    f.size, f.x, f.y, dx, dy, refval, optval);
+            fprintf(stderr,"  MISMATCH [%s] size=%i pos=(%i,%i) d=(%i,%i): C=%u opt=%u\n",
+                    k->name, f.size, f.x, f.y, dx, dy, refval, optval);
           test_bool(refval == optval);
         }
       }
@@ -106,7 +137,7 @@ static void simd_test_compare_strict(const TestData* testdata){
 /* finite threshold: the returned numbers may legally differ (early exit).
    Assert only what the caller relies on: both must agree on whether the
    result is <= threshold. */
-static void simd_test_compare_threshold(const TestData* testdata){
+static void simd_test_compare_threshold(const TestData* testdata, const SimdKernel* k){
   int s, p, t, dx, dy;
   unsigned char* I1 = testdata->frames[0].data[0];
   unsigned char* I2 = testdata->frames[1].data[0];
@@ -114,7 +145,7 @@ static void simd_test_compare_threshold(const TestData* testdata){
   int w2 = testdata->frames[1].linesize[0];
   int h  = testdata->fi.height;
 
-  fprintf(stderr,"*** compareSubImg: finite threshold, <=threshold decision must agree\n");
+  fprintf(stderr,"*** [%s] compareSubImg: finite threshold, <=threshold decision must agree\n", k->name);
   for (s = 0; s < SIMD_NUM_FIELD_SIZES; s++) {
     for (p = 0; p < SIMD_NUM_FIELD_POS; p++) {
       Field f;
@@ -134,8 +165,8 @@ static void simd_test_compare_threshold(const TestData* testdata){
           for (dx = -8; dx <= 8; dx += 8) {
             unsigned int refval = compareSubImg_thr(I1, I2, &f, w1, w2, h,
                                                     1, dx, dy, thr);
-            unsigned int optval = compareSubImg_thr_sse2(I1, I2, &f, w1, w2, h,
-                                                         1, dx, dy, thr);
+            unsigned int optval = k->cmp(I1, I2, &f, w1, w2, h,
+                                            1, dx, dy, thr);
             /* the guarantee: an early-exited result is > threshold */
             test_bool((refval <= thr) == (optval <= thr));
           }
@@ -148,7 +179,7 @@ static void simd_test_compare_threshold(const TestData* testdata){
 /* the property that really matters: the search in calcFieldTransPlanar must
    pick the same shift and end with the same minerror, whichever
    implementation drives it. */
-static void simd_test_compare_argmin(const TestData* testdata){
+static void simd_test_compare_argmin(const TestData* testdata, const SimdKernel* k){
   int s, p;
   unsigned char* I1 = testdata->frames[0].data[0];
   unsigned char* I2 = testdata->frames[1].data[0];
@@ -156,7 +187,7 @@ static void simd_test_compare_argmin(const TestData* testdata){
   int w2 = testdata->frames[1].linesize[0];
   int h  = testdata->fi.height;
 
-  fprintf(stderr,"*** compareSubImg: argmin of a calcFieldTransPlanar-like scan must match\n");
+  fprintf(stderr,"*** [%s] compareSubImg: argmin of a calcFieldTransPlanar-like scan must match\n", k->name);
   for (s = 0; s < SIMD_NUM_FIELD_SIZES; s++) {
     for (p = 0; p < SIMD_NUM_FIELD_POS; p++) {
       Field f;
@@ -167,12 +198,12 @@ static void simd_test_compare_argmin(const TestData* testdata){
       f.y    = simd_field_pos[p][1];
       simd_argmin_scan(compareSubImg_thr,      I1, I2, &f, w1, w2, h, 12, 2,
                        &txC, &tyC, &minC);
-      simd_argmin_scan(compareSubImg_thr_sse2, I1, I2, &f, w1, w2, h, 12, 2,
+      simd_argmin_scan(k->cmp,                 I1, I2, &f, w1, w2, h, 12, 2,
                        &txO, &tyO, &minO);
       if (txC != txO || tyC != tyO || minC != minO)
-        fprintf(stderr,"  ARGMIN MISMATCH size=%i pos=(%i,%i): "
-                "C=(%i,%i,%u) SSE2=(%i,%i,%u)\n",
-                f.size, f.x, f.y, txC, tyC, minC, txO, tyO, minO);
+        fprintf(stderr,"  ARGMIN MISMATCH [%s] size=%i pos=(%i,%i): "
+                "C=(%i,%i,%u) opt=(%i,%i,%u)\n",
+                k->name, f.size, f.x, f.y, txC, tyC, minC, txO, tyO, minO);
       test_bool(txC == txO);
       test_bool(tyC == tyO);
       test_bool(minC == minO);
@@ -188,9 +219,9 @@ static void simd_test_compare_argmin(const TestData* testdata){
    reordering of floating point arithmetic anywhere.  Hence we assert exact
    equality rather than an epsilon: any nonzero difference means the SIMD
    min/max reduction is wrong, which is exactly what we want to catch. */
-static void simd_test_contrast(const TestData* testdata){
+static void simd_test_contrast(const TestData* testdata, const SimdKernel* k){
   int s, p, fr;
-  fprintf(stderr,"*** contrastSubImg: strict equality C vs SSE2\n");
+  fprintf(stderr,"*** [%s] contrastSubImg: strict equality vs C\n", k->name);
   for (fr = 0; fr < 2; fr++) {
     unsigned char* I = testdata->frames[fr].data[0];
     int w = testdata->frames[fr].linesize[0];
@@ -202,27 +233,32 @@ static void simd_test_contrast(const TestData* testdata){
         f.x    = simd_field_pos[p][0];
         f.y    = simd_field_pos[p][1];
         double cC = contrastSubImg(I, &f, w, h, 1);
-        double cO = contrastSubImg1_SSE(I, &f, w, h);
+        double cO = k->con(I, &f, w, h);
         if (cC != cO)
-          fprintf(stderr,"  CONTRAST MISMATCH frame=%i size=%i pos=(%i,%i): "
-                  "C=%.17g SSE2=%.17g\n", fr, f.size, f.x, f.y, cC, cO);
+          fprintf(stderr,"  CONTRAST MISMATCH [%s] frame=%i size=%i pos=(%i,%i): "
+                  "C=%.17g opt=%.17g\n", k->name, fr, f.size, f.x, f.y, cC, cO);
         test_bool(cC == cO);
       }
     }
   }
 }
 
-#endif /* USE_SSE2 */
+#endif /* SIMD_HAVE_ANY_KERNEL */
 
 void test_simd_equivalence(const TestData* testdata){
-#ifdef USE_SSE2
-  fprintf(stderr,"********** SSE2 vs C equivalence:\n");
-  simd_test_compare_strict(testdata);
-  simd_test_compare_threshold(testdata);
-  simd_test_compare_argmin(testdata);
-  simd_test_contrast(testdata);
+#ifdef SIMD_HAVE_ANY_KERNEL
+  int i;
+  fprintf(stderr,"********** SIMD vs C equivalence (%i kernel(s) compiled in):\n",
+          SIMD_NUM_KERNELS);
+  for (i = 0; i < SIMD_NUM_KERNELS; i++) {
+    const SimdKernel* k = &simd_kernels[i];
+    simd_test_compare_strict(testdata, k);
+    simd_test_compare_threshold(testdata, k);
+    simd_test_compare_argmin(testdata, k);
+    simd_test_contrast(testdata, k);
+  }
 #else
   (void)testdata;
-  fprintf(stderr,"********** SSE2 vs C equivalence: SSE2 not enabled, nothing to compare\n");
+  fprintf(stderr,"********** SIMD vs C equivalence: no SIMD kernels in this build\n");
 #endif
 }

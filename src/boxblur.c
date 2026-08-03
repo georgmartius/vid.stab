@@ -133,14 +133,21 @@ void boxblurPlanar(VSFrame* dest, const VSFrame* src,
 void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
                     int width, int height, int dest_strive, int src_strive, int size){
 
-  int i,j,k;
-  unsigned int acc;
-  const unsigned char *start, *end; // start and end of kernel
-  unsigned char *current;     // current destination pixel
+  int j;
   int size2 = size/2; // size of one side of the kernel without center
-  // #pragma omp parallel for private(acc),schedule(guided,2) (no speedup)
+  /* Every row is an independent accumulator chain, so this parallelises with
+     no sharing at all.  (It used to be commented out as "no speedup"; that no
+     longer holds -- at 1080p the two boxblur passes are several ms of purely
+     serial work per frame, which is a large part of the frame time once the
+     motion search itself runs on all cores.) */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
   for(j=0; j< height; j++){
-    //  for(j=100; j< 101; j++){
+    int i,k;
+    unsigned int acc;
+    const unsigned char *start, *end; // start and end of kernel
+    unsigned char *current;     // current destination pixel
     start = end = src + j*src_strive;
     current = dest + j*dest_strive;
     // initialize accumulator
@@ -160,30 +167,94 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
   }
 }
 
+/* The vertical pass used to run one whole column at a time, which touches a
+   new cache line for every single pixel and leaves the compiler nothing to
+   vectorize (each column is one serial accumulator chain).
+
+   Turning the loops inside out fixes both: the accumulators for *all* columns
+   are held in one array and the image is walked row by row, so memory is read
+   and written sequentially and the per-row inner loops are independent across
+   columns and auto-vectorize.
+
+   The recurrence is exactly the one the column-at-a-time version implemented,
+   including its edge behaviour, so the output is bit identical:
+     acc(-1) = src[0][i]*(size2+1) + sum over rows 0..size2-1
+     acc(j)  = acc(j-1) + src[endRow(j)][i] - src[startRow(j)][i]
+   with  endRow(j)   = min(j + size2, height - 1)
+         startRow(j) = max(0, j - size2 - 1)
+   (in the original those are the positions `end` and `start` had *before* the
+   conditional increments at the bottom of the loop body). */
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
         int width, int height, int dest_strive, int src_strive, int size){
 
   int i,j,k;
-  int acc;
-  const unsigned char *start, *end; // start and end of kernel
-  unsigned char *current;     // current destination pixel
   int size2 = size/2; // size of one side of the kernel without center
-  for(i=0; i< width; i++){
-    start = end = src + i;
-    current = dest + i;
-    // initialize accumulator
-    acc= (*start)*(size2+1); // left half of kernel with first pixel
-    for(k=0; k<size2; k++){  // right half of kernel
-      acc+=(*end);
-      end+=src_strive;
+  uint32_t* acc;
+
+  if(width <= 0 || height <= 0)
+    return;
+
+  acc = (uint32_t*)vs_malloc((size_t)width * sizeof(uint32_t));
+  if(acc == NULL){ // fall back to the in-place column walk rather than fail
+    for(i=0; i< width; i++){
+      const unsigned char *start, *end;
+      unsigned char *current;
+      int a;
+      start = end = src + i;
+      current = dest + i;
+      a = (*start)*(size2+1);
+      for(k=0; k<size2; k++){ a+=(*end); end+=src_strive; }
+      for(j=0; j< height; j++){
+        a = a - (*start) + (*end);
+        if(j > size2) start+=src_strive;
+        if(j < height - size2 - 1) end+=src_strive;
+        *current = a/size;
+        current+=dest_strive;
+      }
     }
-    // go through the image
-    for(j=0; j< height; j++){
-      acc = acc - (*start) + (*end);
-      if(j > size2) start+=src_strive;
-      if(j < height - size2 - 1) end+=src_strive;
-      *current = acc/size;
-      current+=dest_strive;
+    return;
+  }
+
+  /* Columns are independent of each other, so the work is split into blocks of
+     columns.  Threads touch disjoint ranges of acc[] and of every row, so no
+     synchronisation and no per-thread buffer is needed.  The block width keeps
+     one block's accumulators plus the two source rows comfortably in L1. */
+  {
+    const int BLOCK = 512;
+    int nblocks = (width + BLOCK - 1) / BLOCK;
+    int cb;
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+    for(cb=0; cb<nblocks; cb++){
+      int c0 = cb*BLOCK;
+      int c1 = c0 + BLOCK; if(c1 > width) c1 = width;
+      int ii, jj, kk;
+
+      // initialize accumulators: left half of the kernel with the first row ...
+      for(ii=c0; ii<c1; ii++)
+        acc[ii] = (uint32_t)src[ii] * (uint32_t)(size2+1);
+      // ... plus rows 0 .. size2-1 for the right half
+      for(kk=0; kk<size2; kk++){
+        const unsigned char* row = src + (kk < height ? kk : height-1)*src_strive;
+        for(ii=c0; ii<c1; ii++)
+          acc[ii] += row[ii];
+      }
+
+      for(jj=0; jj<height; jj++){
+        int er = jj + size2;          if(er > height-1) er = height-1;
+        int sr = jj - size2 - 1;      if(sr < 0)        sr = 0;
+        const unsigned char* endRow   = src + er*src_strive;
+        const unsigned char* startRow = src + sr*src_strive;
+        unsigned char* out = dest + jj*dest_strive;
+
+        for(ii=c0; ii<c1; ii++)
+          acc[ii] += (uint32_t)endRow[ii] - (uint32_t)startRow[ii];
+        for(ii=c0; ii<c1; ii++)
+          out[ii] = (unsigned char)(acc[ii]/size);
+      }
     }
   }
+
+  vs_free(acc);
 }

@@ -68,7 +68,10 @@ void _FLT(interpolateBiCub)(uint8_t *rv, float x, float y,
                             int width, int height, uint8_t def)
 {
   // do a simple linear interpolation at the border
-  if (x < 1 || x > width - 2 || y < 1 || y > height - 2) {
+  /* the interior path reads x_f+2 and y_f+2 unchecked, so it needs
+     floor(x) <= width-3, i.e. x < width-2. Same off by one as in
+     interpolateBiLin above; the fixed point twin tests ix_f > width-3. */
+  if (x < 1 || x >= width - 2 || y < 1 || y >= height - 2) {
     _FLT(interpolateBiLinBorder)(rv, x, y, img, img_linesize, width, height, def);
   } else {
     int x_f = myfloor(x);
@@ -105,7 +108,13 @@ void _FLT(interpolateBiLin)(uint8_t *rv, float x, float y,
                             const uint8_t *img, int img_linesize,
                             int width, int height, uint8_t def)
 {
-  if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+  /* the interior path reads x_f+1 and y_f+1 unchecked, so it needs
+     floor(x) <= width-2 and floor(y) <= height-2, i.e. x < width-1 and
+     y < height-1. A coordinate exactly on the last row or column belongs to
+     the border path (where those neighbours carry interpolation weight 0
+     anyway). This mirrors the fixed point twin, which tests the already
+     floored ix_f against width-2. */
+  if (x < 0 || x >= width - 1 || y < 0 || y >= height - 1) {
     _FLT(interpolateBiLinBorder)(rv, x, y, img, img_linesize, width, height, def);
   } else {
     int x_f = myfloor(x);

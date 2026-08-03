@@ -46,10 +46,10 @@
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
 #include "test_packed.c"
+#include "test_synthetic.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
 #endif
-#include "test_synthetic.c"
 
 #define FRAMENUM 5
 

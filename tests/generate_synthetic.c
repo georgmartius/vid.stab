@@ -134,7 +134,7 @@ void dumpFramesAsPPM(const VSFrame* frames, const VSFrameInfo* fi, int numFrames
   int i;
   char name[512];
   for(i=0; i<numFrames; i++){
-    sprintf(name, "%s%03i.ppm", prefix, i);
+    snprintf(name, sizeof(name), "%s%03i.ppm", prefix, i);
     test_bool(storePPMImage(name, &frames[i], fi));
   }
 }

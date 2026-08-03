@@ -175,7 +175,10 @@ int main(int argc, char** argv){
 
       sprintf(dir, "testdata/synthetic/%s", synFormatName(SYN_FORMATS[fmt]));
       sprintf(prefix, "mkdir -p %s", dir);
-      system(prefix);
+      if(system(prefix) != 0){
+        fprintf(stderr, "mkdir failed for %s\n", dir);
+        continue;
+      }
 
       generateCircleFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
       sprintf(prefix, "%s/circles", dir);

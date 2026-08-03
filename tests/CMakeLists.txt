@@ -66,3 +66,15 @@ endif()
 if(USE_OMP)
 target_link_libraries(tests gomp)
 endif()
+
+# Everything the tests write goes into this directory (TEST_OUTPUT_DIR in
+# testutils.h, relative to the working directory the tests are run from, which
+# for the usual in-build run is the build directory).  Have "make clean" take
+# it with it.
+set(TEST_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/testout")
+if(CMAKE_VERSION VERSION_LESS 3.15)
+  # deprecated in 3.15 in favour of ADDITIONAL_CLEAN_FILES, and Makefile only
+  set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${TEST_OUTPUT_DIR}")
+else()
+  set_directory_properties(PROPERTIES ADDITIONAL_CLEAN_FILES "${TEST_OUTPUT_DIR}")
+endif()

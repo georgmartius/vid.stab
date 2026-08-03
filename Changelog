@@ -1,8 +1,8 @@
-1.2	L1-optimal camera path (Grundmann et al., CVPR 2011) implemented and
+1.3	L1-optimal camera path (Grundmann et al., CVPR 2011) implemented and
 	enabled: camPathAlgo=VSOptimalL1 now really runs the optimization
-	instead of falling back to the gaussian filter.  New config fields
-	pathD1Weight, pathD2Weight, pathD3Weight and pathMaxZoom; callers
-	that leave them at zero get the defaults.
+	instead of falling back to the gaussian filter.  No new config
+	fields: the optimization takes its zoom budget from zoom/optZoom
+	and its horizon from smoothing.
 	Built-in interior point LP solver, no external dependency; GLPK
 	selectable with cmake -DVIDSTAB_LPSOLVER=glpk.
 1.1     use openMP to do parallel execution

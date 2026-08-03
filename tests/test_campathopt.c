@@ -265,19 +265,34 @@ void test_l1_campath_transforms(TestData* testdata){
   const int N = 50;
   VSTransformConfig conf = vsTransformGetDefaultConfig("test_l1");
   conf.camPathAlgo = VSOptimalL1;
-  /* A caller that does not know about the new fields leaves them at zero (the
-     ffmpeg filter fills the config field by field); that must not produce a
-     degenerate program. */
+  /* The optimization has no parameters of its own: it reads the zoom budget
+     off zoom/optZoom and the horizon off smoothing. */
   {
-    VSTransformConfig zeroed = conf;
-    zeroed.pathD1Weight = zeroed.pathD2Weight = zeroed.pathD3Weight = 0.0;
-    zeroed.pathMaxZoom = 0.0;
-    VSTransformData ztd;
-    test_bool(vsTransformDataInit(&ztd, &zeroed, &testdata->fi, &testdata->fi) == VS_OK);
-    VSL1Config zc = vsL1ConfigFromTransformConfig(&ztd);
-    test_bool(zc.w1 > 0.0 && zc.w3 > 0.0);
-    test_bool(zc.cropRatio > 0.0 && zc.cropRatio < 1.0);
-    vsTransformDataCleanup(&ztd);
+    VSTransformConfig c2 = conf;
+    VSTransformData td2;
+    VSL1Config a, b;
+    /* automatic zoom without an amount -> the default budget */
+    test_bool(vsTransformDataInit(&td2, &c2, &testdata->fi, &testdata->fi) == VS_OK);
+    a = vsL1ConfigFromTransformConfig(&td2);
+    test_bool(fabs(a.cropRatio - 1.0/(1.0 + VS_L1_DEFAULT_ZOOM/100.0)) < 1e-12);
+    /* the default smoothing reproduces the weights of the paper */
+    test_bool(fabs(a.w1 - 10.0) < 1e-12 && fabs(a.w2 - 1.0) < 1e-12
+              && fabs(a.w3 - 100.0) < 1e-12);
+    vsTransformDataCleanup(&td2);
+    /* an explicit zoom is the budget, whether or not optZoom is on */
+    c2.zoom = 30.0; c2.optZoom = 0; c2.smoothing = 30;
+    test_bool(vsTransformDataInit(&td2, &c2, &testdata->fi, &testdata->fi) == VS_OK);
+    b = vsL1ConfigFromTransformConfig(&td2);
+    test_bool(fabs(b.cropRatio - 1.0/1.3) < 1e-12);
+    /* twice the horizon shifts weight from |D(P)| onto |D^3(P)| */
+    test_bool(b.w1 < a.w1 && b.w3 > a.w3);
+    vsTransformDataCleanup(&td2);
+    /* no automatic zoom and none asked for: no room, so it declines and the
+       caller falls back to the gaussian filter */
+    c2.zoom = 0.0; c2.optZoom = 0;
+    test_bool(vsTransformDataInit(&td2, &c2, &testdata->fi, &testdata->fi) == VS_OK);
+    test_bool(vsL1ConfigFromTransformConfig(&td2).cropRatio >= 1.0);
+    vsTransformDataCleanup(&td2);
   }
   VSTransformData td;
   test_bool(vsTransformDataInit(&td, &conf, &testdata->fi, &testdata->fi) == VS_OK);
@@ -357,6 +372,7 @@ static void test_l1_synthetic_detection_format(VSPixelFormat pf){
   VSTransformConfig tdconf;
   VSTransformData td;
   VSTransformations trans;
+  VSL1Config lsConf;
   double before2, after2, before3, after3;
   double sx, sy, dx, dy, worst;
   int i;
@@ -389,6 +405,9 @@ static void test_l1_synthetic_detection_format(VSPixelFormat pf){
   tdconf = vsTransformGetDefaultConfig("test_l1_syn_trans");
   tdconf.camPathAlgo = VSOptimalL1;
   test_bool(vsTransformDataInit(&td, &tdconf, &fi, &fi) == VS_OK);
+  /* has to be taken before the run: cameraPathOptimalL1() marks the zoom
+     budget as spent in td.conf once it has folded it into the transforms */
+  lsConf = vsL1ConfigFromTransformConfig(&td);
 
   vsTransformationsInit(&trans);
   trans.ts = (VSTransform*)vs_malloc(sizeof(VSTransform) * N);
@@ -417,7 +436,6 @@ static void test_l1_synthetic_detection_format(VSPixelFormat pf){
     C[i] = concat_transformLS(&C[i-1], &F[i]);
   }
   {
-    VSL1Config lsConf = vsL1ConfigFromTransformConfig(&td);
     double objective = -1.0;
     test_bool(vsCameraPathOptimalL1LS(F, N, B, &lsConf, &objective) == VS_OK);
   }

@@ -212,6 +212,7 @@ int main(int argc, char** argv){
     UNIT(test_l1_campath());
     UNIT(test_l1_reference());
     UNIT(test_l1_campath_transforms(&testdata));
+    UNIT(test_l1_synthetic_detection());
   }
 #endif
 

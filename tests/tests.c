@@ -33,6 +33,7 @@
 
 #include "test_frameinfo.c"
 #include "test_transform.c"
+#include "test_interpolate.c"
 #include "test_transform_prepare.c"
 #include "test_compareimg.c"
 #include "test_simd_equivalence.c"
@@ -109,6 +110,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testTI", "transform_implementation")){
     UNIT(test_transform_implementation(&testdata));
+  }
+
+  if(all || contains(argv,argc,"--testIP", "interpolation borders")){
+    UNIT(test_interpolate_borders());
   }
 
   if(all || contains(argv,argc,"--testTP", "transform_performance")){

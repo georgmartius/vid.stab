@@ -32,9 +32,13 @@
 //#include <math.h>
 //#include <libgen.h>
 
-#define iToFp8(v)  ((v)<<8)
+/* Left shifting a negative signed value is undefined behaviour, and these are
+   reached with negative coordinates whenever a sample falls outside the frame
+   (interpolateLin, interpolateBiLinBorder, ...). Shift as unsigned and convert
+   back: identical bit pattern on two's complement, but well defined. */
+#define iToFp8(v)  ((int32_t)((uint32_t)(v)<<8))
 #define fToFp8(v)  ((int32_t)((v)*((float)0xFF)))
-#define iToFp16(v) ((v)<<16)
+#define iToFp16(v) ((int32_t)((uint32_t)(v)<<16))
 #define fToFp16(v) ((int32_t)((v)*((double)0xFFFF)))
 #define fp16To8(v) ((v)>>8)
 //#define fp16To8(v) ( (v) && 0x80 == 1 ? ((v)>>8 + 1) : ((v)>>8) )

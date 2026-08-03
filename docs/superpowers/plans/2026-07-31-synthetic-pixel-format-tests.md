@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Target pixel formats (from the spec): `PF_GRAY8`, `PF_YUV420P`, `PF_YUV422P`, `PF_YUV444P`, `PF_RGB24`, `PF_RGBA`.
-- Canvas size `320x240` for all synthetic sequences (even width/height satisfies every subsampling constraint checked by `vsFrameInfoInit`, see `tests/test_frameinfo.c`).
+- Canvas size `320x240` for all synthetic sequences (even width/height satisfies every subsampling constraint checked by `vsFrameInfoInit`, see `tests/test_frameinfo.c`). **Superseded during Task 3 — see "Amendment: scene rework" below.**
 - Motion tolerance for circles-only recovery: `fabs(diff.x) < 2 && fabs(diff.y) < 2 && fabs(diff.alpha) < 0.005` (same as `tests/test_motiondetect.c`).
 - All new C files follow the existing convention: no header files for `generate_synthetic.c`/`test_synthetic.c` — they are textually `#include`d into `tests/tests.c` in a fixed order, so declaration order = include order.
 - Follow existing code style in `tests/`: 2-space indent, `test_bool()` for assertions, `fprintf(stderr, ...)` for diagnostics.
@@ -727,6 +727,40 @@ Expected: all tests still pass; `--dumpSynthetic` is intentionally excluded from
 git add tests/generate_synthetic.c tests/tests.c .gitignore
 git commit -m "tests: add optional PPM dump of synthetic frames for visual inspection"
 ```
+
+---
+
+## Amendment: scene rework (discovered during Task 3)
+
+Task 3's implementer found that the original `320x240`/5-circle scene from Task 2,
+combined with the Global Constraints' tight tolerance (`tolXY<2, tolAlpha<0.005`,
+copied from `test_motiondetect.c`), cannot both hold: translation recovers exactly,
+but rotation-angle (`alpha`) recovery on frames 3-5 misses tolerance by 3-11x on
+every pixel format. Root cause (confirmed empirically, not a code bug): the
+tolerance was validated against `test_motiondetect.c`'s reference scene — `1280x720`,
+100 rectangles + dense noise — which gives the affine least-squares fit far more,
+and more widely spread, spatial samples than a compact `320x240`/5-circle scene can
+provide. Contrast was ruled out as the cause (tested at saturation, no change).
+Circle-radius doubling helped partially (errors dropped ~50%) but did not close the
+gap alone.
+
+**Decision (human-approved):** rework Task 2's scene so the original tight tolerance
+is met for real, rather than loosening the tolerance or accepting partial coverage.
+Concretely: increase `SYN_WIDTH`/`SYN_HEIGHT` and/or circle count/placement (favor
+circles far from frame center — rotation-angle estimation error scales inversely
+with each sample's radius from the rotation center, so spreading circles toward the
+corners of a larger canvas is expected to help more than simply adding more circles
+near the original positions). The implementer redoing Task 2's generator has latitude
+to tune canvas size and circle count/radius/placement empirically until
+`tolAlpha=0.005` is met on all 6 formats for frames 3-5 — exact final values are an
+implementation detail, not re-litigated here. The Task 1/Task 2 pixel-helper and
+content-sanity-check code is unaffected; only `generateCircleFrames()`'s scene
+parameters in `tests/generate_synthetic.c` are in scope for the rework.
+
+This changes `SYN_WIDTH`/`SYN_HEIGHT`/`SYN_NUM_CIRCLES`/`SYN_CIRCLES[]` from Task 2's
+original values; downstream tasks (4 and 5) should use whatever the reworked
+`generateCircleFrames()` produces (they consume it via `SYN_WIDTH`/`SYN_HEIGHT`
+macros and `generateCircleFrames()`, not hardcoded values, so they adapt automatically).
 
 ---
 

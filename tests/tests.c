@@ -29,6 +29,7 @@
 #include "testutils.h"
 
 #include "generate.c"
+#include "generate_synthetic.c"
 
 #include "test_frameinfo.c"
 #include "test_transform.c"

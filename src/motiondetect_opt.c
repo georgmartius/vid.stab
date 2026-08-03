@@ -29,16 +29,11 @@
 
 #ifdef USE_SSE2
 #include <emmintrin.h>
-
-#define USE_SSE2_CMP_HOR
-#define SSE2_CMP_SUM_ROWS 8
 #endif
 
 #ifdef __ARM_NEON__
 #include "sse2neon.h"
 #define USE_SSE2
-#define USE_SSE2_CMP_HOR
-#define SSE2_CMP_SUM_ROWS 8
 #endif
 
 #ifdef USE_SSE2
@@ -138,100 +133,33 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
   unsigned char* p1 = NULL;
   unsigned char* p2 = NULL;
   int s2 = field->size / 2;
+  int rowBytes = field->size * bytesPerPixel;
   unsigned int sum = 0;
-
-  static unsigned char mask[16] = {0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
-  unsigned char row = 0;
-#ifndef USE_SSE2_CMP_HOR
-  unsigned char summes[16];
-  int i;
-#endif
-  __m128i xmmsum, xmmmask;
-  xmmsum = _mm_setzero_si128();
-  xmmmask = _mm_loadu_si128((__m128i const*)mask);
 
   p1=I1 + (field->x - s2)*bytesPerPixel + (field->y - s2)*linesize1;
   p2=I2 + (field->x - s2 + d_x)*bytesPerPixel + (field->y - s2 + d_y)*linesize2;
+  /* field->size is forced to a multiple of 16 (see vsMotionDetectInit), so a
+     row is always a whole number of 16 byte blocks and needs no tail loop. */
   for (j = 0; j < field->size; j++){
-    for (k = 0; k < field->size * bytesPerPixel; k+=16){
-      {
-        __m128i xmm0, xmm1, xmm2;
-        xmm0 = _mm_loadu_si128((__m128i const *)p1);
-        xmm1 = _mm_loadu_si128((__m128i const *)p2);
-
-        xmm2 = _mm_subs_epu8(xmm0, xmm1);
-        xmm0 = _mm_subs_epu8(xmm1, xmm0);
-        xmm0 = _mm_adds_epu8(xmm0, xmm2);
-
-        xmm1 = _mm_and_si128(xmm0, xmmmask);
-        xmm0 = _mm_srli_si128(xmm0, 1);
-        xmm0 = _mm_and_si128(xmm0, xmmmask);
-
-        xmmsum = _mm_adds_epu16(xmmsum, xmm0);
-        xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-      }
-
-      p1+=16;
-      p2+=16;
-
-      row++;
-      if (row == SSE2_CMP_SUM_ROWS) {
-        row = 0;
-#ifdef USE_SSE2_CMP_HOR
-        {
-          __m128i xmm1;
-
-          xmm1 = _mm_srli_si128(xmmsum, 8);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          xmm1 = _mm_srli_si128(xmmsum, 4);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          xmm1 = _mm_srli_si128(xmmsum, 2);
-          xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-          sum += _mm_extract_epi16(xmmsum, 0);
-        }
-#else
-        _mm_storeu_si128((__m128i*)summes, xmmsum);
-        for(i = 0; i < 16; i+=2)
-          sum += summes[i] + summes[i+1]*256;
-#endif
-        xmmsum = _mm_setzero_si128();
-      }
+    /* PSADBW sums |a-b| over each 8 byte half into the low 16 bits of the two
+       64 bit lanes. A row totals at most field->size*bytesPerPixel*255, far
+       below 2^32, so the 32 bit lane accumulator cannot overflow -- unlike the
+       saturating 16 bit accumulator this replaces, which is the only reason
+       that one had to be drained every 8 blocks. */
+    __m128i xmmsum = _mm_setzero_si128();
+    for (k = 0; k < rowBytes; k+=16){
+      __m128i xmm0 = _mm_loadu_si128((__m128i const *)(p1 + k));
+      __m128i xmm1 = _mm_loadu_si128((__m128i const *)(p2 + k));
+      xmmsum = _mm_add_epi32(xmmsum, _mm_sad_epu8(xmm0, xmm1));
     }
-    if (sum > treshold)
+    sum += (unsigned int)_mm_cvtsi128_si32(_mm_add_epi32(xmmsum,
+                                                         _mm_srli_si128(xmmsum, 8)));
+
+    if (sum > treshold) // no need to calculate any longer: worse than the best match
       break;
-    p1 += linesize1 - field->size * bytesPerPixel;
-    p2 += linesize2 - field->size * bytesPerPixel;
+    p1 += linesize1;
+    p2 += linesize2;
   }
-
-#if (SSE2_CMP_SUM_ROWS != 1) && (SSE2_CMP_SUM_ROWS != 2) && (SSE2_CMP_SUM_ROWS != 4) \
-  && (SSE2_CMP_SUM_ROWS != 8) && (SSE2_CMP_SUM_ROWS != 16)
-  //process all data left unprocessed
-  //this part can be safely ignored if
-  //SSE_SUM_ROWS = {1, 2, 4, 8, 16}
-#ifdef USE_SSE2_CMP_HOR
-  {
-    __m128i xmm1;
-
-    xmm1 = _mm_srli_si128(xmmsum, 8);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    xmm1 = _mm_srli_si128(xmmsum, 4);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    xmm1 = _mm_srli_si128(xmmsum, 2);
-    xmmsum = _mm_adds_epu16(xmmsum, xmm1);
-
-    sum += _mm_extract_epi16(xmmsum, 0);
-  }
-#else
-  _mm_storeu_si128((__m128i*)summes, xmmsum);
-  for(i = 0; i < 16; i+=2)
-    sum += summes[i] + summes[i+1]*256;
-#endif
-#endif
 
   return sum;
 }

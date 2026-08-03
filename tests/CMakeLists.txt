@@ -29,13 +29,40 @@ endif()
 # Make sure the compiler can find include files from transcode
 include_directories (../src)
 
+# --- LP solver backend for the L1 optimal camera path -------------------------
+# The built-in interior point solver keeps vid.stab dependency free; GLPK can be
+# selected instead and serves as the cross-check in the test suite.
+set(VIDSTAB_LPSOLVER "builtin" CACHE STRING
+    "LP solver for the L1 optimal camera path: builtin or glpk")
+set_property(CACHE VIDSTAB_LPSOLVER PROPERTY STRINGS builtin glpk)
+
+set(LP_SOURCES ../src/l1campathoptimization.c ../src/lpsolver_ipm.c)
+set(LP_DEFS -DUSE_IPM -DVS_HAVE_LPSOLVER)
+set(LP_BACKEND "built-in interior point")
+if(VIDSTAB_LPSOLVER STREQUAL "glpk")
+  find_package(GLPK)
+  if(GLPK_FOUND)
+    set(LP_SOURCES ../src/l1campathoptimization.c ../src/lpsolver_glpk.c)
+    set(LP_DEFS -DUSE_GLPK -DVS_HAVE_LPSOLVER)
+    set(LP_BACKEND "GLPK ${GLPK_VERSION}")
+  else()
+    message(WARNING "VIDSTAB_LPSOLVER=glpk but GLPK was not found, using the built-in solver")
+  endif()
+endif()
+add_definitions(${LP_DEFS})
+message(STATUS "L1 optimal camera path LP solver: ${LP_BACKEND}")
+
 add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
-  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/boxblur.c)
+  ../src/motiondetect.c ../src/motiondetect_opt.c ../src/boxblur.c
+  ${LP_SOURCES})
 
 target_link_libraries(tests m)
+if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
+target_link_libraries(tests GLPK::GLPK)
+endif()
 if(USE_OMP)
 target_link_libraries(tests gomp)
 endif()

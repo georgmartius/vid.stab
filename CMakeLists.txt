@@ -63,6 +63,30 @@ set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
   src/boxblur.c src/vsvector.c)
 
+# --- LP solver backend for the L1 optimal camera path -------------------------
+# The built-in interior point solver keeps vid.stab dependency free; GLPK can be
+# selected instead and serves as the cross-check in the test suite.
+set(VIDSTAB_LPSOLVER "builtin" CACHE STRING
+    "LP solver for the L1 optimal camera path: builtin or glpk")
+set_property(CACHE VIDSTAB_LPSOLVER PROPERTY STRINGS builtin glpk)
+
+set(LP_SOURCES src/l1campathoptimization.c src/lpsolver_ipm.c)
+set(LP_DEFS -DUSE_IPM -DVS_HAVE_LPSOLVER)
+set(LP_BACKEND "built-in interior point")
+if(VIDSTAB_LPSOLVER STREQUAL "glpk")
+  find_package(GLPK)
+  if(GLPK_FOUND)
+    set(LP_SOURCES src/l1campathoptimization.c src/lpsolver_glpk.c)
+    set(LP_DEFS -DUSE_GLPK -DVS_HAVE_LPSOLVER)
+    set(LP_BACKEND "GLPK ${GLPK_VERSION}")
+  else()
+    message(WARNING "VIDSTAB_LPSOLVER=glpk but GLPK was not found, using the built-in solver")
+  endif()
+endif()
+add_definitions(${LP_DEFS})
+message(STATUS "L1 optimal camera path LP solver: ${LP_BACKEND}")
+list(APPEND SOURCES ${LP_SOURCES})
+
 set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
   src/localmotion2transform.h src/boxblur.h src/vsvector.h )
@@ -85,6 +109,10 @@ if (NOT MSVC)
   target_link_libraries(vidstab m)
 endif ()
 set(PKG_EXTRA_LIBS -lm)
+if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
+  target_link_libraries(vidstab GLPK::GLPK)
+  set(PKG_EXTRA_LIBS "${PKG_EXTRA_LIBS} -lglpk")
+endif()
 if(USE_OMP AND OPENMP_FOUND)
 if(TARGET OpenMP::OpenMP_C)
 target_link_libraries(vidstab OpenMP::OpenMP_C)

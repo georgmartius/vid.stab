@@ -1,19 +1,41 @@
-#define SYN_WIDTH 320
-#define SYN_HEIGHT 240
+/* Canvas size and circle layout (see "Amendment: scene rework" in the plan doc):
+   the original 320x240/5-circle scene only gave vsSimpleMotionsToTransform's
+   affine least-squares fit ~24-40 usable measurement fields to work with, which
+   isn't enough spatial signal to resolve the rotation-angle (alpha) component to
+   within tolAlpha=0.005 rad on frames 3-5. Rotation-angle estimation error scales
+   inversely with each sample's radius from the rotation center, so this scene
+   trades the original cluster of small circles near the frame center for fewer,
+   bigger circles pushed out toward the corners/edges of a much larger canvas --
+   maximizing both per-sample tangential displacement and total measurement-field
+   count. */
+#define SYN_WIDTH 640
+#define SYN_HEIGHT 480
 #define SYN_NUM_FRAMES 6
-#define SYN_NUM_CIRCLES 5
+#define SYN_NUM_CIRCLES 8
 
-#define SYN_BG_R 90
-#define SYN_BG_G 90
-#define SYN_BG_B 90
-#define SYN_CIRCLE_R 230
-#define SYN_CIRCLE_G 60
-#define SYN_CIRCLE_B 40
+/* Chosen so the circle/background luma difference clears vid.stab's default
+   Michelson-contrast field threshold (contrastThreshold = 0.25, see
+   motiondetect.c): background luma ~20, circle luma ~198, giving
+   (198-20)/(198+20) ~= 0.81, well above threshold. The original (90,90,90) /
+   (230,60,40) pair only reached a luma contrast of ~0.09 and made motion
+   detection fail with "too low contrast" on every non-RGB pixel format. */
+#define SYN_BG_R 20
+#define SYN_BG_G 20
+#define SYN_BG_B 20
+#define SYN_CIRCLE_R 250
+#define SYN_CIRCLE_G 200
+#define SYN_CIRCLE_B 50
 
 typedef struct { int cx, cy, radius; } SynCircle;
 
+/* 8 circles at the corners/edge-midpoints of a safe inset rectangle, all far
+   (~190-260px) from the frame center (320,240) -- large lever arms for the
+   rotation-angle signal -- while staying well clear of the canvas edges so
+   cumulative translation across the sequence never clips them out. */
 static const SynCircle SYN_CIRCLES[SYN_NUM_CIRCLES] = {
-  {80,60,18}, {240,60,15}, {160,120,20}, {80,180,16}, {240,180,14}
+  {100,100,40}, {320,100,40}, {540,100,40},
+  {100,240,40},                {540,240,40},
+  {100,380,40}, {320,380,40}, {540,380,40}
 };
 
 static void paintSynBase(VSFrame* frame, const VSFrameInfo* fi){

@@ -45,6 +45,7 @@
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
 #include "test_packed.c"
+#include "test_synthetic.c"
 
 #define FRAMENUM 5
 
@@ -153,6 +154,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testPK", "packed pixel formats")){
     UNIT(test_packed());
+  }
+
+  if(all || contains(argv,argc,"--testSYN", "synthetic circles across pixel formats")){
+    UNIT(test_synthetic_circles());
   }
 
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){

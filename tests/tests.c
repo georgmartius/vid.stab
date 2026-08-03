@@ -46,6 +46,7 @@
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
 #include "test_packed.c"
+#include "test_draw.c"
 #include "test_synthetic.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
@@ -158,6 +159,13 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testPK", "packed pixel formats")){
     UNIT(test_packed());
+  }
+
+  if(all || contains(argv,argc,"--testDRAW", "overlay drawing primitives")){
+    UNIT(test_draw_geometry());
+    UNIT(test_draw_clipping());
+    UNIT(test_draw_packed());
+    UNIT(test_draw_planar_show());
   }
 
   if(all || contains(argv,argc,"--testSYN", "synthetic circles across pixel formats")){

@@ -334,3 +334,133 @@ void test_l1_campath_transforms(TestData* testdata){
   vsTransformationsCleanup(&trans);
   vsTransformDataCleanup(&td);
 }
+
+/* ------------------------------------------- detection -> L1 integration */
+
+/** Everything above exercises the L1 optimizer against purely synthetic,
+    mathematically-defined transform sequences. This closes the remaining
+    gap: run real vsMotionDetection on the synthetic circle frames from
+    generate_synthetic.c (see tests/test_synthetic.c) to get a *detected*
+    path -- not a known ground truth -- then feed that through the real
+    library entry point (vsPreprocessTransforms with camPathAlgo ==
+    VSOptimalL1) and check the same two properties test_l1_run() and
+    test_l1_campath_transforms() check separately: the stabilized path is
+    genuinely smoother, and the crop window never leaves the frame. */
+static void test_l1_synthetic_detection_format(VSPixelFormat pf){
+  const int N = SYN_L1_NUM_FRAMES;
+  VSFrameInfo fi;
+  VSFrame frames[SYN_L1_NUM_FRAMES];
+  VSTransform* raw;
+  VSTransformLS *F, *C, *B, *P;
+  VSMotionDetectConfig mdconf;
+  VSMotionDetect md;
+  VSTransformConfig tdconf;
+  VSTransformData td;
+  VSTransformations trans;
+  double before2, after2, before3, after3;
+  double sx, sy, dx, dy, worst;
+  int i;
+
+  fprintf(stderr, "--- detection -> L1 campath, %s ---\n", synFormatName(pf));
+
+  generateL1ShakeFrames(frames, &fi, pf, SYN_WIDTH, SYN_HEIGHT, N);
+
+  /* detect the raw path from the real synthetic frames, frame by frame,
+     exactly as test_synthetic.c's checkRecoveredMotion() does -- except here
+     the detected transform itself (not a known injected one) is what feeds
+     the optimizer below. */
+  mdconf = vsMotionDetectGetDefaultConfig("test_l1_syn_md");
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+
+  raw = (VSTransform*)vs_malloc(sizeof(VSTransform) * N);
+  for(i=0; i<N; i++){
+    LocalMotions lms;
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    raw[i] = vsSimpleMotionsToTransform(fi, "test_l1_syn_md", &lms);
+    vs_vector_del(&lms);
+    vsFrameFree(&frames[i]);
+  }
+  vsMotionDetectionCleanup(&md);
+
+  /* the real library entry point: vsPreprocessTransforms() dispatches to
+     cameraPathOptimalL1() when camPathAlgo == VSOptimalL1, exactly as
+     ffmpeg's vidstabtransform filter calls it */
+  tdconf = vsTransformGetDefaultConfig("test_l1_syn_trans");
+  tdconf.camPathAlgo = VSOptimalL1;
+  test_bool(vsTransformDataInit(&td, &tdconf, &fi, &fi) == VS_OK);
+
+  vsTransformationsInit(&trans);
+  trans.ts = (VSTransform*)vs_malloc(sizeof(VSTransform) * N);
+  trans.len = N;
+  for(i=0; i<N; i++) trans.ts[i] = raw[i];
+
+  test_bool(vsPreprocessTransforms(&td, &trans) == VS_OK);
+
+  /* trans.ts is now the *render* transform updateToRenderTransform(B_t, ...)
+     -- negated and folded together with the crop-window zoom, not B_t itself
+     (see l1campathoptimization.c) -- which is exactly right for the
+     border-inclusion check below, but not something to reverse-engineer B_t
+     from. For the smoothness check we instead call the LS-level solver
+     directly (vsCameraPathOptimalL1LS(), the same function
+     cameraPathOptimalL1() calls internally, and the same one test_l1_run()
+     uses) on the identical F[] built from the raw detected path, to get the
+     true update transforms B_t and build the stabilized path P_t = C_t B_t. */
+  F = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
+  C = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
+  B = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
+  P = (VSTransformLS*)vs_malloc(sizeof(VSTransformLS) * N);
+  F[0] = id_transformLS();
+  C[0] = id_transformLS();
+  for(i=1; i<N; i++){
+    F[i] = transformAZtoLS(&raw[i]);
+    C[i] = concat_transformLS(&C[i-1], &F[i]);
+  }
+  {
+    VSL1Config lsConf = vsL1ConfigFromTransformConfig(&td);
+    double objective = -1.0;
+    test_bool(vsCameraPathOptimalL1LS(F, N, B, &lsConf, &objective) == VS_OK);
+  }
+  for(i=0; i<N; i++)
+    P[i] = concat_transformLS(&C[i], &B[i]);
+
+  before2 = campath_diffnorm(C, N, 2);
+  after2  = campath_diffnorm(P, N, 2);
+  before3 = campath_diffnorm(C, N, 3);
+  after3  = campath_diffnorm(P, N, 3);
+  fprintf(stderr, "  |D2|: %8.2f -> %8.2f   |D3|: %8.2f -> %8.2f\n",
+          before2, after2, before3, after3);
+  test_bool(after2 < before2);
+  test_bool(after3 < before3);
+
+  /* crop-window inclusion, ported from test_l1_campath_transforms() */
+  sx = td.fiSrc.width / 2.0;  sy = td.fiSrc.height / 2.0;
+  dx = td.fiDest.width / 2.0; dy = td.fiDest.height / 2.0;
+  worst = -1e30;
+  for(i=0; i<N; i++){
+    double z = 1.0 - trans.ts[i].zoom / 100.0;
+    double zcos = z * cos(-trans.ts[i].alpha);
+    double zsin = z * sin(-trans.ts[i].alpha);
+    const double cx[4] = { -dx,  dx, dx, -dx };
+    const double cy[4] = { -dy, -dy, dy,  dy };
+    int k;
+    for(k=0; k<4; k++){
+      double px =  zcos * cx[k] + zsin * cy[k] - trans.ts[i].x;
+      double py = -zsin * cx[k] + zcos * cy[k] - trans.ts[i].y;
+      worst = VS_MAX(worst, fabs(px) - sx);
+      worst = VS_MAX(worst, fabs(py) - sy);
+    }
+  }
+  fprintf(stderr, "  worst border overshoot after warping: %.4f px\n", worst);
+  test_bool(worst <= 1e-6);
+
+  vs_free(F); vs_free(C); vs_free(B); vs_free(P);
+  vs_free(raw);
+  vsTransformationsCleanup(&trans);
+  vsTransformDataCleanup(&td);
+}
+
+void test_l1_synthetic_detection(void){
+  test_l1_synthetic_detection_format(PF_YUV420P);
+  test_l1_synthetic_detection_format(PF_RGBA);
+}

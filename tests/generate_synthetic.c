@@ -129,6 +129,50 @@ void generateCircleSquareFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat 
   }
 }
 
+/* A longer, bounded-amplitude "shake" path: sway plus jitter, no net drift.
+   getTestFrameTransform() (used above) grows without bound frame over frame,
+   which is fine for the short 6-frame sequences elsewhere but would carry the
+   content off-canvas well before frame 30 -- this instead orbits around the
+   identity so the synthetic scene stays trackable for the whole sequence,
+   which is what a real detection -> L1-camera-path smoothing test needs. */
+#define SYN_L1_NUM_FRAMES 30
+
+static VSTransform synL1ShakeTransform(int i){
+  double s = (double)i;
+  VSTransform t = null_transform();
+  t.x = 15.0 * sin(s * 0.35) + 4.0 * sin(s * 1.3);
+  t.y = 10.0 * sin(s * 0.27 + 1.0) + 3.0 * sin(s * 1.7);
+  t.alpha = (2.0 * sin(s * 0.19) + 0.5 * sin(s * 2.1)) * M_PI / 180.0;
+  t.zoom = 0;
+  return t;
+}
+
+/* Same base scene and warp mechanism as generateCircleFrames(), but driven by
+   synL1ShakeTransform() instead of getTestFrameTransform(). */
+void generateL1ShakeFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat pf,
+                           int width, int height, int numFrames){
+  int i;
+  VSTransformConfig conf;
+  VSTransformData td;
+
+  test_bool(vsFrameInfoInit(fi, width, height, pf) != 0);
+  for(i=0; i<numFrames; i++)
+    vsFrameAllocate(&frames[i], fi);
+
+  paintSynBase(&frames[0], fi);
+
+  conf = vsTransformGetDefaultConfig("gen_syn_l1shake");
+  conf.interpolType = VS_Zero;
+  test_bool(vsTransformDataInit(&td, &conf, fi, fi) == VS_OK);
+  for(i=1; i<numFrames; i++){
+    VSTransform t = synL1ShakeTransform(i);
+    test_bool(vsTransformPrepare(&td, &frames[i-1], &frames[i]) == VS_OK);
+    test_bool(vsDoTransform(&td, t) == VS_OK);
+    test_bool(vsTransformFinish(&td) == VS_OK);
+  }
+  vsTransformDataCleanup(&td);
+}
+
 void dumpFramesAsPPM(const VSFrame* frames, const VSFrameInfo* fi, int numFrames,
                      const char* prefix){
   int i;

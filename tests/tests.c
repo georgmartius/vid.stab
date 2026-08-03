@@ -46,10 +46,10 @@
 #include "test_localmotion2transform.c"
 #include "test_determinism.c"
 #include "test_packed.c"
+#include "test_synthetic.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
 #endif
-#include "test_synthetic.c"
 
 #define FRAMENUM 5
 
@@ -212,6 +212,7 @@ int main(int argc, char** argv){
     UNIT(test_l1_campath());
     UNIT(test_l1_reference());
     UNIT(test_l1_campath_transforms(&testdata));
+    UNIT(test_l1_synthetic_detection());
   }
 #endif
 

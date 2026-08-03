@@ -104,18 +104,9 @@ typedef struct VS_API _VSTransformConfig {
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
     VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
-    /* --- parameters of the L1 optimal camera path (VSOptimalL1) ---
-     * weights of the first, second and third derivative of the camera path in
-     * the objective; the defaults follow fig. 8(d) of Grundmann et al. 2011:
-     * penalizing jerks (D3) an order of magnitude harder than the rest gives
-     * the most pleasant result. */
-    double         pathD1Weight; // weight of |D(P)|   , 0 disables the term
-    double         pathD2Weight; // weight of |D^2(P)| , 0 disables the term
-    double         pathD3Weight; // weight of |D^3(P)| , 0 disables the term
-    /* zoom in percent that the optimization may use up: the crop window it
-     * keeps inside the frame is that much smaller than the frame itself.
-     * Larger values give the optimization more freedom to smooth. */
-    double         pathMaxZoom;
+    /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
+     * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,
+     * see vsL1ConfigFromTransformConfig(). */
 } VSTransformConfig;
 
 typedef struct VS_API _VSTransformData {

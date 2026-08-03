@@ -16,6 +16,8 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
    composed of static, linear and parabolic segments, giving a result that looks
    like it came off a dolly or a crane rather than off a low-pass filter. Solved
    as a linear program with a built-in solver, so it needs no extra dependency.
+   It is steered by the usual knobs: `zoom`/`optzoom` give it the crop budget it
+   may spend, `smoothing` the horizon over which the path should stay rigid.
  * Detection algorithms:
   * Smart and fast multi measurement fields algorithm with contrast selection.
   * Brute force algorithm only for translations.

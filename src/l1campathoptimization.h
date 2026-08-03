@@ -83,6 +83,10 @@ VS_API void transformLS_vec(double* rx, double* ry, const VSTransformLS* t,
 VS_API VSTransformLS transformAZtoLS(const VSTransform* t);
 VS_API VSTransform   transformLStoAZ(const VSTransformLS* t);
 
+/** zoom in percent the optimization spends when the VSTransformConfig asks for
+    an automatic zoom (optZoom != 0) without naming an amount (zoom == 0) */
+#define VS_L1_DEFAULT_ZOOM 15.0
+
 /** parameters of the L1 optimization, independent of VSTransformData so that
     the core can be exercised on its own */
 typedef struct VS_API _VSL1Config {

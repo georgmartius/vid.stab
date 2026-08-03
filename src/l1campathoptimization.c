@@ -364,7 +364,7 @@ VSL1Config vsL1GetDefaultConfig(void){
   c.wAffine     = 100.0;
   c.frameWidth  = 0.0;
   c.frameHeight = 0.0;
-  c.cropRatio   = 1.0 / 1.15;   // matches the pathMaxZoom default of 15 percent
+  c.cropRatio   = 1.0 / (1.0 + VS_L1_DEFAULT_ZOOM / 100.0);
   c.minScale    = 1.0;
   c.maxScale    = 1.1;
   c.maxSkewDev  = 0.1;
@@ -497,22 +497,45 @@ int vsCameraPathOptimalL1LS(const VSTransformLS* F, int N, VSTransformLS* B,
 
 VSL1Config vsL1ConfigFromTransformConfig(const VSTransformData* td){
   VSL1Config c = vsL1GetDefaultConfig();
-  /* Not every caller goes through vsTransformGetDefaultConfig(): the ffmpeg
-     filter fills VSTransformConfig field by field from its option table, so
-     fields it does not know about arrive as zero.  All weights zero would make
-     the objective identically zero and every feasible path optimal, and a crop
-     of zero percent would leave the optimization no room at all -- neither is
-     something anybody can have meant, so fall back to the defaults. */
-  if (td->conf.pathD1Weight > 0.0 || td->conf.pathD2Weight > 0.0 ||
-      td->conf.pathD3Weight > 0.0) {
-    c.w1 = VS_MAX(td->conf.pathD1Weight, 0.0);
-    c.w2 = VS_MAX(td->conf.pathD2Weight, 0.0);
-    c.w3 = VS_MAX(td->conf.pathD3Weight, 0.0);
-  }
-  /* pathMaxZoom is the zoom in percent that the optimization may use up, so
-     the crop window is that much smaller than the frame */
-  if (td->conf.pathMaxZoom > 0.0)
-    c.cropRatio = 1.0 / (1.0 + td->conf.pathMaxZoom / 100.0);
+
+  /* --- zoom budget, from zoom and optZoom ---------------------------------
+     The optimization gets a crop window that is `budget` percent smaller than
+     the frame and keeps that window inside the frame; the zoom that goes with
+     it ends up in the render transforms.  That is precisely what zoom/optZoom
+     already mean, so they are what we read:
+
+       optZoom == 0            the user wants no automatic zoom: the budget is
+                               whatever conf.zoom asks for, and nothing more.
+                               With conf.zoom <= 0 there is no room to move at
+                               all and cameraPathOptimalL1() gives up.
+       optZoom != 0            conf.zoom if it was given, else the default.
+
+     optZoom == 2 (adaptive) has no L1 counterpart -- the crop window has to be
+     fixed before the LP is built -- so it is treated like the static case. */
+  double budget = VS_MAX(td->conf.zoom, 0.0);
+  if (td->conf.optZoom != 0 && budget <= 0.0) budget = VS_L1_DEFAULT_ZOOM;
+  c.cropRatio = 1.0 / (1.0 + budget / 100.0);
+
+  /* --- objective weights, from smoothing ----------------------------------
+     The LP has no data term competing with the objective -- closeness to the
+     original path comes from the inclusion and proximity constraints -- so it
+     is invariant under a common scaling of w1..w3 and only their ratio counts.
+     Read conf.smoothing as the timescale T (in frames) over which the path
+     should look rigid: |D^k P| is of order (amplitude / t^k) for motion of
+     period t, so weighting the k-th term with T^k makes all three contribute
+     equally at t = T, and motion faster than T is punished by the higher
+     orders.  Raising T therefore shifts weight from |D(P)| to |D^3(P)|: the
+     path goes from short static holds with quick transitions towards long
+     sweeping parabolic moves.  Written as s = T / T0 the weights are
+     10 s, s^2, 100 s^3, which we divide by s^2 to keep the numbers in a range
+     the solver is comfortable with; at T = T0 this reproduces the ratio of
+     fig. 8(d) of the paper exactly. */
+  const double T0 = 15.0;  /* the default of conf.smoothing */
+  double s = VS_MAX(td->conf.smoothing, 1) / T0;
+  c.w1 = 10.0 / s;
+  c.w2 = 1.0;
+  c.w3 = 100.0 * s;
+
   c.frameWidth  = td->fiSrc.width;
   c.frameHeight = td->fiSrc.height;
   c.verbose     = td->conf.verbose;
@@ -576,6 +599,16 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
   for (int t = 1; t < N; t++) F[t] = transformAZtoLS(&trans->ts[t]);
 
   VSL1Config conf = vsL1ConfigFromTransformConfig(td);
+  if (conf.cropRatio >= 1.0) {
+    /* optZoom == 0 and no zoom asked for: the crop window is the whole frame,
+       so the inclusion constraints pin the path to the original and there is
+       nothing to optimize.  Say so and let the caller fall back. */
+    vs_log_error(td->conf.modName,
+                 "L1 camera path optimization needs a zoom budget: "
+                 "use optzoom!=0 or zoom>0");
+    vs_free(F); vs_free(B);
+    return VS_ERROR;
+  }
   double objective = 0.0;
   int status = vsCameraPathOptimalL1LS(F, N, B, &conf, &objective);
   if (status == VS_OK) {
@@ -588,11 +621,12 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
       trans->ts[t].extra = extra;
     }
     /* The inclusion constraints already bound the crop window exactly, and the
-       zoom that goes with it is part of the transforms above.  The heuristic
-       estimators in vsPreprocessTransforms() would only add more zoom on top
-       of that, so switch them off; an explicitly requested conf.zoom is still
-       honoured and added. */
+       zoom that goes with it is part of the transforms above.  Both the
+       heuristic estimators and the global zoom in vsPreprocessTransforms()
+       would only add more zoom on top of that, so mark the budget as spent:
+       it went into the optimization, not on top of it. */
     td->conf.optZoom = 0;
+    td->conf.zoom    = 0.0;
   }
   vs_free(F);
   vs_free(B);

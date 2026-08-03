@@ -69,10 +69,6 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
   conf.camPathAlgo        = VSOptimalL1;
-  conf.pathD1Weight       = 10.0;
-  conf.pathD2Weight       = 1.0;
-  conf.pathD3Weight       = 100.0;
-  conf.pathMaxZoom        = 15.0;
   return conf;
 }
 

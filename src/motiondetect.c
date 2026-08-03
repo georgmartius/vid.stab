@@ -797,107 +797,142 @@ LocalMotions calcTransFields(VSMotionDetect* md,
 
 
 
+/* The overlay drawing below works for planar and packed formats alike. All
+   overlay colours are grey levels, so for packed formats the same value goes
+   into every colour channel; that makes PF_RGB24 and PF_BGR24 indistinguishable
+   here and removes any need to know the channel order. For planar formats only
+   plane 0 (luma) is drawn into, exactly as before. */
+
+/// bytes per pixel of the drawing surface: 1 for planar (luma plane only)
+static int drawBytesPerPixel(const VSMotionDetect* md) {
+  return md->fi.pFormat > PF_PACKED ? md->fi.bytesPerPixel : 1;
+}
+
 /** draws the field scanning area */
 void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* lm, int maxShift) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
-  drawRectangle(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1, lm->f.x, lm->f.y,
+  drawRectangle(md->currorig.data[0], md->currorig.linesize[0],
+                md->fi.width, md->fi.height, drawBytesPerPixel(md), lm->f.x, lm->f.y,
                 lm->f.size + 2 * maxShift, lm->f.size + 2 * maxShift, 80);
 }
 
 /** draws the field */
 void drawField(VSMotionDetect* md, const LocalMotion* lm, short box) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
   if(box)
-    drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+    drawBox(md->currorig.data[0], md->currorig.linesize[0],
+            md->fi.width, md->fi.height, drawBytesPerPixel(md),
             lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
   else
-    drawRectangle(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+    drawRectangle(md->currorig.data[0], md->currorig.linesize[0],
+                  md->fi.width, md->fi.height, drawBytesPerPixel(md),
                   lm->f.x, lm->f.y, lm->f.size, lm->f.size, /*lm->match >100 ? 100 :*/ 40);
 }
 
 /** draws the transform data of this field */
 void drawFieldTrans(VSMotionDetect* md, const LocalMotion* lm, int color) {
-  if (md->fi.pFormat > PF_PACKED)
-    return;
+  int bpp = drawBytesPerPixel(md);
   Vec end = add_vec(field_to_vec(lm->f),lm->v);
-  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+  drawBox(md->currorig.data[0], md->currorig.linesize[0],
+          md->fi.width, md->fi.height, bpp,
           lm->f.x, lm->f.y, 5, 5, 0); // draw center
-  drawBox(md->currorig.data[0], md->currorig.linesize[0], md->fi.height, 1,
+  drawBox(md->currorig.data[0], md->currorig.linesize[0],
+          md->fi.width, md->fi.height, bpp,
           lm->f.x + lm->v.x, lm->f.y + lm->v.y, 5, 5, 250); // draw translation
-  drawLine(md->currorig.data[0], md->currorig.linesize[0],  md->fi.height, 1,
+  drawLine(md->currorig.data[0], md->currorig.linesize[0],
+           md->fi.width, md->fi.height, bpp,
            (Vec*)&lm->f, &end, 3, color);
 
 }
 
 /**
- * draws a box at the given position x,y (center) in the given color
+ * draws a horizontal run of length pixels starting at x,y in the given color.
+ * Clipped to the frame. The color is written to every colour channel of a
+ * packed pixel except alpha, and to the single channel of a planar one.
+ * \param linesize distance between two rows in BYTES
+ * \param width,height frame dimensions in PIXELS
+ */
+void drawHLine(unsigned char* I, int linesize, int width, int height,
+               int bytesPerPixel, int x, int y, int length, unsigned char color) {
+  if (y < 0 || y >= height || length <= 0) return;
+  if (x < 0) { length += x; x = 0; }              // clip left
+  if (x + length > width) length = width - x;     // clip right
+  if (length <= 0) return;
+
+  int channels = bytesPerPixel > 3 ? 3 : bytesPerPixel; // never touch alpha
+  unsigned char* p = I + x * bytesPerPixel + y * linesize;
+  for (int k = 0; k < length; k++, p += bytesPerPixel)
+    for (int c = 0; c < channels; c++) p[c] = color;
+}
+
+/**
+ * draws a vertical run of length pixels starting at x,y in the given color.
+ * \see drawHLine
+ */
+void drawVLine(unsigned char* I, int linesize, int width, int height,
+               int bytesPerPixel, int x, int y, int length, unsigned char color) {
+  if (x < 0 || x >= width || length <= 0) return;
+  if (y < 0) { length += y; y = 0; }              // clip top
+  if (y + length > height) length = height - y;   // clip bottom
+  if (length <= 0) return;
+
+  int channels = bytesPerPixel > 3 ? 3 : bytesPerPixel;
+  unsigned char* p = I + x * bytesPerPixel + y * linesize;
+  for (int k = 0; k < length; k++, p += linesize)
+    for (int c = 0; c < channels; c++) p[c] = color;
+}
+
+/**
+ * draws a filled box at the given position x,y (center) in the given color
  (the same for all channels)
 */
-void drawBox(unsigned char* I, int width, int height, int bytesPerPixel, int x,
-       int y, int sizex, int sizey, unsigned char color) {
-
-  unsigned char* p = NULL;
-  int j, k;
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (j = 0; j < sizey; j++) {
-    for (k = 0; k < sizex * bytesPerPixel; k++) {
-      *p = color;
-      p++;
-    }
-    p += (width - sizex) * bytesPerPixel;
-  }
+void drawBox(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
+             int x, int y, int sizex, int sizey, unsigned char color) {
+  for (int j = 0; j < sizey; j++)
+    drawHLine(I, linesize, width, height, bytesPerPixel,
+              x - sizex / 2, y - sizey / 2 + j, sizex, color);
 }
 
 /**
  * draws a rectangle (not filled) at the given position x,y (center) in the given color
  at the first channel
 */
-void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel, int x,
-                   int y, int sizex, int sizey, unsigned char color) {
-
-  unsigned char* p;
-  int k;
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizex; k++) { *p = color; p+= bytesPerPixel; } // upper line
-  p = I + ((x - sizex / 2) + (y + sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizex; k++) { *p = color; p+= bytesPerPixel; } // lower line
-  p = I + ((x - sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // left line
-  p = I + ((x + sizex / 2) + (y - sizey / 2) * width) * bytesPerPixel;
-  for (k = 0; k < sizey; k++) { *p = color; p+= width * bytesPerPixel; } // right line
+void drawRectangle(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
+                   int x, int y, int sizex, int sizey, unsigned char color) {
+  drawHLine(I, linesize, width, height, bytesPerPixel,
+            x - sizex / 2, y - sizey / 2, sizex, color); // upper line
+  drawHLine(I, linesize, width, height, bytesPerPixel,
+            x - sizex / 2, y + sizey / 2, sizex, color); // lower line
+  drawVLine(I, linesize, width, height, bytesPerPixel,
+            x - sizex / 2, y - sizey / 2, sizey, color); // left line
+  drawVLine(I, linesize, width, height, bytesPerPixel,
+            x + sizex / 2, y - sizey / 2, sizey, color); // right line
 }
 
 /**
  * draws a line from a to b with given thickness(not filled) at the given position x,y (center) in the given color
  at the first channel
 */
-void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
+void drawLine(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
               Vec* a, Vec* b, int thickness, unsigned char color) {
-  unsigned char* p;
   Vec div = sub_vec(*b,*a);
   if(div.y==0){ // horizontal line
     if(div.x<0) {*a=*b; div.x*=-1;}
-    for(int r=-thickness/2; r<=thickness/2; r++){
-      p = I + ((a->x) + (a->y+r) * width) * bytesPerPixel;
-      for (int k = 0; k <= div.x; k++) { *p = color; p+= bytesPerPixel; }
-    }
+    for(int r=-thickness/2; r<=thickness/2; r++)
+      drawHLine(I, linesize, width, height, bytesPerPixel,
+                a->x, a->y + r, div.x + 1, color);
   }else{
     if(div.x==0){ // vertical line
       if(div.y<0) {*a=*b; div.y*=-1;}
-      for(int r=-thickness/2; r<=thickness/2; r++){
-        p = I + ((a->x+r) + (a->y) * width) * bytesPerPixel;
-        for (int k = 0; k <= div.y; k++) { *p = color; p+= width * bytesPerPixel; }
-      }
+      for(int r=-thickness/2; r<=thickness/2; r++)
+        drawVLine(I, linesize, width, height, bytesPerPixel,
+                  a->x + r, a->y, div.y + 1, color);
     }else{
       double m = (double)div.x/(double)div.y;
       int horlen = thickness + fabs(m);
       for( int c=0; c<= abs(div.y); c++){
         int dy = div.y<0 ? -c : c;
         int x = a->x + m*dy - horlen/2;
-        p = I + (x + (a->y+dy) * width) * bytesPerPixel;
-        for( int k=0; k<= horlen; k++){ *p = color; p+= bytesPerPixel; }
+        drawHLine(I, linesize, width, height, bytesPerPixel,
+                  x, a->y + dy, horlen + 1, color);
       }
     }
   }

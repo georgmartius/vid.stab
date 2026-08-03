@@ -290,6 +290,62 @@ static void test_packed_motiondetect(VSPixelFormat pf){
   vsFrameFree(&f2);
 }
 
+/* --- the 'show' overlay on packed frames --------------------------------- */
+
+/* With show enabled the detector draws the fields and motion vectors into the
+   frame. This used to be skipped entirely for packed formats. */
+static void test_packed_show(VSPixelFormat pf){
+  VSFrameInfo fi;
+  VSFrame f1, f2, before;
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("test_packed_show");
+  VSMotionDetect md;
+  LocalMotions lms;
+  const int dx = 8, dy = -6;
+  int x, y, c, changed = 0, grey = 1, alphaOk = 1;
+
+  fprintf(stderr,"--- show overlay, %s ---\n", packedFormatName(pf));
+  test_bool(vsFrameInfoInit(&fi, 320, 240, pf) == 1);
+  vsFrameAllocate(&f1,&fi);
+  vsFrameAllocate(&f2,&fi);
+  vsFrameAllocate(&before,&fi);
+  fillPackedNoise(&f1,&fi,7);
+  shiftPacked(&f2,&f1,&fi,dx,dy);
+  vsFrameCopy(&before,&f2,&fi);
+
+  mdconf.show = 2;   /* 2 also draws the field scan areas */
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+  test_bool(vsMotionDetection(&md, &lms, &f1) == VS_OK);
+  vs_vector_del(&lms);
+  test_bool(vsMotionDetection(&md, &lms, &f2) == VS_OK);
+  vs_vector_del(&lms);
+
+  for(y=0; y<fi.height; y++){
+    for(x=0; x<fi.width; x++){
+      const uint8_t* p = packedPixel(&f2,&fi,x,y);
+      const uint8_t* q = packedPixel(&before,&fi,x,y);
+      int diff = 0;
+      for(c=0; c<3; c++) if(p[c]!=q[c]) diff = 1;
+      if(diff){
+        changed++;
+        /* every overlay colour is a grey level */
+        if(!(p[0]==p[1] && p[1]==p[2])) grey = 0;
+      }
+      if(fi.bytesPerPixel==4 && p[3]!=q[3]) alphaOk = 0;
+    }
+  }
+  fprintf(stderr,"  overlay pixels drawn: %i (grey=%i alphaUntouched=%i)\n",
+          changed, grey, alphaOk);
+  test_bool(changed > 100);   /* something was actually drawn */
+  test_bool(grey);
+  test_bool(alphaOk);
+
+  vsMotionDetectionCleanup(&md);
+  vsFrameFree(&f1);
+  vsFrameFree(&f2);
+  vsFrameFree(&before);
+}
+
 void test_packed(void){
   test_packed_frameinfo();
   test_packed_identity(PF_RGB24);
@@ -299,6 +355,9 @@ void test_packed(void){
   test_packed_translate(PF_RGBA);
   test_packed_motiondetect(PF_RGB24);
   test_packed_motiondetect(PF_RGBA);
+  test_packed_show(PF_RGB24);
+  test_packed_show(PF_BGR24);
+  test_packed_show(PF_RGBA);
 }
 
 /*

@@ -69,12 +69,22 @@ VS_API LocalMotions calcTransFields(VSMotionDetect* md, VSMotionDetectFields* fi
 VS_API void drawFieldScanArea(VSMotionDetect* md, const LocalMotion* motion, int maxShift);
 VS_API void drawField(VSMotionDetect* md, const LocalMotion* motion, short box);
 VS_API void drawFieldTrans(VSMotionDetect* md, const LocalMotion* motion, int color);
-VS_API void drawBox(unsigned char* I, int width, int height, int bytesPerPixel,
+/* Overlay drawing. \param linesize distance between two rows in BYTES,
+   \param width,height frame dimensions in PIXELS. Shapes are clipped to the
+   frame. bytesPerPixel selects the layout: 1 draws into a planar luma plane,
+   3 or 4 into a packed pixel (alpha of a 4 byte pixel is left untouched).
+   Colours are grey levels, so packed channel order does not matter. */
+VS_API void drawHLine(unsigned char* I, int linesize, int width, int height,
+               int bytesPerPixel, int x, int y, int length, unsigned char color);
+VS_API void drawVLine(unsigned char* I, int linesize, int width, int height,
+               int bytesPerPixel, int x, int y, int length, unsigned char color);
+
+VS_API void drawBox(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
              int x, int y, int sizex, int sizey, unsigned char color);
-VS_API void drawRectangle(unsigned char* I, int width, int height, int bytesPerPixel,
+VS_API void drawRectangle(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
                    int x, int y, int sizex, int sizey, unsigned char color);
 
-VS_API void drawLine(unsigned char* I, int width, int height, int bytesPerPixel,
+VS_API void drawLine(unsigned char* I, int linesize, int width, int height, int bytesPerPixel,
               Vec* a, Vec* b, int thickness, unsigned char color);
 
 /// \param linesize1,linesize2 distance between two rows in BYTES of I1 resp. I2

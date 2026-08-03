@@ -66,6 +66,7 @@ void setPixelRGB(VSFrame* frame, const VSFrameInfo* fi, int x, int y,
 
 void getPixelRGB(const VSFrame* frame, const VSFrameInfo* fi, int x, int y,
                  uint8_t* r, uint8_t* g, uint8_t* b){
+  if(x<0 || y<0 || x>=fi->width || y>=fi->height) { *r=*g=*b=0; return; }
   if(fi->pFormat < PF_PACKED){
     uint8_t yy = frame->data[0][y*frame->linesize[0] + x];
     uint8_t uu = 128, vv = 128;

@@ -115,3 +115,28 @@ void test_synthetic_circles(void){
       vsFrameFree(&frames[i]);
   }
 }
+
+void test_synthetic_circles_squares(void){
+  int fmt;
+  fprintf(stderr, "--- synthetic circles+squares sequence ---\n");
+  for(fmt=0; fmt<SYN_NUM_FORMATS; fmt++){
+    VSFrameInfo fi;
+    VSFrame frames[SYN_NUM_FRAMES];
+    int i;
+
+    generateCircleSquareFrames(frames, &fi, SYN_FORMATS[fmt], SYN_WIDTH, SYN_HEIGHT, SYN_NUM_FRAMES);
+
+    /* squares are distractors: the dominant global motion (background +
+       circles) must still be recovered despite their independent motion.
+       tolXY is loosened relative to test_synthetic_circles() (2.0 -> 4.5):
+       on PF_RGB24/PF_RGBA the squares (painted directly in RGB, so they
+       carry undiluted chroma contrast on those formats specifically) pull
+       the affine fit by up to ~3.8px on frames 3-5; tolAlpha=0.005 already
+       comfortably covers the largest observed alpha deviation (~0.0038) and
+       is left unchanged. */
+    checkRecoveredMotion(&fi, frames, SYN_NUM_FRAMES, synFormatName(SYN_FORMATS[fmt]), 4.5, 0.005);
+
+    for(i=0; i<SYN_NUM_FRAMES; i++)
+      vsFrameFree(&frames[i]);
+  }
+}

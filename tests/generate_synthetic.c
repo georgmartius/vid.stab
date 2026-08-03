@@ -74,3 +74,57 @@ void generateCircleFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat pf,
   }
   vsTransformDataCleanup(&td);
 }
+
+#define SYN_NUM_SQUARES 4
+#define SYN_SQUARE_SIZE 16
+#define SYN_SQUARE_R 40
+#define SYN_SQUARE_G 90
+#define SYN_SQUARE_B 230
+#define SYN_SEED 12345u
+
+typedef struct { double x, y, vx, vy; } SynSquare;
+
+static void synSquareVelocity(unsigned int seed, int idx, double* vx, double* vy){
+  double angle, speed;
+  srand(seed + (unsigned int)idx*7919u);
+  angle = (rand()%360) * M_PI/180.0;
+  speed = 3.0 + (rand()%5); /* 3..7 px/frame */
+  *vx = cos(angle)*speed;
+  *vy = sin(angle)*speed;
+}
+
+/* Same base sequence as generateCircleFrames (uniform-motion camera shake),
+   but with SYN_NUM_SQUARES squares of a third color stamped on top of every
+   frame, each moving along its own fixed-seed, per-square constant velocity
+   that is independent of the camera-shake transform (bouncing off frame
+   edges). These model independently-moving foreground distractors that the
+   stabilizer must not lock onto. */
+void generateCircleSquareFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat pf,
+                                int width, int height, int numFrames){
+  SynSquare squares[SYN_NUM_SQUARES];
+  int i, k;
+
+  generateCircleFrames(frames, fi, pf, width, height, numFrames);
+
+  srand(SYN_SEED);
+  for(k=0; k<SYN_NUM_SQUARES; k++){
+    squares[k].x = 20 + rand()%(width - 40 - SYN_SQUARE_SIZE);
+    squares[k].y = 20 + rand()%(height - 40 - SYN_SQUARE_SIZE);
+    synSquareVelocity(SYN_SEED, k, &squares[k].vx, &squares[k].vy);
+  }
+
+  for(i=0; i<numFrames; i++){
+    for(k=0; k<SYN_NUM_SQUARES; k++){
+      if(i>0){
+        squares[k].x += squares[k].vx;
+        squares[k].y += squares[k].vy;
+        if(squares[k].x<0){ squares[k].x=0; squares[k].vx=-squares[k].vx; }
+        if(squares[k].y<0){ squares[k].y=0; squares[k].vy=-squares[k].vy; }
+        if(squares[k].x>width-SYN_SQUARE_SIZE){ squares[k].x=width-SYN_SQUARE_SIZE; squares[k].vx=-squares[k].vx; }
+        if(squares[k].y>height-SYN_SQUARE_SIZE){ squares[k].y=height-SYN_SQUARE_SIZE; squares[k].vy=-squares[k].vy; }
+      }
+      paintSquareRGB(&frames[i], fi, (int)squares[k].x, (int)squares[k].y, SYN_SQUARE_SIZE,
+                    SYN_SQUARE_R, SYN_SQUARE_G, SYN_SQUARE_B);
+    }
+  }
+}

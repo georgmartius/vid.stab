@@ -161,6 +161,10 @@ int main(int argc, char** argv){
     UNIT(test_synthetic_circles());
   }
 
+  if(all || contains(argv,argc,"--testSYNSQ", "synthetic circles+squares across pixel formats")){
+    UNIT(test_synthetic_circles_squares());
+  }
+
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
   }

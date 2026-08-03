@@ -46,4 +46,18 @@ int loadPGMImage(const char* filename, VSFrame* frame, VSFrameInfo* fi);
 
 int storePGMImage(const char* filename, const uint8_t* data, VSFrameInfo fi );
 
+/** directory every file the test suite writes goes into, relative to the
+    working directory the tests are run from, and gitignored */
+#define TEST_OUTPUT_DIR "testout"
+
+/** Builds TEST_OUTPUT_DIR "/" name and makes sure the directory it lives in
+    exists; name may contain subdirectories.  Use it for every path the tests
+    write to, so that a test run leaves nothing behind outside of
+    TEST_OUTPUT_DIR.
+
+    The result lives in a small ring of static buffers, so a few results can be
+    in flight at once -- two calls in the same argument list are fine -- but the
+    pointer must not be stored for later use. */
+const char* testOut(const char* name);
+
 #endif

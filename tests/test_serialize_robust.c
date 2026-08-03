@@ -87,10 +87,10 @@ int test_serialize_robust(){
   VSManyLocalMotions mlms;
 
   /* ---- 1. binary file round trips ---- */
-  sr_write_file("srtest_bin.trf", BINARY_SERIALIZATION_MODE, 1);
-  buf = sr_slurp("srtest_bin.trf",&len);
+  sr_write_file(testOut("srtest_bin.trf"), BINARY_SERIALIZATION_MODE, 1);
+  buf = sr_slurp(testOut("srtest_bin.trf"),&len);
   test_bool(buf!=0);
-  f = fopen("srtest_bin.trf","rb");
+  f = fopen(testOut("srtest_bin.trf"),"rb");
   test_bool(f!=0);
   test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
   test_bool(vs_vector_size(&mlms)==SR_NFRAMES);
@@ -104,10 +104,10 @@ int test_serialize_robust(){
        handle would do: must not produce bogus (null) localmotions ---- */
   for(i=0; i<len; i++) if(buf[i]==0x1a){ first1a = i; break; }
   test_bool(first1a > 0);
-  sr_spit("srtest_trunc.trf", buf, first1a);
+  sr_spit(testOut("srtest_trunc.trf"), buf, first1a);
   fprintf(stderr,"** truncating transform file at first 0x1A: %li of %li bytes\n",
           first1a, len);
-  f = fopen("srtest_trunc.trf","rb");
+  f = fopen(testOut("srtest_trunc.trf"),"rb");
   test_bool(f!=0);
   test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
   for(i=0; i<vs_vector_size(&mlms); i++){
@@ -131,9 +131,9 @@ int test_serialize_robust(){
     unsigned char* copy = vs_malloc(len);
     memcpy(copy,buf,len);
     memcpy(copy+24+4,&bogus,4);  /* header(24) + frameNum(4) -> list length */
-    sr_spit("srtest_biglen.trf", copy, len);
+    sr_spit(testOut("srtest_biglen.trf"), copy, len);
     vs_free(copy);
-    f = fopen("srtest_biglen.trf","rb");
+    f = fopen(testOut("srtest_biglen.trf"),"rb");
     test_bool(f!=0);
     test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
     test_bool(vs_vector_size(&mlms)>=1);
@@ -145,8 +145,8 @@ int test_serialize_robust(){
   vs_free(buf);
 
   /* ---- 4. ascii file with CRLF line endings read from a binary handle ---- */
-  sr_write_file("srtest_ascii.trf", ASCII_SERIALIZATION_MODE, 0);
-  buf = sr_slurp("srtest_ascii.trf",&len);
+  sr_write_file(testOut("srtest_ascii.trf"), ASCII_SERIALIZATION_MODE, 0);
+  buf = sr_slurp(testOut("srtest_ascii.trf"),&len);
   test_bool(buf!=0);
   {
     unsigned char* crlf = vs_malloc(2*len);
@@ -155,11 +155,11 @@ int test_serialize_robust(){
       if(buf[i]=='\n') crlf[k++] = '\r';
       crlf[k++] = buf[i];
     }
-    sr_spit("srtest_ascii_crlf.trf", crlf, k);
+    sr_spit(testOut("srtest_ascii_crlf.trf"), crlf, k);
     vs_free(crlf);
   }
   vs_free(buf);
-  f = fopen("srtest_ascii_crlf.trf","rb");
+  f = fopen(testOut("srtest_ascii_crlf.trf"),"rb");
   test_bool(f!=0);
   test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
   test_bool(vs_vector_size(&mlms)==SR_NFRAMES);

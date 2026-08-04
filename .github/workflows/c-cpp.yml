@@ -68,6 +68,50 @@ jobs:
           fi
         done
 
+  # MSVC on a Visual Studio runner.  The Windows port is the least exercised
+  # configuration here -- it has no user reporting breakage the way the Linux
+  # builds do -- so this job exists to notice a break at the commit that causes
+  # it.  Both link modes are built: the export macro in src/vidstab_export.h
+  # resolves differently for each, and only the shared build exercises the
+  # dllexport path at all.
+  msvc:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: compiler version
+      shell: cmd
+      run: cmake --version && cl 2>&1 | findstr /C:"Version" || ver
+    - name: cmake, shared
+      run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON
+    - name: build, shared
+      run: cmake --build build-shared --config Release
+    - name: cmake, static
+      run: cmake -B build-static -DBUILD_SHARED_LIBS=OFF
+    - name: build, static
+      run: cmake --build build-static --config Release
+    - name: cmake tests
+      run: cmake -B build
+      working-directory: tests
+    - name: build tests
+      run: cmake --build build --config Release
+      working-directory: tests
+    # The dispatcher picks the best kernel the runner's CPU supports; the two
+    # forced runs below pin down the levels it did not choose, exactly as the
+    # x86_64 job does.
+    - name: run tests
+      run: build\Release\tests.exe --all
+      working-directory: tests
+    - name: run tests, scalar dispatch
+      run: |
+        $env:VIDSTAB_SIMD='none'
+        build\Release\tests.exe --all
+      working-directory: tests
+    - name: run tests, SSE2 dispatch
+      run: |
+        $env:VIDSTAB_SIMD='sse2'
+        build\Release\tests.exe --all
+      working-directory: tests
+
   # Native AArch64 -- real hardware, real NEON, no emulation.  This is what
   # actually validates src/motiondetect_neon.c; the neon_emu.h path in the x86
   # job only proves the logic.

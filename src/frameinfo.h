@@ -28,7 +28,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 /// pixel formats
 typedef enum {PF_NONE = -1,
               PF_GRAY8,     ///<        Y        ,  8bpp
@@ -49,7 +49,7 @@ typedef enum {PF_NONE = -1,
 /** frame information for deshaking lib
     This only works for planar image formats
  */
-typedef struct VS_API vsframeinfo {
+typedef struct vsframeinfo {
   int width, height;
   int planes;        // number of planes (1 luma, 2,3 chroma, 4 alpha)
   int log2ChromaW; // subsampling of width in chroma planes
@@ -60,7 +60,7 @@ typedef struct VS_API vsframeinfo {
 
 /** frame data according to frameinfo
  */
-typedef struct VS_API vsframe {
+typedef struct vsframe {
   uint8_t* data[4]; // data in planes. For packed data everthing is in plane 0
   int linesize[4]; // line size of each line in a the planes
 } VSFrame;

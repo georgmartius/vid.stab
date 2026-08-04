@@ -25,13 +25,13 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 
 /**
    A vector for arbitrary elements that resizes
 */
 typedef struct vsvector_ VSVector;
-struct VS_API vsvector_ {
+struct vsvector_ {
   void**  data;
   int    buffersize;
   int    nelems;
@@ -165,7 +165,7 @@ VS_API VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2);
    A simple fixed-size double vector
 */
 typedef struct vsarray_ VSArray;
-struct VS_API vsarray_ {
+struct vsarray_ {
   double* dat;
   int len;
 };

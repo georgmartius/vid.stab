@@ -27,14 +27,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "vsvector.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 
 /* structure to hold information about frame transformations
    x,y are translations, alpha is a rotation around the center in RAD,
    zoom is a percentage to zoom in and
    extra is for additional information like scene cut (unused)
  */
-typedef struct VS_API _transform {
+typedef struct _transform {
     double x;
     double y;
     double alpha;
@@ -46,21 +46,21 @@ typedef struct VS_API _transform {
 } VSTransform;
 
 /** stores x y and size of a measurement field */
-typedef struct VS_API _field {
+typedef struct _field {
   int16_t x;     // middle position x
   int16_t y;     // middle position y
   int16_t size;  // size of field
 } Field;
 
 /** stores x y coordinates (integer) */
-typedef struct VS_API _vec {
+typedef struct _vec {
   int16_t x;     // middle position x
   int16_t y;     // middle position y
 } Vec;
 
 /* structure to hold information about local motion.
  */
-typedef struct VS_API _localmotion {
+typedef struct _localmotion {
     Vec v;
     Field f;
     double contrast; // local contrast of the measurement field

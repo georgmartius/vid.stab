@@ -19,6 +19,11 @@ endif()
 
 add_definitions(-Wall -Wno-pointer-sign -DTESTING -std=gnu99)
 
+# The tests compile the library sources straight into the test binary, so the
+# public interface must not carry any import/export decoration (see
+# src/vidstab_export.h).
+add_definitions(-DVIDSTAB_STATIC_DEFINE)
+
 # Same SIMD setup as the library, so the equivalence tests check every kernel
 # this toolchain can build -- not merely the one the dispatcher would pick.
 vidstab_configure_simd("${CMAKE_CURRENT_SOURCE_DIR}/../src")

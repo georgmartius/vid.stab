@@ -30,7 +30,7 @@
 #define MOTIONDETECT_INTERNAL_H
 
 #include "motiondetect.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 /* type for a function that calculates the transformation of a certain field
  */
 typedef LocalMotion (*calcFieldTransFunc)(VSMotionDetect*, VSMotionDetectFields*,

@@ -36,12 +36,12 @@
 #include "vidstabdefines.h"
 #include "vsvector.h"
 #include "frameinfo.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 
 #define ASCII_SERIALIZATION_MODE 1
 #define BINARY_SERIALIZATION_MODE 2
 
-typedef struct VS_API _vsmotiondetectconfig {
+typedef struct _vsmotiondetectconfig {
   /* meta parameter for maxshift and fieldsize between 1 and 15 */
   int         shakiness;
   int         accuracy;         // meta parameter for number of fields between 1 and 10
@@ -57,7 +57,7 @@ typedef struct VS_API _vsmotiondetectconfig {
 } VSMotionDetectConfig;
 
 /** structure for motion detection fields */
-typedef struct VS_API _vsmotiondetectfields {
+typedef struct _vsmotiondetectfields {
   /* maximum number of pixels we expect the shift of subsequent frames */
   int maxShift;
   int stepSize;                 // stepsize for detection
@@ -72,7 +72,7 @@ typedef struct VS_API _vsmotiondetectfields {
 } VSMotionDetectFields;
 
 /** data structure for motion detection part of deshaking*/
-typedef struct VS_API _vsmotiondetect {
+typedef struct _vsmotiondetect {
   VSFrameInfo fi;
 
   VSMotionDetectConfig conf;

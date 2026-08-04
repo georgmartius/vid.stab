@@ -30,7 +30,7 @@
 #define MOTIONDETECT_OPT_H
 
 #include "motiondetect.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 #include "cpudetect.h"
 
 /* --- dispatch ---------------------------------------------------------------

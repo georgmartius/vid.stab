@@ -27,7 +27,7 @@
 #define __TRANSFORMFLOAT_H
 
 #include "transformtype.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 #include <stdint.h>
 
 #ifdef TESTING

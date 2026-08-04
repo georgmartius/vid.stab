@@ -26,7 +26,7 @@
 #define __BOXBLUR_H
 
 #include "frameinfo.h"
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 /** BoxBlurColor     - blur also color channels,
     BoxBlurKeepColor - copy original color channels
     BoxBlurNoColor   - do not touch color channels in dest

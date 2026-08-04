@@ -105,8 +105,12 @@ add_library (vidstab ${SOURCES})
 set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})
 
 
-if(MSVC)
-  target_compile_definitions(vidstab PRIVATE VIDSTAB_EXPORTS)
+# VS_API (see src/vidstab_export.h) needs to expand to nothing for a static
+# build: there is no import library to point a __declspec(dllimport) at, and
+# saying so anyway makes consumers fail to link.  PUBLIC, because the headers
+# our users compile against have to see the same definition we did.
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(vidstab PUBLIC VIDSTAB_STATIC_DEFINE)
 endif()
 target_include_directories(vidstab PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>

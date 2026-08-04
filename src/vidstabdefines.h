@@ -30,7 +30,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-#include "vidstab_api.h"
+#include "vidstab_export.h"
 
 #ifdef __GNUC__
 #define likely(x)       __builtin_expect(!!(x), 1)

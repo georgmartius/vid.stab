@@ -7,12 +7,16 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-
+  # x86-64: whichever SIMD kernels the runner's CPU supports.  Which ones those
+  # are varies between runner generations, so the test suite skips the kernels
+  # it cannot execute and prints "N of M kernel(s) checked" -- read that line to
+  # see what a given run actually covered.
+  x86_64:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+    - name: cpu features
+      run: lscpu | grep -o 'sse2\|avx2\|avx512bw\|avx512vl' | sort -u | tr '\n' ' '; echo
     - name: cmake
       run: cmake .
     - name: make
@@ -25,4 +29,95 @@ jobs:
       working-directory: tests
     - name: run tests
       run: ./tests --all
+      working-directory: tests
+    # The dispatcher picks one kernel per run, so a single run leaves the others
+    # untested end to end.  These are cheap and pin each one down.
+    - name: run tests, scalar dispatch
+      run: VIDSTAB_SIMD=none ./tests --all
+      working-directory: tests
+    - name: run tests, SSE2 dispatch
+      run: VIDSTAB_SIMD=sse2 ./tests --all
+      working-directory: tests
+
+  # Native AArch64 -- real hardware, real NEON, no emulation.  This is what
+  # actually validates src/motiondetect_neon.c; the neon_emu.h path in the x86
+  # job only proves the logic.
+  aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v4
+    - name: cmake
+      run: cmake .
+    - name: make
+      run: make
+    - name: cmake tests
+      run: cmake .
+      working-directory: tests
+    - name: make tests
+      run: make
+      working-directory: tests
+    - name: run tests
+      run: ./tests --all
+      working-directory: tests
+    - name: run tests, scalar dispatch
+      run: VIDSTAB_SIMD=none ./tests --all
+      working-directory: tests
+
+  # 32 bit ARM under qemu.  Not for speed -- this is the only place the ARMv7
+  # reduction fallbacks in motiondetect_neon.c (vs_haddq_u32 / vs_hminq_u8 /
+  # vs_hmaxq_u8, which AArch64 never compiles) get executed at all.
+  armv7-qemu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: install cross toolchain and qemu
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf qemu-user-static
+    - name: cmake
+      run: |
+        cmake -B build-armv7 \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=armv7l \
+          -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+          -DCMAKE_C_FLAGS="-mfpu=neon -mfloat-abi=hard -march=armv7-a" \
+          -DUSE_OMP=OFF
+    - name: make
+      run: cmake --build build-armv7 -j
+    - name: cmake tests
+      run: |
+        cmake -B build-armv7 -S . \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=armv7l \
+          -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+          -DCMAKE_C_FLAGS="-mfpu=neon -mfloat-abi=hard -march=armv7-a" \
+          -DUSE_OMP=OFF
+      working-directory: tests
+    - name: make tests
+      run: cmake --build build-armv7 -j
+      working-directory: tests
+    - name: run tests under qemu
+      run: qemu-arm-static -L /usr/arm-linux-gnueabihf ./build-armv7/tests --all
+      working-directory: tests
+
+  # Force the AVX-512 kernels to execute regardless of what the runner's CPU
+  # is, using Intel's Software Development Emulator.  Without this the AVX-512
+  # kernels are simply skipped on runners that lack them, which is correct but
+  # is not coverage.  Slow (SDE emulates every instruction), so it runs only
+  # the SIMD equivalence test rather than the whole suite.
+  avx512-sde:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: install Intel SDE
+      uses: petarpetrovt/setup-sde@v2.4
+    - name: cmake tests
+      run: cmake .
+      working-directory: tests
+    - name: make tests
+      run: make
+      working-directory: tests
+    # -spr = Sapphire Rapids, which has AVX512F/BW/VL.
+    - name: run SIMD equivalence under SDE
+      run: $SDE_PATH/sde64 -spr -- ./tests --testSIMD
       working-directory: tests

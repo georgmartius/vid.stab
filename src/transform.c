@@ -229,13 +229,21 @@ int cameraPathOptimization(VSTransformData* td, VSTransformations* trans){
    case VSAvg: return cameraPathAvg(td,trans);
    case VSOptimalL1:
 #ifdef VS_HAVE_LPSOLVER
-    /* cameraPathOptimalL1 leaves trans untouched unless it succeeds, so
-       falling back to the gaussian filter is safe.  It fails for absolute
-       transforms, for sequences shorter than 4 frames, and if the LP turns
-       out to be infeasible. */
-    if(cameraPathOptimalL1(td,trans)==VS_OK) return VS_OK;
-    vs_log_msg(td->conf.modName,
-               "L1 camera path optimization unavailable, using gaussian filter");
+    /* L1 optimizes a camera path built by composing relative transforms, so
+       absolute ones put it out of scope by construction rather than by
+       failure.  That is the tripod configuration (relative=0:smoothing=0),
+       where the stored transforms are already the final per-frame corrections
+       and the gaussian filter leaves them untouched -- exactly what tripod
+       wants.  Go there directly, so a correct setup stays quiet. */
+    if(td->conf.relative){
+      /* cameraPathOptimalL1 leaves trans untouched unless it succeeds, so
+         falling back to the gaussian filter is safe.  It fails for sequences
+         shorter than 4 frames, without a zoom budget, and if the LP turns out
+         to be infeasible. */
+      if(cameraPathOptimalL1(td,trans)==VS_OK) return VS_OK;
+      vs_log_msg(td->conf.modName,
+                 "L1 camera path optimization unavailable, using gaussian filter");
+    }
 #endif // without an LP solver we always use the gaussian filter
     /* fall through */
    case VSGaussian: return cameraPathGaussian(td,trans);

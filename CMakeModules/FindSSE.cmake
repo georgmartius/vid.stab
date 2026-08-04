@@ -38,13 +38,19 @@ if(NOT _SSE_TARGET_IS_X86)
       set(SSE4_1_FOUND FALSE CACHE BOOL "SSE4.1 available on target")
 
 elseif (MSVC)
-      message(STATUS "MSVC detected, enabling default SSE2+ support")
+      # SSE2 is part of the baseline every x86 Windows target is built for:
+      # unconditionally so on x64, and the default /arch for 32 bit since
+      # MSVC 2012.  Nothing beyond SSE2 may be requested here -- the SSE code
+      # in this library is plain SSE2, and raising /arch would only make the
+      # compiler emit newer instructions into ordinary C code and leave the
+      # binaries refusing to start on CPUs that lack them.
+      message(STATUS "MSVC detected, assuming SSE2 is available on the target")
 
       set(SSE2_FOUND TRUE CACHE BOOL "SSE2 available on target" FORCE)
-      set(SSE3_FOUND TRUE CACHE BOOL "SSE3 available on target" FORCE)
-      set(SSSE3_FOUND TRUE CACHE BOOL "SSSE3 available on target" FORCE)
-      set(SSE4_1_FOUND TRUE CACHE BOOL "SSE4.1 available on target" FORCE)
-      add_compile_options(/arch:AVX2)
+      # Not baseline anywhere, and nothing in this project asks for them.
+      set(SSE3_FOUND FALSE CACHE BOOL "SSE3 available on target" FORCE)
+      set(SSSE3_FOUND FALSE CACHE BOOL "SSSE3 available on target" FORCE)
+      set(SSE4_1_FOUND FALSE CACHE BOOL "SSE4.1 available on target" FORCE)
 
 else()
       # GNU/Clang-like flow

@@ -33,6 +33,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
   add_definitions(-Wall -Wno-pointer-sign)
 elseif(MSVC)
   add_definitions(/W3)
+  # MSVC's <math.h> only defines M_PI and friends when asked to.
+  add_definitions(-D_USE_MATH_DEFINES)
 endif()
 
 if(NOT WIN32)

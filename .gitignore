@@ -24,3 +24,7 @@ build
 testout/
 /tests/tests
 tests/build/
+
+# out-of-tree build directories used while benchmarking
+bld*/
+tests/tbld/

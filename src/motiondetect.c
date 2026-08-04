@@ -90,6 +90,10 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
     return VS_ERROR;
   }
 
+  /* pick the SIMD kernels for this machine before anything can call them */
+  vs_simd_init();
+  vs_log_info(md->conf.modName, "SIMD: %s\n", vs_simd_active_name());
+
 #ifdef USE_OMP
   if(md->conf.numThreads==0)
     md->conf.numThreads=VS_MAX(omp_get_max_threads()*0.8,1);
@@ -134,10 +138,14 @@ int vsMotionDetectInit(VSMotionDetect* md, const VSMotionDetectConfig* conf, con
   int maxShift      = VS_MAX(16, minDimension/7);
   int fieldSize     = VS_MAX(16, minDimension/10);
   int fieldSizeFine = VS_MAX(6, minDimension/60);
-#if defined(USE_SSE2) || defined(USE_SSE2_ASM)
-  fieldSize     = (fieldSize / 16 + 1) * 16;
-  fieldSizeFine = (fieldSizeFine / 16 + 1) * 16;
-#endif
+  /* Every SIMD kernel steps whole 16 byte blocks and has no tail loop, so the
+     field size has to be a multiple of 16.  This is done unconditionally --
+     not only when a SIMD kernel is actually selected -- because the kernel is
+     now picked at *runtime*: making the field size depend on the host's
+     instruction set would make the same input produce different .trf output on
+     different machines. */
+  fieldSize     = (fieldSize     / VS_SIMD_FIELD_ALIGNMENT + 1) * VS_SIMD_FIELD_ALIGNMENT;
+  fieldSizeFine = (fieldSizeFine / VS_SIMD_FIELD_ALIGNMENT + 1) * VS_SIMD_FIELD_ALIGNMENT;
   if (!initFields(md, &md->fieldscoarse, fieldSize, maxShift, md->conf.stepSize,
                   1, 0, md->conf.contrastThreshold)) {
     return VS_ERROR;
@@ -341,12 +349,7 @@ int initFields(VSMotionDetect* md, VSMotionDetectFields* fs,
 
 /** \see contrastSubImg*/
 double contrastSubImgPlanar(VSMotionDetect* md, const Field* field) {
-#ifdef USE_SSE2
-  return contrastSubImg1_SSE(md->curr.data[0], field, md->curr.linesize[0],md->fi.height);
-#else
-  return contrastSubImg(md->curr.data[0],field,md->curr.linesize[0],md->fi.height,1);
-#endif
-
+  return contrastSubImg1(md->curr.data[0], field, md->curr.linesize[0], md->fi.height);
 }
 
 /**

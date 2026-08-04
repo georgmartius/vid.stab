@@ -43,13 +43,17 @@ if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES AND NOT SSE2_FOUND)
   add_definitions(-march=armv8-a+fp+simd+crypto+crc)
 endif()
 
-# here we should check for SSE2
-# our  -DUSE_SSE2_ASM code does not work with fpic
-if (NOT MSVC)
-  if(SSE2_FOUND)
-      add_definitions( -DUSE_SSE2 -msse2 -ffast-math )
-endif ()
+# --- SIMD kernels ------------------------------------------------------------
+# Which kernel runs is decided at runtime (src/cpudetect.c), so the AVX2 and
+# AVX-512 variants are compiled in wherever the *compiler* can build them and
+# the resulting binary still runs on an SSE2-only host.  Only the SSE2 flag is
+# global, since SSE2 is baseline on x86_64.
+include (VidstabSimd)
+vidstab_configure_simd("${CMAKE_CURRENT_SOURCE_DIR}/src")
+message(STATUS "SIMD kernels compiled in: ${VIDSTAB_SIMD_SUMMARY}")
 
+if(NOT MSVC AND SSE2_FOUND)
+  add_definitions( -msse2 -ffast-math )
 endif()
 if(MSVC AND USE_OMP)
   add_compile_options(/openmp)
@@ -60,8 +64,10 @@ endif()
 
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
-  src/motiondetect_opt.c src/serialize.c src/localmotion2transform.c
+  src/serialize.c src/localmotion2transform.c
   src/boxblur.c src/vsvector.c)
+list(APPEND SOURCES ${VIDSTAB_SIMD_SOURCES})
+add_compile_definitions(${VIDSTAB_SIMD_DEFS})
 
 # --- LP solver backend for the L1 optimal camera path -------------------------
 # The built-in interior point solver keeps vid.stab dependency free; GLPK can be

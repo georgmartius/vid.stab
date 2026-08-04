@@ -27,16 +27,18 @@
  */
 #include "motiondetect_opt.h"
 
-#ifdef USE_SSE2
+/* NOTE: ARM used to be served from this file by including sse2neon.h and
+   #define'ing USE_SSE2 here.  That never worked: the #define was local to this
+   translation unit, so motiondetect.c kept dispatching to the scalar C
+   compareSubImg and never rounded the field size up to a multiple of 16, and
+   the shimmed kernels below were dead code.  ARM now has native kernels in
+   motiondetect_neon.c, reached through the runtime dispatcher. */
+
+#ifdef VS_HAVE_SSE2
 #include <emmintrin.h>
 #endif
 
-#ifdef __ARM_NEON__
-#include "sse2neon.h"
-#define USE_SSE2
-#endif
-
-#ifdef USE_SSE2
+#ifdef VS_HAVE_SSE2
 /**
    \see contrastSubImg using SSE2 optimization, Planar (1 byte per channel) only
 */
@@ -123,7 +125,7 @@ double contrastSubImg_variance_C(unsigned char* const I,
   return (double)var/numpixel/255.0;
 }
 
-#ifdef USE_SSE2
+#ifdef VS_HAVE_SSE2
 unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* const I2,
                                     const Field* field,
                                     int linesize1, int linesize2, int height,
@@ -163,7 +165,7 @@ unsigned int compareSubImg_thr_sse2(unsigned char* const I1, unsigned char* cons
 
   return sum;
 }
-#endif // USE_SSE2
+#endif // VS_HAVE_SSE2
 
 #ifdef USE_SSE2_ASM
 unsigned int compareSubImg_thr_sse2_asm(unsigned char* const I1, unsigned char* const I2,

@@ -83,8 +83,9 @@ runtime. Only the AVX2/AVX-512 *kernel files* are compiled with `-mavx2` etc.,
 so the binary still runs on an SSE2-only host.
 
 `VIDSTAB_SIMD=none|sse2|avx2|avx512|neon` overrides the choice; that is how the
-table below was produced on one machine, and it makes the kernels testable
-against each other in CI.
+table below was produced on one machine, how the kernels are tested against
+each other in CI, and how the CI benchmark step compares dispatch levels
+back to back on one runner.
 
 Field size is now rounded to a multiple of 16 **unconditionally** rather than
 only in SSE2 builds. That matters: the kernel is chosen at runtime, so making
@@ -168,63 +169,12 @@ likely to come from **doing fewer comparisons** (the search is a full spiral
 scan over ~594k calls/frame at 1080p) than from making each one faster —
 e.g. a coarse-to-fine pyramid, or early termination on the field level.
 
-## GPU offload: assessment, not recommended for now
-
-Block-matching motion search is exactly the kind of work GPUs are good at, and
-at 4K the current 202 ms/frame (5 fps) is slow enough to be worth attacking.
-But:
-
-- **Dependency cost is the dominant argument.** vid.stab is consumed as a small
-  dependency-light C library by ffmpeg and transcode, and packaged widely. Add
-  OpenCL/CUDA/Vulkan and every packager inherits a runtime dependency and a
-  driver-dependent failure mode, for a filter that is not the bottleneck of a
-  typical transcode.
-- **The early-exit heuristic does not port.** The CPU kernel abandons a
-  candidate the moment its running SAD exceeds the best so far, which is where
-  a large part of its speed comes from. A GPU would do the full exhaustive SAD
-  — far more total work, made up for by parallelism, but it means the speedup
-  is much less than the raw FLOP ratio suggests.
-- **Transfer is affordable but not free.** Two 4K Y planes is ~16 MB/frame,
-  ~1.5 ms round trip on PCIe 3.0 x16 — a few percent at 4K, but larger than
-  the entire 720p frame budget.
-- **Precision/determinism.** SAD is exact integer arithmetic, so a GPU could in
-  principle be bit-identical, but only with care about reduction order. The
-  library currently guarantees the same `.trf` for the same input on any
-  machine, and a GPU backend would put that at risk.
-
-Verdict: not worth it at 1080p and below, where this branch already reaches
-56 fps. If 4K/8K throughput becomes a priority, the better first step is
-algorithmic (pyramid search), which helps CPU and GPU alike and costs no
-dependencies. A GPU backend, if ever built, should be an optional
-compile-time-off plugin rather than a core dependency.
-
-## CI coverage
-
-The dispatcher selects one kernel per run, and "the compiler can emit it" is
-not "the CPU can run it" — a CI runner with a recent GCC on a pre-AVX-512 core
-is the normal case. The equivalence test therefore skips kernels the CPU cannot
-execute (calling one is a SIGILL, not a test failure) and prints
-`N of M kernel(s) checked` so a permanently-skipped kernel cannot pass as a
-silent no-op. Four jobs between them execute every kernel:
-
-| Job | Kernels executed |
-|---|---|
-| `x86_64` | SSE2, AVX2, AVX-512 (runner dependent), NEON-emulated; plus reruns at `VIDSTAB_SIMD=none` and `=sse2` |
-| `aarch64` (native ARM) | NEON on real hardware |
-| `armv7-qemu` | NEON 32-bit fallbacks |
-| `avx512-sde` | AVX-512 forced via Intel SDE, independent of runner CPU |
-
-The `armv7-qemu` job runs a targeted subset rather than `--all`: it also
-surfaced a pre-existing, non-SIMD failure in `test_serialize_robust`, where a
-corrupt list length below `VS_MAX_LOCALMOTIONS_PER_FRAME` (1<<20) still asks
-for tens of MB — refused by a 32-bit process under qemu, satisfied by a 64-bit
-one. The library then rejects the record, arguably the safer behaviour, but the
-test asserts the 64-bit recovery path. Worth fixing separately.
-
 ## What is not done
 
-- **No ARM benchmark.** The NEON kernel is correctness-verified on real
-  aarch64 hardware, but its speed has never been measured.
+- **No controlled ARM benchmark.** The NEON kernel is correctness-verified on
+  real aarch64 hardware, and CI prints timings per dispatch level, but a shared
+  CI runner is not a measurement environment: treat those numbers as a sanity
+  check that NEON beats scalar, not as a figure to quote.
 - `boxblur_hori` is still a serial running sum per row (parallel across rows,
   but scalar within one). A prefix-sum formulation would vectorize it.
 - The `acc[i]/size` division in `boxblur_vert` blocks full auto-vectorization

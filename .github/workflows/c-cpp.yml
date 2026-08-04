@@ -38,6 +38,21 @@ jobs:
     - name: run tests, SSE2 dispatch
       run: VIDSTAB_SIMD=sse2 ./tests --all
       working-directory: tests
+    # Timings, not a gate.  GitHub runners are shared VMs, so absolute numbers
+    # are not comparable between runs and no threshold is asserted -- nothing
+    # here can fail the build.  What is meaningful is the *ratio* between
+    # dispatch levels within one run, since those execute back to back on the
+    # same machine.
+    - name: benchmark (informational)
+      continue-on-error: true
+      working-directory: tests
+      run: |
+        make bench -j2
+        for s in none sse2 avx2 avx512 neon; do
+          printf '%-7s ' "$s"
+          VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
+            | grep -o '[0-9.]* ms/frame.*' || echo '(not available on this CPU)'
+        done
 
   # Native AArch64 -- real hardware, real NEON, no emulation.  This is what
   # actually validates src/motiondetect_neon.c; the neon_emu.h path in the x86
@@ -62,6 +77,21 @@ jobs:
     - name: run tests, scalar dispatch
       run: VIDSTAB_SIMD=none ./tests --all
       working-directory: tests
+    # Timings, not a gate.  GitHub runners are shared VMs, so absolute numbers
+    # are not comparable between runs and no threshold is asserted -- nothing
+    # here can fail the build.  What is meaningful is the *ratio* between
+    # dispatch levels within one run, since those execute back to back on the
+    # same machine.
+    - name: benchmark (informational)
+      continue-on-error: true
+      working-directory: tests
+      run: |
+        make bench -j2
+        for s in none sse2 avx2 avx512 neon; do
+          printf '%-7s ' "$s"
+          VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
+            | grep -o '[0-9.]* ms/frame.*' || echo '(not available on this CPU)'
+        done
 
   # 32 bit ARM under qemu.  Not for speed -- this is the only place the ARMv7
   # reduction fallbacks in motiondetect_neon.c (vs_haddq_u32 / vs_hminq_u8 /

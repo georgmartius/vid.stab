@@ -83,6 +83,22 @@ add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
 
+# The benchmark shares the test build's sources and SIMD configuration, so it
+# can time every kernel compiled in rather than only the dispatched one.
+# Informational: it asserts nothing and is not run by "make test".
+add_executable (bench EXCLUDE_FROM_ALL ../bench/bench_motiondetect.c
+  ../src/vsvector.c
+  ../src/transform.c ../src/transformfloat.c ../src/transformfixedpoint.c
+  ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
+  ../src/serialize.c ../src/localmotion2transform.c
+  ../src/motiondetect.c ../src/boxblur.c
+  ${VIDSTAB_SIMD_SOURCES}
+  ${LP_SOURCES})
+target_link_libraries(bench m)
+if(USE_OMP)
+target_link_libraries(bench gomp)
+endif()
+
 target_link_libraries(tests m)
 if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
 target_link_libraries(tests GLPK::GLPK)

@@ -47,10 +47,10 @@
 /* Horizontal sum of the four 64 bit lanes an accumulated _mm256_sad_epu8
    produces.  Each lane holds at most rows*32*255, so 64 bits cannot overflow
    and the result fits comfortably in 32 bits for any real field size. */
-static inline unsigned int hsum_sad256(__m256i v) {
+static inline unsigned int hsum_sad256(__m256i v, __m128i tail) {
   __m128i lo = _mm256_castsi256_si128(v);
   __m128i hi = _mm256_extracti128_si256(v, 1);
-  __m128i s  = _mm_add_epi64(lo, hi);
+  __m128i s  = _mm_add_epi64(_mm_add_epi64(lo, hi), tail);
   s = _mm_add_epi64(s, _mm_unpackhi_epi64(s, s));
   return (unsigned int)_mm_cvtsi128_si32(s);
 }
@@ -71,6 +71,7 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
   int mainBytes = rowBytes & ~31;
   int hasTail   = rowBytes & 16;
   __m256i acc = _mm256_setzero_si256();
+  __m128i accTail = _mm_setzero_si128();
 
   p1 = I1 + (field->x - s2) * bytesPerPixel + (field->y - s2) * linesize1;
   p2 = I2 + (field->x - s2 + d_x) * bytesPerPixel + (field->y - s2 + d_y) * linesize2;
@@ -83,13 +84,15 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
       acc = _mm256_add_epi64(acc, _mm256_sad_epu8(a, b));
     }
     if (hasTail) {
-      /* Widen the 16 byte remainder into the low half of a 256 bit vector so
-         it can join the same accumulator.  _mm256_zextsi128_si256 would be the
-         direct spelling but is missing from GCC before 10. */
+      /* The 16 byte remainder goes into its own 128 bit accumulator rather
+         than being widened into `acc`.  Widening cost a vpxor + vinserti128
+         on every row, and rows are frequently 16 (mod 32) bytes -- the field
+         size is a multiple of 16 but not of 32, so 720p (80) and 1080p (112)
+         both take this path once per row, where that overhead landed on a
+         third and a quarter of the row respectively. */
       __m128i a = _mm_loadu_si128((__m128i const*)(p1 + mainBytes));
       __m128i b = _mm_loadu_si128((__m128i const*)(p2 + mainBytes));
-      __m128i t = _mm_sad_epu8(a, b);
-      acc = _mm256_add_epi64(acc, _mm256_inserti128_si256(_mm256_setzero_si256(), t, 0));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(a, b));
     }
 
     /* Early exit: this candidate is already worse than the best match so far.
@@ -99,7 +102,7 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
        of every row is allowed and the argmin the caller computes is
        unchanged. */
     if ((j & (VS_AVX2_CHECK_ROWS - 1)) == (VS_AVX2_CHECK_ROWS - 1)) {
-      sum = hsum_sad256(acc);
+      sum = hsum_sad256(acc, accTail);
       if (sum > treshold)
         return sum;
     }
@@ -107,7 +110,7 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
     p2 += linesize2;
   }
 
-  return hsum_sad256(acc);
+  return hsum_sad256(acc, accTail);
 }
 
 double contrastSubImg1_avx2(unsigned char* const I, const Field* field,

@@ -37,27 +37,43 @@
 #ifdef SIMD_HAVE_ANY_KERNEL
 
 /* The table of kernels to check.  Every kernel compiled into this build is
-   checked against the plain C reference, independently of which one the
-   runtime dispatcher would actually pick on this machine -- that is the whole
-   point, since the dispatcher can only ever select one of them per run. */
+   checked against the plain C reference -- not only the one the dispatcher
+   would pick, since it can select just one per run.
+
+   But "compiled in" is not the same as "runnable here": what a build machine's
+   *compiler* can emit routinely exceeds what its *CPU* can execute, and a CI
+   runner with a recent GCC on a pre-AVX-512 core is the normal case rather
+   than an exotic one.  Calling such a kernel directly, as this test does,
+   bypasses the runtime dispatch that protects the library itself and gets
+   SIGILL.  So each entry carries the feature bit it needs and is skipped
+   unless vs_cpu_flags() reports it.
+
+   `requires == VS_CPU_NONE` means "always safe to call": that is the NEON
+   kernel when it was built against the scalar emulation in neon_emu.h, which
+   is plain C and runs anywhere. */
 typedef struct {
   const char*         name;
+  unsigned int        requires;
   vsCompareSubImgFn   cmp;
   vsContrastSubImg1Fn con;
 } SimdKernel;
 
 static const SimdKernel simd_kernels[] = {
 #ifdef VS_HAVE_SSE2
-  { "SSE2",   compareSubImg_thr_sse2,   contrastSubImg1_SSE    },
+  { "SSE2",   VS_CPU_SSE2,   compareSubImg_thr_sse2,   contrastSubImg1_SSE    },
 #endif
 #ifdef VS_HAVE_AVX2
-  { "AVX2",   compareSubImg_thr_avx2,   contrastSubImg1_avx2   },
+  { "AVX2",   VS_CPU_AVX2,   compareSubImg_thr_avx2,   contrastSubImg1_avx2   },
 #endif
 #ifdef VS_HAVE_AVX512
-  { "AVX512", compareSubImg_thr_avx512, contrastSubImg1_avx512 },
+  { "AVX512", VS_CPU_AVX512, compareSubImg_thr_avx512, contrastSubImg1_avx512 },
 #endif
 #ifdef VS_HAVE_NEON
-  { "NEON",   compareSubImg_thr_neon,   contrastSubImg1_neon   },
+#ifdef VS_NEON_EMULATION
+  { "NEON(emulated)", VS_CPU_NONE, compareSubImg_thr_neon, contrastSubImg1_neon },
+#else
+  { "NEON",   VS_CPU_NEON,   compareSubImg_thr_neon,   contrastSubImg1_neon   },
+#endif
 #endif
 };
 #define SIMD_NUM_KERNELS ((int)(sizeof(simd_kernels)/sizeof(simd_kernels[0])))
@@ -247,16 +263,28 @@ static void simd_test_contrast(const TestData* testdata, const SimdKernel* k){
 
 void test_simd_equivalence(const TestData* testdata){
 #ifdef SIMD_HAVE_ANY_KERNEL
-  int i;
-  fprintf(stderr,"********** SIMD vs C equivalence (%i kernel(s) compiled in):\n",
-          SIMD_NUM_KERNELS);
+  int i, checked = 0;
+  unsigned int cpu = vs_cpu_flags();
+  fprintf(stderr,"********** SIMD vs C equivalence (%i kernel(s) compiled in, "
+          "this CPU: %s):\n", SIMD_NUM_KERNELS, vs_cpu_flags_name(cpu));
   for (i = 0; i < SIMD_NUM_KERNELS; i++) {
     const SimdKernel* k = &simd_kernels[i];
+    /* Calling a kernel the CPU cannot execute is a SIGILL, not a test
+       failure -- skip loudly so a permanently-skipped kernel is visible
+       rather than quietly passing as "nothing to do". */
+    if (k->requires != VS_CPU_NONE && !(cpu & k->requires)) {
+      fprintf(stderr,"*** [%s] SKIPPED: compiled in, but not supported by this CPU\n",
+              k->name);
+      continue;
+    }
     simd_test_compare_strict(testdata, k);
     simd_test_compare_threshold(testdata, k);
     simd_test_compare_argmin(testdata, k);
     simd_test_contrast(testdata, k);
+    checked++;
   }
+  fprintf(stderr,"********** %i of %i kernel(s) checked on this machine\n",
+          checked, SIMD_NUM_KERNELS);
 #else
   (void)testdata;
   fprintf(stderr,"********** SIMD vs C equivalence: no SIMD kernels in this build\n");

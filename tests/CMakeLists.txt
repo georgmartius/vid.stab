@@ -32,9 +32,10 @@ message(STATUS "tests: SIMD kernels compiled in: ${VIDSTAB_SIMD_SUMMARY}")
 # It proves the logic, not the performance -- that still needs real hardware.
 if(NOT VIDSTAB_HAVE_NEON)
   list(APPEND VIDSTAB_SIMD_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/../src/motiondetect_neon.c")
-  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../src/motiondetect_neon.c"
-                              PROPERTIES COMPILE_DEFINITIONS "VS_NEON_EMULATION")
-  add_compile_definitions(VS_HAVE_NEON)
+  # Both defines are global rather than per-source: motiondetect_neon.c needs
+  # VS_NEON_EMULATION to pick up neon_emu.h, and test_simd_equivalence.c needs
+  # it to know the kernel is plain C and therefore safe to call on any CPU.
+  add_compile_definitions(VS_HAVE_NEON VS_NEON_EMULATION)
   message(STATUS "tests: also checking the NEON kernel via neon_emu.h")
 endif()
 

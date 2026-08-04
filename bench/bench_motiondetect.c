@@ -14,6 +14,7 @@
 #include "motiondetect.h"
 #include "motiondetect_internal.h"
 #include "motiondetect_opt.h"
+#include "cpudetect.h"
 #include "frameinfo.h"
 #include "vsvector.h"
 
@@ -172,6 +173,7 @@ int main(int argc, char** argv) {
   int width = 1920, height = 1080, nframes = 30;
   int sizes[] = {32, 48, 112};
   int i;
+  unsigned int cpu;
 
   if (argc >= 3) {
     width = atoi(argv[1]);
@@ -182,32 +184,41 @@ int main(int argc, char** argv) {
 
   alloc_images();
 
-  printf("=== kernels ===\n");
+  /* Only time kernels this CPU can actually execute -- a build machine's
+     compiler routinely supports more than its processor does. */
+  cpu = vs_cpu_flags();
+  printf("=== kernels (this CPU: %s) ===\n", vs_cpu_flags_name(cpu));
   for (i = 0; i < (int)(sizeof(sizes) / sizeof(sizes[0])); i++) {
     int s = sizes[i];
     int reps = 20000000 / (s * s);
     bench_compare("C", compareSubImg_thr, s, reps / 81 + 1);
 #ifdef VS_HAVE_SSE2
-    bench_compare("SSE2", compareSubImg_thr_sse2, s, reps / 81 + 1);
+    if (cpu & VS_CPU_SSE2)
+      bench_compare("SSE2", compareSubImg_thr_sse2, s, reps / 81 + 1);
 #endif
 #ifdef VS_HAVE_AVX2
-    bench_compare("AVX2", compareSubImg_thr_avx2, s, reps / 81 + 1);
+    if (cpu & VS_CPU_AVX2)
+      bench_compare("AVX2", compareSubImg_thr_avx2, s, reps / 81 + 1);
 #endif
 #ifdef VS_HAVE_AVX512
-    bench_compare("AVX512", compareSubImg_thr_avx512, s, reps / 81 + 1);
+    if (cpu & VS_CPU_AVX512)
+      bench_compare("AVX512", compareSubImg_thr_avx512, s, reps / 81 + 1);
 #endif
 #ifdef VS_HAVE_NEON
     bench_compare("NEON", compareSubImg_thr_neon, s, reps / 81 + 1);
 #endif
     bench_contrast("C", contrast_C_wrap, s, reps);
 #ifdef VS_HAVE_SSE2
-    bench_contrast("SSE2", contrastSubImg1_SSE, s, reps);
+    if (cpu & VS_CPU_SSE2)
+      bench_contrast("SSE2", contrastSubImg1_SSE, s, reps);
 #endif
 #ifdef VS_HAVE_AVX2
-    bench_contrast("AVX2", contrastSubImg1_avx2, s, reps);
+    if (cpu & VS_CPU_AVX2)
+      bench_contrast("AVX2", contrastSubImg1_avx2, s, reps);
 #endif
 #ifdef VS_HAVE_AVX512
-    bench_contrast("AVX512", contrastSubImg1_avx512, s, reps);
+    if (cpu & VS_CPU_AVX512)
+      bench_contrast("AVX512", contrastSubImg1_avx512, s, reps);
 #endif
 #ifdef VS_HAVE_NEON
     bench_contrast("NEON", contrastSubImg1_neon, s, reps);

@@ -31,10 +31,20 @@ long timeOfDayinMS();
      units_failed++;  }                                                           \
    }
 
+/* __STRING comes from glibc's <sys/cdefs.h> and does not exist elsewhere; it
+   is a plain stringification, so provide it where it is missing. */
+#ifndef __STRING
+# define __STRING(x) #x
+#endif
+
 #if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L
 # define ___FUNCTION  __func__
+#elif defined(_MSC_VER)
+/* MSVC only defines __STDC_VERSION__ when told to compile a specific C
+   standard, and offers __FUNCTION__ regardless. */
+# define ___FUNCTION  __FUNCTION__
 #else
-# define ___FUNCTION  ((__const char *) 0)
+# define ___FUNCTION  ((const char *) 0)
 #endif
 
 

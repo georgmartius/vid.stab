@@ -10,8 +10,10 @@ void test_contrastImg(const TestData* testdata){
   f.y = 300;
   fprintf(stderr,"********** Contrast:\n");
   int numruns = NUMCNTR;
-  double contrastC[numruns];
-  double contrastOpt[numruns];
+  /* Sized from the macro rather than from numruns: the latter makes these
+     variable length arrays, which MSVC does not implement. */
+  double contrastC[NUMCNTR];
+  double contrastOpt[NUMCNTR];
   int timeC, timeOpt;
   fprintf(stderr,"********** Michelson Contrast (with SSE2):\n");
   {

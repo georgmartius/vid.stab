@@ -93,8 +93,10 @@ void test_compareImg_performance(const TestData* testdata){
   fprintf(stderr,"********** Compare speedtest:\n");
 
   int numruns = NUMCMP;
-  int diffsC[numruns];
-  int diffsO[numruns];
+  /* Sized from the macro rather than from numruns: the latter makes these
+     variable length arrays, which MSVC does not implement. */
+  int diffsC[NUMCMP];
+  int diffsO[NUMCMP];
   int timeC, timeO;
   timeC=runcompare(compareSubImg_thr, testdata->frames[0], testdata->frames[1],
                    f, testdata->fi, diffsC, 0, numruns);

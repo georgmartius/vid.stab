@@ -1,4 +1,8 @@
-1.3	L1-optimal camera path (Grundmann et al., CVPR 2011) implemented and
+1.3	A corrupt transform file can no longer drive an absurd allocation.
+	API change: vs_vector_set() and vs_vector_set_dup() return
+	VS_OK/VS_ERROR and report the replaced element through a
+	`void **old' out parameter.
+	L1-optimal camera path (Grundmann et al., CVPR 2011) implemented and
 	enabled: camPathAlgo=VSOptimalL1 now really runs the optimization
 	instead of falling back to the gaussian filter.  No new config
 	fields: the optimization takes its zoom budget from zoom/optZoom

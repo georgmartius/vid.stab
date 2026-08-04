@@ -40,6 +40,7 @@
 #include "test_motiondetect.c"
 #include "test_store_restore.c"
 #include "test_serialize_robust.c"
+#include "test_vsvector.c"
 #include "test_contrast.c"
 #include "test_boxblur.c"
 #include "test_omp.c"
@@ -157,6 +158,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testSRO", "serialization robustness")){
     UNIT(test_serialize_robust());
+  }
+
+  if(all || contains(argv,argc,"--testVEC", "vsvector bounds")){
+    UNIT(test_vsvector_bounds());
   }
 
   if(all || contains(argv,argc,"--testCT", "contrastImg")){

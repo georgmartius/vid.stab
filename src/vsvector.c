@@ -81,7 +81,9 @@ int vs_vector_size(const VSVector *V){
 
 int vs_vector_append(VSVector *V, void *data){
   assert(V && data);
-  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
+  if(!V->data || V->buffersize < 1){
+    if(vs_vector_init(V,4)!=VS_OK) return VS_ERROR;
+  }
   if(V->nelems >= V->buffersize){
     if(vs_vector_resize(V, V->buffersize*2)!=VS_OK) return VS_ERROR;
   }
@@ -92,11 +94,14 @@ int vs_vector_append(VSVector *V, void *data){
 
 int vs_vector_append_dup(VSVector *V, void *data, int data_size){
   assert(V && data);
-  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
   void* d = vs_malloc(data_size);
   if(!d) return VS_ERROR;
   memcpy(d, data, data_size);
-  return vs_vector_append(V, d);
+  if(vs_vector_append(V, d)!=VS_OK){
+    vs_free(d); // the copy never made it into the vector
+    return VS_ERROR;
+  }
+  return VS_OK;
 }
 
 
@@ -108,13 +113,27 @@ void *vs_vector_get(const VSVector *V, int pos){
     return V->data[pos];
 }
 
-void* vs_vector_set(VSVector *V, int pos, void *data){
-  assert(V && data && pos>=0);
-  if(!V->data || V->buffersize < 1) vs_vector_init(V,4);
+int vs_vector_set(VSVector *V, int pos, void *data, void **old){
+  assert(V && data);
+  if(old) *old = 0;
+  /* A position is not trusted: it can come from a file (a frame index in a
+     .trf, say). Reject an implausible one instead of sizing the buffer after
+     it - the growth loop below would otherwise overflow int and hand the
+     allocator a negative size. */
+  if(pos < 0 || pos >= VS_VECTOR_MAX_SIZE){
+    vs_log_error("VS_Vector","position %i out of range [0,%i)!",
+                 pos, VS_VECTOR_MAX_SIZE);
+    return VS_ERROR;
+  }
+  if(!V->data || V->buffersize < 1){
+    if(vs_vector_init(V,4)!=VS_OK) return VS_ERROR;
+  }
   if(V->buffersize <= pos) {
     int nsize = V->buffersize;
-    while(nsize <= pos) nsize *=2;
-    if(vs_vector_resize(V, nsize)!=VS_OK) return 0; // insuficient error handling here! VS_ERROR
+    /* double, but stop before the multiplication would overflow */
+    while(nsize <= pos && nsize <= VS_VECTOR_MAX_SIZE/2) nsize *= 2;
+    if(nsize <= pos) nsize = pos+1;
+    if(vs_vector_resize(V, nsize)!=VS_OK) return VS_ERROR;
   }
   if(pos >= V->nelems){ // insert after end of vector
     int i;
@@ -123,32 +142,42 @@ void* vs_vector_set(VSVector *V, int pos, void *data){
     }
     V->nelems=pos+1;
   }
-  void* old = V->data[pos];
+  if(old) *old = V->data[pos];
   V->data[pos] = data;
-  return old;
+  return VS_OK;
 }
 
-void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size){
-  void* d = vs_malloc(data_size);
-  if(!d) return 0; // insuficient error handling here! VS_ERROR
+int vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size,
+                      void **old){
+  int result;
+  void* d;
+  if(old) *old = 0;
+  d = vs_malloc(data_size);
+  if(!d) return VS_ERROR;
   memcpy(d, data, data_size);
-  return vs_vector_set(V, pos, d);
+  result = vs_vector_set(V, pos, d, old);
+  if(result != VS_OK) vs_free(d); // the copy never made it into the vector
+  return result;
 }
 
 
 int vs_vector_resize(VSVector *V, int newsize){
   assert(V && V->data);
   if(newsize<1) newsize=1;
-  V->data = (void**)vs_realloc(V->data, newsize * sizeof(void*));
+  /* into a temporary: a failed resize must leave V usable, not with
+     data==NULL and a nonzero buffersize - the next vs_vector_set() would
+     re-initialize it and silently drop everything stored so far */
+  void** newdata = (void**)vs_realloc(V->data, newsize * sizeof(void*));
+  if (!newdata){
+    vs_log_error("VS_Vector","out of memory!");
+    return VS_ERROR;
+  }
+  V->data=newdata;
   V->buffersize=newsize;
   if(V->nelems>V->buffersize){
     V->nelems=V->buffersize;
   }
-  if (!V->data){
-    vs_log_error("VS_Vector","out of memory!");
-    return VS_ERROR;
-  } else
-    return VS_OK;
+  return VS_OK;
 }
 
 VSVector vs_vector_filter(const VSVector *V, short (*pred)(void*, void*), void* param){

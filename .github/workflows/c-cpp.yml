@@ -78,9 +78,10 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    - name: compiler version
-      shell: cmd
-      run: cmake --version && cl 2>&1 | findstr /C:"Version" || ver
+    # cl.exe is only on PATH inside a developer prompt; the compiler it picked
+    # is printed by the configure step below anyway.
+    - name: cmake version
+      run: cmake --version
     - name: cmake, shared
       run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON
     - name: build, shared

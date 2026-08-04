@@ -50,8 +50,8 @@ void tests_init();
 
 int test_summary();
 
-void test_fails (__const char *__assertion, __const char *__file,
-                 unsigned int __line, __const char *__function);
+void test_fails (const char *assertion, const char *file,
+                 unsigned int line, const char *function);
 
 
 

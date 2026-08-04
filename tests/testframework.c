@@ -74,8 +74,8 @@ int test_summary(){
   return tests_failed==0;
 }
 
-void test_fails (__const char *__assertion, __const char *__file,
-                 unsigned int __line, __const char *__function){
-  fprintf(stderr, "%s:%i: Test Failed: %s\n in Function %s", __file,__line,__assertion,__function);
+void test_fails (const char *assertion, const char *file,
+                 unsigned int line, const char *function){
+  fprintf(stderr, "%s:%i: Test Failed: %s\n in Function %s", file,line,assertion,function);
   tests_failed++;
 }

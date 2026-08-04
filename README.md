@@ -123,9 +123,11 @@ NOTE: 10-bit 4:2:2 video must be downsampled to 8-bit 4:2:0 to avoid distortions
   <dd>Set minimum contrast. Any measurement field having contrast below this value is discarded. Must be a floating point value in the range 0-1. Default value is 0.3.</dd>
   <dt><b>tripod</b></dt>
   <dd>  Set reference frame number for tripod mode.  If enabled, the motion of the frames is compared to a reference frame in the filtered stream, identified by the specified number. The intention is to compensate all movements in a more-or-less static scene and keep the camera view absolutely still. If set to 0, it is disabled. The frames are counted starting from 1.
+  <br>Frames before the reference frame are not stabilized: no correction is applied to them (they are still zoomed/cropped like the rest of the clip), and stabilization begins at the reference frame, where the view snaps to the reference pose.
   <br>NOTE: If this mode is used in first pass then it should also be used in second pass.</dd>
   <dt><b>show</b></dt>
-  <dd>Show fields and transforms in the resulting frames for visual analysis. It accepts an integer in the range 0-2. Default value is 0, which disables any visualization.</dd>
+  <dd>Show fields and transforms in the resulting frames for visual analysis. It accepts an integer in the range 0-2. Default value is 0, which disables any visualization.
+  <br>In tripod mode, frames before the reference frame show no overlay, since no motion is measured for them.</dd>
 </dl>
 
 
@@ -198,7 +200,8 @@ ffmpeg -i input.mp4 -vf format=yuv420p,vidstabdetect -f null -
   <br><i><b>bicubic</b></i>: Cubic in both directions (slow speed).
   <dt><b>tripod</b></dt>
   <dd>Enables virtual tripod mode if set to 1, which is equivalent to <b>relative=0:smoothing=0</b>. Default value is 0.
-  <br>NOTE: If this mode has been used in first pass then only it should be used in second pass.</dd>
+  <br>The stored transforms are used as-is: no smoothing or accumulation is applied, they are simply passed through, including the leading zero transforms for frames before the reference frame. Which frames are not stabilized is decided during the first pass.
+  <br>NOTE: If this mode has been used in first pass then it should also be used in second pass.</dd>
   <dt><b>debug</b></dt>
   <dd>Increase log verbosity if set to 1. Also the detected global motions are written to the temporary file  <b>global_motions.trf</b> . Default value is 0. </dd>
 

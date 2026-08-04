@@ -199,7 +199,16 @@ int vsMotionDetection(VSMotionDetect* md, LocalMotions* motions, VSFrame *frame)
     // BoxBlurNoColor);
   }
 
-  if (md->hasSeenOneFrame) {
+  /* Tripod lead-in: frames before the reference frame emit no motion.
+     Detection is a single streaming pass, so a frame at index < virtualTripod
+     cannot be measured against the reference at index virtualTripod-1, which
+     has not been read yet. These frames are left uncorrected; stabilization
+     begins at the reference frame. For the default virtualTripod=1 the
+     lead-in is frame 0 alone. */
+  int tripodLeadIn = md->conf.virtualTripod >= 1
+                     && md->frameNum < md->conf.virtualTripod;
+
+  if (md->hasSeenOneFrame && !tripodLeadIn) {
     LocalMotions motionscoarse;
     LocalMotions motionsfine;
     vs_vector_init(&motionsfine,0);

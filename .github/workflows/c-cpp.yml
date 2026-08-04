@@ -48,10 +48,22 @@ jobs:
       working-directory: tests
       run: |
         make bench -j2
+        # Best of three. A shared runner only ever adds time -- other tenants,
+        # steal, thermal -- so the minimum is much closer to the real cost than
+        # a mean, and a single sample is not worth reading at all.
         for s in none sse2 avx2 avx512 neon; do
-          printf '%-7s ' "$s"
-          VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
-            | grep -o '[0-9.]* ms/frame.*' || echo '(not available on this CPU)'
+          best=
+          for r in 1 2 3; do
+            t=$(VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
+                  | grep -o '[0-9.]* ms/frame' | grep -o '[0-9.]*')
+            [ -n "$t" ] || continue
+            best=$(printf '%s\n%s\n' "$best" "$t" | grep . | sort -g | head -1)
+          done
+          if [ -n "$best" ]; then
+            printf '%-7s %s ms/frame (best of 3)\n' "$s" "$best"
+          else
+            printf '%-7s not available on this CPU\n' "$s"
+          fi
         done
 
   # Native AArch64 -- real hardware, real NEON, no emulation.  This is what
@@ -87,10 +99,22 @@ jobs:
       working-directory: tests
       run: |
         make bench -j2
+        # Best of three. A shared runner only ever adds time -- other tenants,
+        # steal, thermal -- so the minimum is much closer to the real cost than
+        # a mean, and a single sample is not worth reading at all.
         for s in none sse2 avx2 avx512 neon; do
-          printf '%-7s ' "$s"
-          VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
-            | grep -o '[0-9.]* ms/frame.*' || echo '(not available on this CPU)'
+          best=
+          for r in 1 2 3; do
+            t=$(VIDSTAB_SIMD=$s ./bench 1280 720 20 2>/dev/null \
+                  | grep -o '[0-9.]* ms/frame' | grep -o '[0-9.]*')
+            [ -n "$t" ] || continue
+            best=$(printf '%s\n%s\n' "$best" "$t" | grep . | sort -g | head -1)
+          done
+          if [ -n "$best" ]; then
+            printf '%-7s %s ms/frame (best of 3)\n' "$s" "$best"
+          else
+            printf '%-7s not available on this CPU\n' "$s"
+          fi
         done
 
   # 32 bit ARM under qemu.  Not for speed -- this is the only place the ARMv7

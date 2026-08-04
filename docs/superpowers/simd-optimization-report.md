@@ -57,12 +57,21 @@ Replaced with native NEON kernels (`src/motiondetect_neon.c`) using
 `vabdq_u8`/`vpadalq_u8`, wired through the runtime dispatcher, with the
 architecture detection in one place (`cpudetect.h`) checking both spellings.
 
-**Not measured on real hardware** — no ARM machine, cross-compiler or qemu was
-available here. What *is* verified is correctness: `tests/neon_emu.h` is a
-scalar emulation of the nine NEON intrinsics the kernel uses, so the kernel is
-compiled on x86 and run through the full equivalence suite (1320 checks). The
-logic is right; the performance still needs a run on real silicon before any
-speed claim is made.
+**Correctness is now verified on real hardware.** It was not when this was
+first written — no ARM machine, cross-compiler or qemu was available on the
+development box — so `tests/neon_emu.h` was added: a scalar emulation of the
+nine NEON intrinsics the kernel uses, letting it compile on x86 and run through
+the equivalence suite there. CI then closed the gap properly:
+
+- **aarch64**, native `ubuntu-24.04-arm` runner: selects `SIMD: NEON` and
+  passes 1320/1320 equivalence checks against the C reference on real silicon.
+- **armv7 under qemu-user**: the only place the 32-bit reduction fallbacks
+  (`vs_haddq_u32`, `vs_hminq_u8`, `vs_hmaxq_u8`) execute at all, since AArch64
+  compiles the `vaddvq_`/`vminvq_` path instead. Also 1320/1320.
+
+Still **not benchmarked** on ARM: no speed claim is made for the NEON kernel,
+only correctness. qemu timings are meaningless and the CI runner is not a
+measurement environment.
 
 ## Runtime dispatch
 
@@ -189,9 +198,33 @@ algorithmic (pyramid search), which helps CPU and GPU alike and costs no
 dependencies. A GPU backend, if ever built, should be an optional
 compile-time-off plugin rather than a core dependency.
 
+## CI coverage
+
+The dispatcher selects one kernel per run, and "the compiler can emit it" is
+not "the CPU can run it" — a CI runner with a recent GCC on a pre-AVX-512 core
+is the normal case. The equivalence test therefore skips kernels the CPU cannot
+execute (calling one is a SIGILL, not a test failure) and prints
+`N of M kernel(s) checked` so a permanently-skipped kernel cannot pass as a
+silent no-op. Four jobs between them execute every kernel:
+
+| Job | Kernels executed |
+|---|---|
+| `x86_64` | SSE2, AVX2, AVX-512 (runner dependent), NEON-emulated; plus reruns at `VIDSTAB_SIMD=none` and `=sse2` |
+| `aarch64` (native ARM) | NEON on real hardware |
+| `armv7-qemu` | NEON 32-bit fallbacks |
+| `avx512-sde` | AVX-512 forced via Intel SDE, independent of runner CPU |
+
+The `armv7-qemu` job runs a targeted subset rather than `--all`: it also
+surfaced a pre-existing, non-SIMD failure in `test_serialize_robust`, where a
+corrupt list length below `VS_MAX_LOCALMOTIONS_PER_FRAME` (1<<20) still asks
+for tens of MB — refused by a 32-bit process under qemu, satisfied by a 64-bit
+one. The library then rejects the record, arguably the safer behaviour, but the
+test asserts the 64-bit recovery path. Worth fixing separately.
+
 ## What is not done
 
-- **No real ARM measurement.** The NEON kernel is correctness-verified only.
+- **No ARM benchmark.** The NEON kernel is correctness-verified on real
+  aarch64 hardware, but its speed has never been measured.
 - `boxblur_hori` is still a serial running sum per row (parallel across rows,
   but scalar within one). A prefix-sum formulation would vectorize it.
 - The `acc[i]/size` division in `boxblur_vert` blocks full auto-vectorization

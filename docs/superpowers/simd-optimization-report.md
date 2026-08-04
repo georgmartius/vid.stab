@@ -114,37 +114,37 @@ which is not worth giving up an exactly-testable property for.
 Note the C row for `compare` is not really "scalar" — GCC auto-vectorizes it at
 `-O3 -msse2`, which is why the old SSE2 kernel was only ~1.3x faster than it.
 
-## AVX2 lost to SSE2 on the GitHub x86 runner — unexplained
+## AVX2 barely beats SSE2 on AMD Zen 4 — and how CI caught it
 
-Worth recording because it did not show up on dedicated hardware. The CI
-benchmark step (720p, best of three) on `ubuntu-latest`:
+The CI benchmark step turned out to be worth more than a sanity check. On the
+`ubuntu-latest` runner (AMD EPYC 9V74, Zen 4, 4 vCPU) AVX2 first came out
+**22% slower than SSE2** at 720p — reproducibly, and surviving best-of-three
+sampling, so not runner noise. That is the opposite of every measurement on the
+i7-7800X, where AVX2 wins at every field size tested.
 
-```
-none    219.82 ms/frame
-sse2     57.65 ms/frame
-avx2     70.59 ms/frame     <- 22% slower than SSE2
-avx512   71.11 ms/frame
-```
+Zen 4 has no 256-bit frequency licensing, which ruled out the obvious
+explanation and left the kernel itself. The cause was the 16-byte tail: field
+sizes are multiples of 16 but not of 32, so 720p (80 bytes) and 1080p (112)
+both run the tail path once per row, and it was widening its result into the
+256-bit accumulator with a `vpxor` + `vinserti128` **every row** — overhead
+falling on a third and a quarter of the row respectively. Giving the tail its
+own 128-bit accumulator removed it.
 
-Reproducible across runs and across best-of-three sampling, so it is not
-runner noise — but it is the opposite of every measurement on the i7-7800X,
-where AVX2 beats SSE2 at every field size tested.
+Same-run ratios on the same runner (the only comparison a shared VM supports):
 
-Not diagnosed. Two plausible causes, neither confirmed:
+| | avx2 / sse2 |
+|---|---|
+| before | 1.224 (AVX2 22% slower) |
+| after | 1.034 (AVX2 3% slower) |
 
-- At 720p the field size is 80 bytes, so the AVX2 kernel does two 32-byte
-  iterations plus a 16-byte tail, and the tail carries widening overhead that
-  SSE2's uniform five iterations do not. That is a third of the row on a
-  less favourable path.
-- 256-bit frequency licensing on the runner's server part, which the
-  128-bit SSE2 kernel would avoid entirely.
+Locally the same change is ~2%, inside the noise — the i7-7800X simply did not
+care, which is exactly why this needed a second microarchitecture to surface.
 
-The dispatch default is set from dedicated-hardware measurement, not from
-this, and correctness is unaffected (the kernels are bit-identical and the
-equivalence tests pass on that runner). But it does mean **AVX2 should not be
-assumed to be a win on every x86 part**, and it is a reason to keep the
-`VIDSTAB_SIMD` override available to users. Worth a proper look on a known
-server CPU before treating the AVX2 default as settled for server deployments.
+AVX2 is still marginally behind SSE2 on this Zen 4 part at 720p, now close
+enough to be noise. The dispatch default stays AVX2 on measurement from
+dedicated hardware, but the lesson stands: **AVX2 is not automatically a win
+on every x86 part**, which is a reason to keep the `VIDSTAB_SIMD` override
+available to users. Worth a proper look on a dedicated server CPU.
 
 ## AVX-512 is not enabled by default, on purpose
 

@@ -114,6 +114,38 @@ which is not worth giving up an exactly-testable property for.
 Note the C row for `compare` is not really "scalar" — GCC auto-vectorizes it at
 `-O3 -msse2`, which is why the old SSE2 kernel was only ~1.3x faster than it.
 
+## AVX2 lost to SSE2 on the GitHub x86 runner — unexplained
+
+Worth recording because it did not show up on dedicated hardware. The CI
+benchmark step (720p, best of three) on `ubuntu-latest`:
+
+```
+none    219.82 ms/frame
+sse2     57.65 ms/frame
+avx2     70.59 ms/frame     <- 22% slower than SSE2
+avx512   71.11 ms/frame
+```
+
+Reproducible across runs and across best-of-three sampling, so it is not
+runner noise — but it is the opposite of every measurement on the i7-7800X,
+where AVX2 beats SSE2 at every field size tested.
+
+Not diagnosed. Two plausible causes, neither confirmed:
+
+- At 720p the field size is 80 bytes, so the AVX2 kernel does two 32-byte
+  iterations plus a 16-byte tail, and the tail carries widening overhead that
+  SSE2's uniform five iterations do not. That is a third of the row on a
+  less favourable path.
+- 256-bit frequency licensing on the runner's server part, which the
+  128-bit SSE2 kernel would avoid entirely.
+
+The dispatch default is set from dedicated-hardware measurement, not from
+this, and correctness is unaffected (the kernels are bit-identical and the
+equivalence tests pass on that runner). But it does mean **AVX2 should not be
+assumed to be a win on every x86 part**, and it is a reason to keep the
+`VIDSTAB_SIMD` override available to users. Worth a proper look on a known
+server CPU before treating the AVX2 default as settled for server deployments.
+
 ## AVX-512 is not enabled by default, on purpose
 
 On this Skylake-X, AVX-512 is consistently **~18% slower** than AVX2 end to

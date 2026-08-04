@@ -16,7 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: cpu features
-      run: lscpu | grep -o 'sse2\|avx2\|avx512bw\|avx512vl' | sort -u | tr '\n' ' '; echo
+      run: |
+        lscpu | grep -E 'Model name|Vendor ID|^CPU\(s\):' || true
+        lscpu | grep -o 'sse2\|avx2\|avx512bw\|avx512vl' | sort -u | tr '\n' ' '; echo
     - name: cmake
       run: cmake .
     - name: make

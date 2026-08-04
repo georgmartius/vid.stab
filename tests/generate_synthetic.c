@@ -182,3 +182,84 @@ void dumpFramesAsPPM(const VSFrame* frames, const VSFrameInfo* fi, int numFrames
     test_bool(storePPMImage(name, &frames[i], fi));
   }
 }
+
+/* --- virtual tripod mode ---------------------------------------------------
+   A bounded, drift-free absolute camera path: frame i is the base scene warped
+   by synTripodTransform(i), NOT by a chain of per-frame warps. That is the
+   right model for a tripod scene (a static camera plus jitter), and it keeps
+   the ground truth A_i exact instead of accumulating resampling error the way
+   generateCircleFrames() does -- which matters because the tripod assertions
+   compare against A_i directly.
+
+   A_0 is the identity (frame 0 is the base image every other frame is warped
+   from). Large accumulated drift is deliberately out of scope -- it is not
+   what tripod mode is for, and the L1 camera path reaches a near-static
+   result without tripod mode anyway. */
+#define SYN_TRIPOD_NUM_FRAMES 12
+#define SYN_TRIPOD_REF 4   /* 1-based reference frame for the tripod=R case */
+
+/* The leading segment (frames 0..SYN_TRIPOD_REF-1) is four deliberately
+   well-separated poses: each is at least 14px from the reference pose, so a
+   frame measured against its predecessor instead of against the reference
+   misses by 4.5x-9.5x TRIPOD_TOL_XY. The earlier sinusoidal path put frames 2
+   and 3 at or under tolerance, where the test passed by coincidence and flipped
+   between pixel formats on detection noise.
+
+   The trailing segment (frames >= SYN_TRIPOD_REF) is a small wobble around the
+   reference pose, so those frames are recovered cleanly.
+
+   A_0 is exactly the identity: frame 0 is the base image every other frame is
+   warped from. Peak amplitude is |x|<=23.9px, |y|<=19.0px, |alpha|<=1.1deg --
+   comfortably inside maxShift (VS_MAX(16, minDimension/7) = 68px at 640x480,
+   see motiondetect.c:134) and far enough from the canvas edges that the painted
+   circles never clip out. */
+static const double SYN_TRIPOD_LEAD[SYN_TRIPOD_REF][3] = {
+  {   0.0,   0.0,  0.0 },  /* frame 0: the base image, must be the identity */
+  {  20.0,   0.0,  1.1 },
+  {   0.0,  18.0, -0.9 },
+  { -18.0, -14.0,  0.4 }   /* the reference pose (index SYN_TRIPOD_REF-1) */
+};
+
+static VSTransform synTripodTransform(int i){
+  VSTransform t = null_transform();
+  if(i < SYN_TRIPOD_REF){
+    t.x     = SYN_TRIPOD_LEAD[i][0];
+    t.y     = SYN_TRIPOD_LEAD[i][1];
+    t.alpha = SYN_TRIPOD_LEAD[i][2] * M_PI / 180.0;
+  } else {
+    double s = (double)i;
+    t.x     = SYN_TRIPOD_LEAD[SYN_TRIPOD_REF-1][0] + 6.0 * sin(s * 0.9);
+    t.y     = SYN_TRIPOD_LEAD[SYN_TRIPOD_REF-1][1] + 5.0 * sin(s * 1.3 + 0.5);
+    t.alpha = (SYN_TRIPOD_LEAD[SYN_TRIPOD_REF-1][2] + 0.5 * sin(s * 0.7)) * M_PI / 180.0;
+  }
+  t.zoom = 0;
+  return t;
+}
+
+/* Frame 0 is the base scene; frame i is frame 0 warped by synTripodTransform(i).
+   Note this warps from frame 0 every time rather than chaining frame to frame
+   the way generateCircleFrames() does -- see the comment on synTripodTransform
+   above for why. VS_Zero interpolation matches the other synthetic generators. */
+void generateTripodFrames(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat pf,
+                          int width, int height, int numFrames){
+  int i;
+  VSTransformConfig conf;
+  VSTransformData td;
+
+  test_bool(vsFrameInfoInit(fi, width, height, pf) != 0);
+  for(i=0; i<numFrames; i++)
+    vsFrameAllocate(&frames[i], fi);
+
+  paintSynBase(&frames[0], fi);
+
+  conf = vsTransformGetDefaultConfig("gen_syn_tripod");
+  conf.interpolType = VS_Zero;
+  test_bool(vsTransformDataInit(&td, &conf, fi, fi) == VS_OK);
+  for(i=1; i<numFrames; i++){
+    VSTransform t = synTripodTransform(i);
+    test_bool(vsTransformPrepare(&td, &frames[0], &frames[i]) == VS_OK);
+    test_bool(vsDoTransform(&td, t) == VS_OK);
+    test_bool(vsTransformFinish(&td) == VS_OK);
+  }
+  vsTransformDataCleanup(&td);
+}

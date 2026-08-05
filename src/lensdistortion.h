@@ -76,6 +76,17 @@ typedef struct VS_API _vspointmatches {
   int n;             // number of correspondences in this frame pair
 } VSPointMatches;
 
+/** Fits the similarity that best explains the matches under a known distortion.
+
+    Minimises the image-space residual sum |q - D(S(U(p)))|^2 over the four
+    similarity parameters, starting from the closed-form least squares solution
+    on the undistorted correspondences and refining with gaussNewtonSteps
+    Gauss-Newton iterations.  Writes the RMS residual per correspondence in
+    pixels to residual when that is non-NULL.  Returns VS_ERROR if there are
+    too few matches or a point leaves the model's domain. */
+VS_API int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
+                               int gaussNewtonSteps, VSTransform* out, double* residual);
+
 /** Tuning for the distortion search; vsLensEstimateGetDefaultConfig fills it. */
 typedef struct VS_API _vslensestimateconfig {
   double kMin;           // low end of the bracket searched for k, default -0.6

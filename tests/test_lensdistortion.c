@@ -418,6 +418,119 @@ static void test_lensdistortion_generator_deterministic(void){
   ldFreeClip(&a); ldFreeClip(&b);
 }
 
+/* --- cycle 3: the inner similarity fit ----------------------------------- */
+
+/* Given the true k, the fit must return the camera motion that generated the
+   data.  Everything downstream profiles this fit out, so if it is biased the
+   distortion estimate inherits the bias. */
+static void ldCheckFitRecoversPath(LDPathMode mode, double k, const char* label){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensDistortion ld;
+  int i;
+  double worstXY = 0, worstA = 0, worstZ = 0, worstRes = 0;
+
+  cfg.k = k;
+  cfg.pathMode = mode;
+  clip = ldGenerate(&cfg);
+  ld = vsLensDistortionInit(&clip.fi, k);
+
+  for(i=0; i<clip.numFrames; i++){
+    VSTransform got;
+    double residual;
+    test_bool(vsLensFitSimilarity(&ld, &clip.frames[i], 3, &got, &residual) == VS_OK);
+    if(fabs(got.x - clip.truth[i].x) > worstXY) worstXY = fabs(got.x - clip.truth[i].x);
+    if(fabs(got.y - clip.truth[i].y) > worstXY) worstXY = fabs(got.y - clip.truth[i].y);
+    if(fabs(got.alpha - clip.truth[i].alpha) > worstA) worstA = fabs(got.alpha - clip.truth[i].alpha);
+    if(fabs(got.zoom - clip.truth[i].zoom) > worstZ) worstZ = fabs(got.zoom - clip.truth[i].zoom);
+    if(residual > worstRes) worstRes = residual;
+  }
+  fprintf(stderr, "%s (k=%.2f): worst dxy %.2e  dalpha %.2e  dzoom %.2e  residual %.2e\n",
+          label, k, worstXY, worstA, worstZ, worstRes);
+  test_bool(worstXY < 1e-6);
+  test_bool(worstA  < 1e-9);
+  test_bool(worstZ  < 1e-6);
+  test_bool(worstRes < 1e-6);
+  ldFreeClip(&clip);
+}
+
+static void test_lensdistortion_fit_recovers_path(void){
+  fprintf(stderr, "--- inner fit recovers the camera path given true k ---\n");
+  ldCheckFitRecoversPath(LD_PATH_TRANSLATION, 0.0,   "translation, no distortion");
+  ldCheckFitRecoversPath(LD_PATH_TRANSLATION, -0.25, "translation, strong barrel");
+  ldCheckFitRecoversPath(LD_PATH_MIXED,       -0.25, "translation+rotation, barrel");
+  ldCheckFitRecoversPath(LD_PATH_ZOOM,        -0.15, "zoom, barrel");
+  ldCheckFitRecoversPath(LD_PATH_ROTATION,    -0.25, "rotation only, barrel");
+}
+
+/* The objective must actually discriminate: fitting with the wrong k has to
+   leave a residual the fit cannot absorb, otherwise there is nothing for the
+   search in cycle 4 to descend. */
+static void test_lensdistortion_wrong_k_leaves_residual(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  int i;
+  double resTrue = 0, resZero = 0;
+  VSLensDistortion ldTrue, ldZero;
+
+  cfg.k = -0.25;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+  ldTrue = vsLensDistortionInit(&clip.fi, cfg.k);
+  ldZero = vsLensDistortionInit(&clip.fi, 0.0);
+
+  for(i=0; i<clip.numFrames; i++){
+    VSTransform t; double r;
+    test_bool(vsLensFitSimilarity(&ldTrue, &clip.frames[i], 3, &t, &r) == VS_OK);
+    resTrue += r;
+    test_bool(vsLensFitSimilarity(&ldZero, &clip.frames[i], 3, &t, &r) == VS_OK);
+    resZero += r;
+  }
+  fprintf(stderr, "--- wrong k leaves residual the similarity cannot absorb ---\n");
+  fprintf(stderr, "residual with true k=-0.25: %.4e, with k=0: %.4e px\n",
+          resTrue/clip.numFrames, resZero/clip.numFrames);
+  test_bool(resTrue/clip.numFrames < 1e-6);
+  /* a clearly measurable gap, well above any plausible noise floor */
+  test_bool(resZero/clip.numFrames > 0.5);
+  ldFreeClip(&clip);
+}
+
+/* Rotation commutes with any radial map, so a rotation-only path gives the
+   SAME residual for every k.  This is the degeneracy, verified directly on the
+   objective rather than inferred from the estimator's output. */
+static void test_lensdistortion_rotation_is_blind_to_k(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  const double ks[] = {-0.4, -0.2, 0.0, 0.2};
+  int ki, i;
+  double res[4];
+
+  cfg.k = -0.25;
+  cfg.pathMode = LD_PATH_ROTATION;
+  clip = ldGenerate(&cfg);
+
+  fprintf(stderr, "--- rotation-only: the objective is flat in k ---\n");
+  for(ki=0; ki<4; ki++){
+    VSLensDistortion ld = vsLensDistortionInit(&clip.fi, ks[ki]);
+    res[ki] = 0;
+    for(i=0; i<clip.numFrames; i++){
+      VSTransform t; double r;
+      test_bool(vsLensFitSimilarity(&ld, &clip.frames[i], 3, &t, &r) == VS_OK);
+      res[ki] += r/clip.numFrames;
+    }
+    fprintf(stderr, "  k=%5.2f -> residual %.3e px\n", ks[ki], res[ki]);
+  }
+  /* every k explains rotation-only data equally and perfectly */
+  for(ki=0; ki<4; ki++) test_bool(res[ki] < 1e-6);
+  ldFreeClip(&clip);
+}
+
+void test_lensdistortion_fit(void){
+  test_lensdistortion_fit_recovers_path();
+  test_lensdistortion_wrong_k_leaves_residual();
+  test_lensdistortion_rotation_is_blind_to_k();
+}
+
 void test_lensdistortion_generator(void){
   test_lensdistortion_similarity_matches_lib();
   test_lensdistortion_generator_undistorted();

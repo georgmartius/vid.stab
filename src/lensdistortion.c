@@ -14,6 +14,7 @@
 #include "transformtype_operations.h"
 
 #include <math.h>
+#include <stdlib.h>
 
 VSLensDistortion vsLensDistortionInit(const VSFrameInfo* fi, double k){
   VSLensDistortion ld;
@@ -113,14 +114,20 @@ static int lensSolve4(double A[16], double b[4], double x[4]){
 
 int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
                         int gaussNewtonSteps, VSTransform* out, double* residual){
-  int n, j, it, ret = VS_OK;
+  int n, j, it, ret = VS_OK, nAct = 0;
   double *ax, *ay, *bx, *by;
   double c = 1, s = 0, tx = 0, ty = 0;
   double sumRR = 0, res2 = 0;
   double mAx = 0, mAy = 0, mBx = 0, mBy = 0, num_c = 0, num_s = 0;
+  const unsigned char* act;
 
   if(!ld || !m || !out || m->n < 2) return VS_ERROR;
   n = m->n;
+  act = m->active;
+  for(j=0; j<n; j++) if(!act || act[j]) nAct++;
+  /* four parameters need at least two point pairs, and in practice a few more
+     before the fit means anything */
+  if(nAct < 3) return VS_ERROR;
 
   /* ax,ay: undistorted sources, centred -- fixed throughout, U does not depend
      on the similarity.  bx,by: OBSERVED destinations, centred: the residual is
@@ -138,6 +145,7 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
 
     for(j=0; j<n; j++){
       double ux, uy, vx, vy;
+      if(act && !act[j]) continue;
       if(vsLensUndistortPoint(ld, m->px[j], m->py[j], &ux, &uy) != VS_OK ||
          vsLensUndistortPoint(ld, m->qx[j], m->qy[j], &vx, &vy) != VS_OK){
         vs_free(ubx); vs_free(ax); return VS_ERROR;
@@ -148,14 +156,16 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
       by[j]  = m->qy[j] - ld->cy;
       mAx += ax[j]; mAy += ay[j]; mBx += ubx[j]; mBy += uby[j];
     }
-    mAx /= n; mAy /= n; mBx /= n; mBy /= n;
+    mAx /= nAct; mAy /= nAct; mBx /= nAct; mBy /= nAct;
 
     /* Least squares similarity on the undistorted correspondences, which are
        related by S exactly.  With b = [[c,s],[-s,c]]a + t as in
        transform_vec_double, the normal equations decouple into these two. */
     for(j=0; j<n; j++){
-      double dax = ax[j]-mAx, day = ay[j]-mAy;
-      double dbx = ubx[j]-mBx, dby = uby[j]-mBy;
+      double dax, day, dbx, dby;
+      if(act && !act[j]) continue;
+      dax = ax[j]-mAx; day = ay[j]-mAy;
+      dbx = ubx[j]-mBx; dby = uby[j]-mBy;
       sumRR += dax*dax + day*day;
       num_c += dax*dbx + day*dby;
       num_s += day*dbx - dax*dby;
@@ -178,13 +188,14 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
     for(i=0; i<4; i++)  g[i] = 0;
 
     for(j=0; j<n; j++){
-      double wx = c*ax[j] + s*ay[j] + tx;
-      double wy = -s*ax[j] + c*ay[j] + ty;
-      double dpx, dpy, ex, ey;
+      double wx, wy, dpx, dpy, ex, ey;
       /* zeroed so the optimiser can see it is never read unset: the guard below
          returns before any use, but that is not visible to it across the call */
       double J[4] = {0,0,0,0};
       double Jp[4][2];
+      if(act && !act[j]) continue;
+      wx = c*ax[j] + s*ay[j] + tx;
+      wy = -s*ax[j] + c*ay[j] + ty;
       if(vsLensDistortPoint(ld, wx + ld->cx, wy + ld->cy, &dpx, &dpy) != VS_OK ||
          lensDistortJacobian(ld, wx, wy, J) != VS_OK){
         vs_free(ax); return VS_ERROR;
@@ -210,11 +221,12 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
     tx += delta[0]; ty += delta[1]; c += delta[2]; s += delta[3];
   }
 
-  /* final residual at the converged parameters */
+  /* final residual at the converged parameters, over the active matches only */
   for(j=0; j<n; j++){
-    double wx = c*ax[j] + s*ay[j] + tx;
-    double wy = -s*ax[j] + c*ay[j] + ty;
-    double dpx, dpy, ex, ey;
+    double wx, wy, dpx, dpy, ex, ey;
+    if(act && !act[j]) continue;
+    wx = c*ax[j] + s*ay[j] + tx;
+    wy = -s*ax[j] + c*ay[j] + ty;
     if(vsLensDistortPoint(ld, wx + ld->cx, wy + ld->cy, &dpx, &dpy) != VS_OK){
       ret = VS_ERROR; break;
     }
@@ -232,7 +244,7 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
     out->barrel   = ld->k;
     out->rshutter = 0;
     out->extra    = 0;
-    if(residual) *residual = sqrt(res2/n);
+    if(residual) *residual = sqrt(res2/nAct);
   }
   vs_free(ax);
   return ret;
@@ -256,6 +268,9 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
   c.maxIterations = 100;
   c.gaussNewtonSteps = 3;
   c.maxUncertainty = 0.02;
+  c.rejectOutliers = 1;
+  c.outlierStddevs = 2.5;
+  c.outlierPasses  = 3;
   return c;
 }
 
@@ -273,6 +288,45 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
 /* Reported in place of a standard error when there is no curvature to divide
    by; large enough that no sane maxUncertainty would accept it. */
 #define LENS_UNDETERMINED_SIGMA 1e6
+
+/* Masks out matches whose residual exceeds median + stddevs*1.4826*MAD, and
+   returns how many were newly masked.
+
+   Median absolute deviation rather than the mean and standard deviation used by
+   disableFields() in localmotion2transform.c: a moving object covering a fifth
+   of the fields inflates the standard deviation enough to hide itself inside
+   its own threshold, whereas MAD tolerates up to half the data being bad.  The
+   1.4826 makes it agree with the standard deviation on gaussian data. */
+static int lensMaskOutliers(const double* res, unsigned char* active,
+                            int n, double stddevs){
+  double* tmp;
+  double median, mad, thresh;
+  int i, m = 0, cut = 0;
+
+  for(i=0; i<n; i++) if(active[i]) m++;
+  if(m < 8) return 0;   /* too few left for a meaningful robust spread */
+  tmp = (double*)vs_malloc(sizeof(double)*m);
+  if(!tmp) return 0;
+
+  m = 0;
+  for(i=0; i<n; i++) if(active[i]) tmp[m++] = res[i];
+  qsort(tmp, m, sizeof(double), cmp_double);
+  median = tmp[m/2];
+  for(i=0; i<m; i++) tmp[i] = fabs(tmp[i] - median);
+  qsort(tmp, m, sizeof(double), cmp_double);
+  mad = tmp[m/2];
+  vs_free(tmp);
+
+  /* An all but exact fit gives mad == 0; there is nothing to reject then, and
+     without this the threshold would collapse onto the median and cut half. */
+  if(mad <= 1e-9) return 0;
+  thresh = median + stddevs*1.4826*mad;
+
+  for(i=0; i<n; i++){
+    if(active[i] && res[i] > thresh){ active[i] = 0; cut++; }
+  }
+  return cut;
+}
 
 struct LensObjective {
   const VSFrameInfo*    fi;
@@ -365,21 +419,72 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
   VSLensEstimate est;
   VSLensEstimateConfig defcfg = vsLensEstimateGetDefaultConfig();
   struct LensObjective o;
+  VSPointMatches* masked = 0;
+  unsigned char* flags = 0;
+  double* res = 0;
   double h, e0, ep, em;
-  int iters = 0, nPoints = 0;
+  int iters = 0, nPoints = 0, i;
 
   est.k = 0; est.residual = 0; est.curvature = 0; est.uncertainty = 0;
-  est.iterations = 0; est.determined = 0;
+  est.iterations = 0; est.determined = 0; est.rejected = 0; est.used = 0;
   if(!fi || !frames || numFrames < 1) return est;
   if(!cfg) cfg = &defcfg;
 
+  for(i=0; i<numFrames; i++) nPoints += frames[i].n;
+  if(nPoints < 3) return est;
+  est.used = nPoints;
+
   o.fi = fi; o.frames = frames; o.numFrames = numFrames;
   o.gnSteps = cfg->gaussNewtonSteps; o.evals = 0;
-  for(iters=0; iters<numFrames; iters++) nPoints += frames[iters].n;
-  iters = 0;
 
   est.k = lensBrentMinimise(cfg->kMin, cfg->kMax, cfg->tolerance,
                             cfg->maxIterations, &o, &iters);
+
+  /* Reject-and-refit.  The mask is deliberately held FIXED for the whole of
+     each Brent search and only updated between passes.  Rejecting inside the
+     objective would let a wrong k discard more points and so lower E(k) for
+     free, flattening and biasing the profile, and would make E discontinuous
+     where the rejected set changes -- which is not a function Brent can
+     minimise.  Rejection also happens at the current k, never at k=0, so that
+     the systematic radial residual of unmodelled distortion is not mistaken
+     for a frame full of outliers. */
+  if(cfg->rejectOutliers && cfg->outlierPasses > 1){
+    masked = (VSPointMatches*)vs_malloc(sizeof(VSPointMatches)*numFrames);
+    flags  = (unsigned char*)vs_malloc(sizeof(unsigned char)*nPoints);
+    res    = (double*)vs_malloc(sizeof(double)*nPoints);
+  }
+  if(masked && flags && res){
+    int pass, off = 0;
+    for(i=0; i<nPoints; i++) flags[i] = 1;
+    for(i=0; i<numFrames; i++){
+      masked[i] = frames[i];
+      masked[i].active = flags + off;
+      off += frames[i].n;
+    }
+    for(pass=1; pass<cfg->outlierPasses; pass++){
+      VSLensDistortion ld = vsLensDistortionInit(fi, est.k);
+      int cut = 0;
+      off = 0;
+      for(i=0; i<numFrames; i++){
+        VSTransform t;
+        int n = frames[i].n;
+        if(vsLensFitSimilarity(&ld, &masked[i], cfg->gaussNewtonSteps, &t, 0) == VS_OK &&
+           vsLensMatchResiduals(&ld, &masked[i], &t, res + off) == VS_OK){
+          /* Threshold per frame, not globally: residual scale follows the
+             motion magnitude, which differs from frame to frame. */
+          cut += lensMaskOutliers(res + off, flags + off, n, cfg->outlierStddevs);
+        }
+        off += n;
+      }
+      if(cut == 0) break;   /* converged, nothing new to remove */
+      o.frames = masked;
+      est.k = lensBrentMinimise(cfg->kMin, cfg->kMax, cfg->tolerance,
+                                cfg->maxIterations, &o, &iters);
+    }
+    o.frames = masked;   /* the reported residual must describe the final fit */
+    for(i=0; i<nPoints; i++) if(!flags[i]) est.rejected++;
+    est.used = nPoints - est.rejected;
+  }
 
   /* Curvature of the profile curve at the minimum by central difference.  This
      is the whole point of profiling rather than alternating: a flat curve means
@@ -403,8 +508,8 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
      usual least squares result var(k) = 2*sigma^2 / d2SSE/dk2 reduces to
      E/(nPoints*curvature).  Unlike raw curvature this is scale free, so one
      threshold works regardless of field count, motion size or noise level. */
-  if(est.curvature > LENS_CURVATURE_FLOOR && nPoints > 0)
-    est.uncertainty = est.residual/sqrt((double)nPoints*est.curvature);
+  if(est.curvature > LENS_CURVATURE_FLOOR && est.used > 0)
+    est.uncertainty = est.residual/sqrt((double)est.used*est.curvature);
   else
     est.uncertainty = LENS_UNDETERMINED_SIGMA;
 
@@ -416,6 +521,7 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
     int pinned = (est.k - cfg->kMin < edge) || (cfg->kMax - est.k < edge);
     est.determined = !pinned && (est.uncertainty < cfg->maxUncertainty);
   }
+  vs_free(masked); vs_free(flags); vs_free(res);
   return est;
 }
 
@@ -463,4 +569,26 @@ VSLensEstimate vsEstimateLensDistortion(const VSFrameInfo* fi,
   vs_free(frames);
   vs_free(storage);
   return est;
+}
+
+int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches* m,
+                         const VSTransform* t, double* residuals){
+  int j;
+  double z, zcos_a, zsin_a;
+  if(!ld || !m || !t || !residuals) return VS_ERROR;
+  z = 1.0 + t->zoom/100.0;
+  zcos_a = z*cos(t->alpha);
+  zsin_a = z*sin(t->alpha);
+  for(j=0; j<m->n; j++){
+    double ux, uy, rx, ry, wx, wy, dpx, dpy;
+    if(vsLensUndistortPoint(ld, m->px[j], m->py[j], &ux, &uy) != VS_OK) return VS_ERROR;
+    rx = ux - ld->cx;
+    ry = uy - ld->cy;
+    /* same convention as transform_vec_double */
+    wx =  zcos_a*rx + zsin_a*ry + t->x + ld->cx;
+    wy = -zsin_a*rx + zcos_a*ry + t->y + ld->cy;
+    if(vsLensDistortPoint(ld, wx, wy, &dpx, &dpy) != VS_OK) return VS_ERROR;
+    residuals[j] = sqrt(sqr(m->qx[j]-dpx) + sqr(m->qy[j]-dpy));
+  }
+  return VS_OK;
 }

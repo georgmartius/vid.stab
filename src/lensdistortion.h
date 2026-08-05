@@ -73,6 +73,7 @@ typedef struct VS_API _vspointmatches {
   const double* py;  // y of the source points, length n
   const double* qx;  // x of the matched destination points, length n
   const double* qy;  // y of the matched destination points, length n
+  const unsigned char* active; // optional per-match mask, 0 to ignore; NULL means use all
   int n;             // number of correspondences in this frame pair
 } VSPointMatches;
 
@@ -87,6 +88,12 @@ typedef struct VS_API _vspointmatches {
 VS_API int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
                                int gaussNewtonSteps, VSTransform* out, double* residual);
 
+/** Per-correspondence distance |q - D(S(U(p)))| in pixels, under the given
+    distortion and similarity.  Writes m->n values, including for matches that
+    are masked out.  Returns VS_ERROR if a point leaves the model's domain. */
+VS_API int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches* m,
+                                const VSTransform* t, double* residuals);
+
 /** Tuning for the distortion search; vsLensEstimateGetDefaultConfig fills it. */
 typedef struct VS_API _vslensestimateconfig {
   double kMin;           // low end of the bracket searched for k, default -0.6
@@ -95,6 +102,9 @@ typedef struct VS_API _vslensestimateconfig {
   int    maxIterations;  // cap on golden-section/parabolic iterations, default 100
   int    gaussNewtonSteps; // inner similarity refinement steps per frame, default 3
   double maxUncertainty; // largest standard error in k still called determined, default 0.02
+  int    rejectOutliers; // 1 to run the reject-and-refit passes below, 0 to fit everything
+  double outlierStddevs; // reject beyond median + this many robust sigmas of residual, default 2.5
+  int    outlierPasses;  // total search passes; 1 means no rejection ever happens, default 3
 } VSLensEstimateConfig;
 
 /** Outcome of the search. */
@@ -104,6 +114,8 @@ typedef struct VS_API _vslensestimate {
   double curvature;   // d2E/dk2 at the minimum; near zero means the data cannot pin k down
   double uncertainty; // standard error of k, residual/sqrt(N*curvature); scale free
   int    iterations;  // how many objective evaluations the search used
+  int    rejected;    // correspondences dropped as outliers, 0 when rejection is off
+  int    used;        // correspondences the final estimate was actually fitted to
   int    determined;  // 0 when k is not identifiable: flat objective, or pinned to the bracket
 } VSLensEstimate;
 

@@ -152,6 +152,8 @@ typedef struct {
   int    numFrames;      /* number of frame pairs */
   double noiseSigma;     /* gaussian pixel noise added to each displacement */
   int    quantise;       /* round displacements to integers, as int16 Vec would */
+  double outlierFrac;    /* fraction of fields belonging to an independently moving object */
+  double outlierShiftX, outlierShiftY;  /* that object's own motion, px */
   uint32_t seed;         /* LCG seed, so every run is bit-reproducible */
   LDPathMode pathMode;
 } LDSynthConfig;
@@ -175,6 +177,8 @@ static LDSynthConfig ldDefaultSynthConfig(void){
   c.numFrames = 12;
   c.noiseSigma = 0.0;
   c.quantise = 0;
+  c.outlierFrac = 0.0;
+  c.outlierShiftX = 11.0; c.outlierShiftY = -8.0;
   c.seed = 20260805u;
   c.pathMode = LD_PATH_TRANSLATION;
   return c;
@@ -257,6 +261,7 @@ static LDSynthClip ldGenerate(const LDSynthConfig* cfg){
   int i, gx, gy, idx;
   uint32_t seed = cfg->seed;
   double stepX, stepY;
+  int objW = 0, objH = 0;
 
   test_bool(vsFrameInfoInit(&clip.fi, cfg->width, cfg->height, PF_GRAY8) != 0);
   ld = vsLensDistortionInit(&clip.fi, cfg->k);
@@ -269,6 +274,15 @@ static LDSynthClip ldGenerate(const LDSynthConfig* cfg){
 
   stepX = (double)(cfg->width  - 2*cfg->margin) / (cfg->gridX - 1);
   stepY = (double)(cfg->height - 2*cfg->margin) / (cfg->gridY - 1);
+
+  /* a roughly square block covering the requested fraction of the grid */
+  if(cfg->outlierFrac > 0){
+    double side = sqrt(cfg->outlierFrac);
+    objW = (int)(cfg->gridX*side + 0.5);
+    objH = (int)(cfg->gridY*side + 0.5);
+    if(objW < 1) objW = 1;
+    if(objH < 1) objH = 1;
+  }
 
   for(i=0; i<cfg->numFrames; i++){
     double* base = clip.storage + 4*clip.numFields*i;
@@ -290,6 +304,15 @@ static LDSynthClip ldGenerate(const LDSynthConfig* cfg){
         ldApplySimilarity(&clip.truth[i], ld.cx, ld.cy, ux, uy, &vx, &vy);
         test_bool(vsLensDistortPoint(&ld, vx, vy, &dx, &dy) == VS_OK);
 
+        /* A moving object: a contiguous block of fields carries its own motion
+           on top of the camera's.  Contiguous rather than scattered because
+           that is what a real object looks like to the detector, and because
+           scattered outliers are much easier to reject. */
+        if(gx < objW && gy < objH){
+          dx += cfg->outlierShiftX;
+          dy += cfg->outlierShiftY;
+        }
+
         if(cfg->noiseSigma > 0){
           dx += cfg->noiseSigma*ldRandGauss(&seed);
           dy += cfg->noiseSigma*ldRandGauss(&seed);
@@ -306,6 +329,7 @@ static LDSynthClip ldGenerate(const LDSynthConfig* cfg){
     }
     clip.frames[i].px = px; clip.frames[i].py = py;
     clip.frames[i].qx = qx; clip.frames[i].qy = qy;
+    clip.frames[i].active = 0;   /* the estimator masks internally */
     clip.frames[i].n  = clip.numFields;
   }
   return clip;
@@ -747,6 +771,193 @@ static void test_lensdistortion_recovered_campath(void){
   test_bool(worstXY < 0.1);
   test_bool(worstA  < 1e-4);
   ldFreeClip(&clip);
+}
+
+/* --- cycle 6: outlier rejection inside the global optimisation ----------- */
+
+/* Robust threshold, median + stddevs*1.4826*MAD.  Deliberately not the
+   mean+sigma of disableFields() in localmotion2transform.c: a moving object
+   covering a fifth of the fields inflates sigma enough to hide itself, whereas
+   MAD has a 50% breakdown point. */
+static double ldRobustThreshold(const double* vals, int n, double stddevs){
+  double* tmp = (double*)vs_malloc(sizeof(double)*n);
+  double median, mad;
+  int i;
+  for(i=0; i<n; i++) tmp[i] = vals[i];
+  qsort(tmp, n, sizeof(double), cmp_double);
+  median = tmp[n/2];
+  for(i=0; i<n; i++) tmp[i] = fabs(vals[i] - median);
+  qsort(tmp, n, sizeof(double), cmp_double);
+  mad = tmp[n/2];
+  vs_free(tmp);
+  return median + stddevs*1.4826*mad;
+}
+
+/* The reason the existing per-frame rejection must not simply be reused.
+
+   On clean barrel-distorted data with no outliers at all, residuals evaluated
+   under a no-distortion model are systematically radial: the fields that look
+   worst are the ones furthest from the centre, because that is where the
+   unmodelled distortion is largest.  Rejecting on that basis would delete
+   exactly the fields that carry the distortion signal.  Evaluated at the true
+   k the same test finds essentially nothing to reject. */
+static void test_lensdistortion_blind_rejection_eats_the_edge(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  const double ks[2] = {0.0, -0.25};
+  int ki, j;
+
+  cfg.k = -0.25; cfg.quantise = 1; cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+
+  fprintf(stderr, "--- residual rejection at the wrong k targets the frame edge ---\n");
+  for(ki=0; ki<2; ki++){
+    VSLensDistortion ld = vsLensDistortionInit(&clip.fi, ks[ki]);
+    double* res = (double*)vs_malloc(sizeof(double)*clip.numFields);
+    VSTransform t;
+    double thresh, rejRadius = 0, allRadius = 0;
+    int rejected = 0;
+
+    /* one representative frame is enough; they all behave the same way */
+    test_bool(vsLensFitSimilarity(&ld, &clip.frames[0], 3, &t, 0) == VS_OK);
+    test_bool(vsLensMatchResiduals(&ld, &clip.frames[0], &t, res) == VS_OK);
+    thresh = ldRobustThreshold(res, clip.numFields, 2.5);
+
+    for(j=0; j<clip.numFields; j++){
+      double dx = clip.frames[0].px[j] - ld.cx;
+      double dy = clip.frames[0].py[j] - ld.cy;
+      double r  = sqrt(dx*dx + dy*dy)/ld.rho;
+      allRadius += r/clip.numFields;
+      if(res[j] > thresh){ rejected++; rejRadius += r; }
+    }
+    if(rejected) rejRadius /= rejected;
+
+    fprintf(stderr, "  assumed k=%5.2f: %3i/%i rejected, mean radius %.3f vs %.3f overall\n",
+            ks[ki], rejected, clip.numFields, rejRadius, allRadius);
+
+    if(ks[ki] == 0.0){
+      /* blind rejection throws away a meaningful number of fields, and the ones
+         it throws away sit markedly further out than average */
+      test_bool(rejected > clip.numFields/20);
+      test_bool(rejRadius > 1.25*allRadius);
+    }else{
+      /* at the true k there is nothing systematic left to find */
+      test_bool(rejected <= clip.numFields/50);
+    }
+    vs_free(res);
+  }
+  ldFreeClip(&clip);
+}
+
+/* The payoff.  A moving object corrupts a contiguous block of correspondences;
+   contiguous because that is what an object looks like to the detector, and
+   because scattered outliers would be far easier to reject.
+
+   Ten percent of the fields with motion of their own is an ordinary situation
+   -- someone walking through the shot.  Without rejection that is enough to
+   move k by more than a third of its value. */
+static void test_lensdistortion_moving_object(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensEstimateConfig on = vsLensEstimateGetDefaultConfig();
+  VSLensEstimateConfig off = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate estOn, estOff;
+  const double trueK = -0.25;
+
+  cfg.k = trueK; cfg.quantise = 1; cfg.noiseSigma = 0.3;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  cfg.outlierFrac = 0.1;
+  cfg.outlierShiftX = 30.0; cfg.outlierShiftY = -21.0;
+  clip = ldGenerate(&cfg);
+
+  off.rejectOutliers = 0;
+  on.rejectOutliers  = 1;
+  estOff = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &off);
+  estOn  = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &on);
+
+  fprintf(stderr, "--- moving object over 10%% of the fields ---\n");
+  fprintf(stderr, "rejection off: k=%8.5f (err %.2e)\n", estOff.k, fabs(estOff.k-trueK));
+  fprintf(stderr, "rejection on : k=%8.5f (err %.2e, %i of %i dropped)\n",
+          estOn.k, fabs(estOn.k-trueK), estOn.rejected, estOn.rejected+estOn.used);
+
+  /* the outliers must actually do damage, or the test proves nothing */
+  test_bool(fabs(estOff.k - trueK) > 0.05);
+  test_bool(fabs(estOn.k  - trueK) < 0.01);
+  test_bool(estOn.rejected > 0);
+  test_bool(estOn.determined);
+  ldFreeClip(&clip);
+}
+
+/* Where it stops working, recorded deliberately rather than left to be
+   discovered later.
+
+   The inner similarity fit is plain least squares, which has no breakdown
+   resistance at all.  Once outliers are numerous enough to drag the fit itself,
+   the inliers acquire large residuals too, the outliers no longer stand out
+   against the robust spread, and rejection finds nothing to remove.  Measured,
+   that happens between a quarter and a third of the fields.  Fixing it needs a
+   robust inner fit -- IRLS or RANSAC -- not a different threshold.
+
+   The estimate does at least fail loudly rather than quietly: the corrupted fit
+   leaves a large residual, which inflates the standard error past
+   maxUncertainty, so determined comes back 0.  A caller that honours that flag
+   gets no answer rather than a confidently wrong one. */
+static void test_lensdistortion_outlier_breakdown(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensEstimateConfig on = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+  const double trueK = -0.25;
+
+  cfg.k = trueK; cfg.quantise = 1; cfg.noiseSigma = 0.3;
+  cfg.outlierFrac = 0.4;
+  cfg.outlierShiftX = 30.0; cfg.outlierShiftY = -21.0;
+  clip = ldGenerate(&cfg);
+
+  on.rejectOutliers = 1;
+  est = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &on);
+
+  fprintf(stderr, "--- known limit: 40%% outliers defeat the least squares fit ---\n");
+  fprintf(stderr, "k=%8.5f (err %.2e), %i dropped, determined=%i\n",
+          est.k, fabs(est.k-trueK), est.rejected, est.determined);
+  /* Documents the limit.  If a robust inner fit is ever added this assertion
+     should start failing, which is exactly the intent. */
+  test_bool(fabs(est.k - trueK) > 0.05);
+  test_bool(!est.determined);   /* and it says so */
+  ldFreeClip(&clip);
+}
+
+/* Rejection must not damage data that has no outliers. */
+static void test_lensdistortion_rejection_harmless_when_clean(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensEstimateConfig on = vsLensEstimateGetDefaultConfig();
+  VSLensEstimateConfig off = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate estOn, estOff;
+  const double trueK = -0.25;
+
+  cfg.k = trueK; cfg.quantise = 1; cfg.noiseSigma = 0.5;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+
+  off.rejectOutliers = 0;
+  on.rejectOutliers  = 1;
+  estOff = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &off);
+  estOn  = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &on);
+
+  fprintf(stderr, "--- rejection does not hurt clean data ---\n");
+  fprintf(stderr, "rejection off: k=%8.5f   on: k=%8.5f\n", estOff.k, estOn.k);
+  test_bool(fabs(estOn.k - trueK) < 0.02);
+  /* and it must not move the answer much compared to not rejecting at all */
+  test_bool(fabs(estOn.k - estOff.k) < 0.01);
+  ldFreeClip(&clip);
+}
+
+void test_lensdistortion_outliers(void){
+  test_lensdistortion_blind_rejection_eats_the_edge();
+  test_lensdistortion_moving_object();
+  test_lensdistortion_rejection_harmless_when_clean();
+  test_lensdistortion_outlier_breakdown();
 }
 
 void test_lensdistortion_robustness(void){

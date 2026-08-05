@@ -11,6 +11,7 @@
 
 #include "lensdistortion.h"
 #include "vidstabdefines.h"
+#include "transformtype_operations.h"
 
 #include <math.h>
 
@@ -232,4 +233,196 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
   }
   vs_free(ax);
   return ret;
+}
+
+VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
+  VSLensEstimateConfig c;
+  /* Asymmetric on purpose: strong barrel is the larger physical effect, but the
+     bracket must stay open above zero.  Clamping at 0 would put the undistorted
+     case exactly on the boundary, where a minimum cannot be bracketed and the
+     curvature is meaningless, and would hide an estimator that wants to go
+     positive -- which is a real signal, both of already-corrected footage and
+     of a mis-specified model.
+
+     Pincushion additionally has a hard model limit: D_k requires
+     1 - 4*k*r^2 >= 0, so beyond k = 1/(4*r^2) -- a quarter at the image corner
+     -- points simply have no preimage under the model.  kMax stays below that. */
+  c.kMin = -0.6;
+  c.kMax =  0.2;
+  c.tolerance = 1e-6;
+  c.maxIterations = 100;
+  c.gaussNewtonSteps = 3;
+  c.minCurvature = 1e-3;
+  return c;
+}
+
+/* Value assigned where the model has no preimage for some point, so the search
+   walks away from that region instead of failing outright.  Large against any
+   real residual in px^2, small enough to stay well clear of overflow. */
+#define LENS_PENALTY 1e12
+
+struct LensObjective {
+  const VSFrameInfo*    fi;
+  const VSPointMatches* frames;
+  int numFrames;
+  int gnSteps;
+  int evals;
+};
+
+/* E(k): the similarities are profiled out, i.e. every frame is refitted from
+   scratch at this k and only the residual it cannot explain is returned.
+   Mean squared image-space residual per correspondence, in px^2. */
+static double lensObjective(double k, struct LensObjective* o){
+  VSLensDistortion ld = vsLensDistortionInit(o->fi, k);
+  double sum2 = 0;
+  int total = 0, i;
+  o->evals++;
+  for(i=0; i<o->numFrames; i++){
+    VSTransform t;
+    double r;
+    if(o->frames[i].n < 3) continue;   /* cannot pin a similarity down */
+    if(vsLensFitSimilarity(&ld, &o->frames[i], o->gnSteps, &t, &r) != VS_OK)
+      return LENS_PENALTY;
+    sum2  += r*r*o->frames[i].n;
+    total += o->frames[i].n;
+  }
+  return total > 0 ? sum2/total : LENS_PENALTY;
+}
+
+/* Brent's method: golden section with parabolic interpolation where the
+   parabola behaves.  Derivative free, which suits an objective whose every
+   evaluation is itself a nonlinear fit. */
+static double lensBrentMinimise(double a, double b, double tol, int maxIter,
+                                struct LensObjective* o, int* usedIter){
+  const double GOLD = 0.3819660112501051;  /* (3-sqrt(5))/2 */
+  double x, w, v, fx, fw, fv, m, e = 0, d = 0, u, fu, p, q, r, tol1, tol2;
+  int it;
+
+  x = w = v = a + GOLD*(b - a);
+  fx = fw = fv = lensObjective(x, o);
+
+  for(it=0; it<maxIter; it++){
+    m = 0.5*(a + b);
+    tol1 = tol*fabs(x) + 1e-10;
+    tol2 = 2.0*tol1;
+    if(fabs(x - m) <= tol2 - 0.5*(b - a)) break;
+
+    p = q = r = 0;
+    if(fabs(e) > tol1){
+      r = (x - w)*(fx - fv);
+      q = (x - v)*(fx - fw);
+      p = (x - v)*q - (x - w)*r;
+      q = 2.0*(q - r);
+      if(q > 0) p = -p; else q = -q;
+      r = e; e = d;
+    }
+    if(fabs(p) < fabs(0.5*q*r) && p > q*(a - x) && p < q*(b - x)){
+      d = p/q;                       /* parabolic step is acceptable */
+      u = x + d;
+      if(u - a < tol2 || b - u < tol2) d = (x < m) ? tol1 : -tol1;
+    }else{
+      e = (x < m) ? b - x : a - x;   /* fall back to golden section */
+      d = GOLD*e;
+    }
+    u  = (fabs(d) >= tol1) ? x + d : x + ((d > 0) ? tol1 : -tol1);
+    fu = lensObjective(u, o);
+
+    if(fu <= fx){
+      if(u < x) b = x; else a = x;
+      v = w; fv = fw; w = x; fw = fx; x = u; fx = fu;
+    }else{
+      if(u < x) a = u; else b = u;
+      if(fu <= fw || w == x){ v = w; fv = fw; w = u; fw = fu; }
+      else if(fu <= fv || v == x || v == w){ v = u; fv = fu; }
+    }
+  }
+  if(usedIter) *usedIter = it;
+  return x;
+}
+
+VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
+                                                   const VSPointMatches* frames,
+                                                   int numFrames,
+                                                   const VSLensEstimateConfig* cfg){
+  VSLensEstimate est;
+  VSLensEstimateConfig defcfg = vsLensEstimateGetDefaultConfig();
+  struct LensObjective o;
+  double h, e0, ep, em;
+  int iters = 0;
+
+  est.k = 0; est.residual = 0; est.curvature = 0;
+  est.iterations = 0; est.determined = 0;
+  if(!fi || !frames || numFrames < 1) return est;
+  if(!cfg) cfg = &defcfg;
+
+  o.fi = fi; o.frames = frames; o.numFrames = numFrames;
+  o.gnSteps = cfg->gaussNewtonSteps; o.evals = 0;
+
+  est.k = lensBrentMinimise(cfg->kMin, cfg->kMax, cfg->tolerance,
+                            cfg->maxIterations, &o, &iters);
+
+  /* Curvature of the profile curve at the minimum by central difference.  This
+     is the whole point of profiling rather than alternating: a flat curve means
+     the data cannot pin k down, which is a different situation from a
+     confidently estimated k that happens to be near zero. */
+  h  = 1e-3;
+  e0 = lensObjective(est.k, &o);
+  ep = lensObjective(est.k + h, &o);
+  em = lensObjective(est.k - h, &o);
+  if(ep >= LENS_PENALTY || em >= LENS_PENALTY){
+    est.curvature = 0;   /* ran into the model's domain, treat as no evidence */
+  }else{
+    est.curvature = (ep - 2.0*e0 + em)/(h*h);
+  }
+
+  est.residual   = sqrt(e0 >= LENS_PENALTY ? 0 : e0);
+  est.iterations = o.evals;
+  est.determined = (est.curvature > cfg->minCurvature);
+  return est;
+}
+
+VSLensEstimate vsEstimateLensDistortion(const VSFrameInfo* fi,
+                                        const VSManyLocalMotions* motions,
+                                        const VSLensEstimateConfig* cfg){
+  VSLensEstimate est;
+  VSPointMatches* frames;
+  double* storage;
+  int numFrames, i, j, totalFields = 0, offset = 0;
+
+  est.k = 0; est.residual = 0; est.curvature = 0;
+  est.iterations = 0; est.determined = 0;
+  if(!fi || !motions) return est;
+  numFrames = vs_vector_size((const VSVector*)motions);
+  if(numFrames < 1) return est;
+
+  for(i=0; i<numFrames; i++)
+    totalFields += vs_vector_size(VSMLMGet(motions, i));
+  if(totalFields < 1) return est;
+
+  frames  = (VSPointMatches*)vs_malloc(sizeof(VSPointMatches)*numFrames);
+  storage = (double*)vs_malloc(sizeof(double)*4*totalFields);
+  if(!frames || !storage){ vs_free(frames); vs_free(storage); return est; }
+
+  for(i=0; i<numFrames; i++){
+    const LocalMotions* lms = VSMLMGet(motions, i);
+    int n = vs_vector_size(lms);
+    double* px = storage + 4*offset;
+    double* py = px + n, *qx = px + 2*n, *qy = px + 3*n;
+    for(j=0; j<n; j++){
+      const LocalMotion* lm = LMGet(lms, j);
+      px[j] = lm->f.x;
+      py[j] = lm->f.y;
+      qx[j] = (double)lm->f.x + lm->v.x;
+      qy[j] = (double)lm->f.y + lm->v.y;
+    }
+    frames[i].px = px; frames[i].py = py;
+    frames[i].qx = qx; frames[i].qy = qy;
+    frames[i].n  = n;
+    offset += n;
+  }
+
+  est = vsEstimateLensDistortionFromMatches(fi, frames, numFrames, cfg);
+  vs_free(frames);
+  vs_free(storage);
+  return est;
 }

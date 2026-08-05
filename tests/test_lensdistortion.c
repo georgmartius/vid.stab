@@ -525,6 +525,122 @@ static void test_lensdistortion_rotation_is_blind_to_k(void){
   ldFreeClip(&clip);
 }
 
+/* --- cycle 4: recovering k ------------------------------------------------ */
+
+static void ldCheckRecovery(double trueK, LDPathMode mode, int quantise,
+                            double noiseSigma, double tol, const char* label){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+
+  cfg.k = trueK;
+  cfg.pathMode = mode;
+  cfg.quantise = quantise;
+  cfg.noiseSigma = noiseSigma;
+  clip = ldGenerate(&cfg);
+
+  est = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &ecfg);
+  fprintf(stderr,
+          "%-34s true k %6.3f -> %8.5f  (err %8.2e, res %.3e px, curv %.2e, %i evals)\n",
+          label, trueK, est.k, fabs(est.k-trueK), est.residual, est.curvature,
+          est.iterations);
+  test_bool(est.determined);
+  test_bool(fabs(est.k - trueK) < tol);
+  ldFreeClip(&clip);
+}
+
+static void test_lensdistortion_recover_noisefree(void){
+  fprintf(stderr, "--- recovery from exact displacements ---\n");
+  ldCheckRecovery(-0.25, LD_PATH_TRANSLATION, 0, 0.0, 1e-4, "strong barrel");
+  ldCheckRecovery(-0.10, LD_PATH_TRANSLATION, 0, 0.0, 1e-4, "mild barrel");
+  ldCheckRecovery( 0.15, LD_PATH_TRANSLATION, 0, 0.0, 1e-4, "pincushion");
+}
+
+/* An undistorted clip must come back as undistorted.  A estimator that always
+   reports some distortion would pass every test above and be useless. */
+static void test_lensdistortion_null_case(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+
+  cfg.k = 0.0;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+  est = vsEstimateLensDistortionFromMatches(&clip.fi, clip.frames, clip.numFrames, &ecfg);
+
+  fprintf(stderr, "--- null case: no distortion is not invented ---\n");
+  fprintf(stderr, "true k 0 -> %.3e (residual %.3e px)\n", est.k, est.residual);
+  test_bool(fabs(est.k) < 1e-4);
+  ldFreeClip(&clip);
+}
+
+/* The real input: integer displacements as LocalMotion.v stores them. */
+static void test_lensdistortion_recover_quantised(void){
+  /* Integer rounding costs about 2e-4 in k, so 1e-3 keeps a safety factor of
+     five while staying tight enough to catch a real regression.  The spec
+     budgeted 1e-2 here; the estimator turned out to do far better than that. */
+  fprintf(stderr, "--- recovery from integer displacements ---\n");
+  ldCheckRecovery(-0.25, LD_PATH_TRANSLATION, 1, 0.0, 1e-3, "strong barrel, quantised");
+  ldCheckRecovery(-0.10, LD_PATH_TRANSLATION, 1, 0.0, 1e-3, "mild barrel, quantised");
+}
+
+/* Converts a generated clip into the LocalMotions the detector would emit, so
+   the public entry point is exercised on its real input type. */
+static void ldClipToLocalMotions(const LDSynthClip* clip, VSManyLocalMotions* mlms){
+  int i, j;
+  vs_vector_init(mlms, clip->numFrames);
+  for(i=0; i<clip->numFrames; i++){
+    LocalMotions lms;
+    vs_vector_init(&lms, clip->numFields);
+    for(j=0; j<clip->numFields; j++){
+      LocalMotion lm;
+      lm.f.x    = (int16_t)clip->frames[i].px[j];
+      lm.f.y    = (int16_t)clip->frames[i].py[j];
+      lm.f.size = 32;
+      lm.v.x    = (int16_t)lrint(clip->frames[i].qx[j] - clip->frames[i].px[j]);
+      lm.v.y    = (int16_t)lrint(clip->frames[i].qy[j] - clip->frames[i].py[j]);
+      lm.contrast = 1.0;
+      lm.match    = 1.0;
+      vs_vector_append_dup(&lms, &lm, sizeof(LocalMotion));
+    }
+    vs_vector_append_dup(mlms, &lms, sizeof(LocalMotions));
+  }
+}
+
+static void test_lensdistortion_from_localmotions(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSManyLocalMotions mlms;
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+  int i;
+
+  cfg.k = -0.25;
+  cfg.quantise = 1;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+  ldClipToLocalMotions(&clip, &mlms);
+
+  est = vsEstimateLensDistortion(&clip.fi, &mlms, &ecfg);
+  fprintf(stderr, "--- recovery through the LocalMotions entry point ---\n");
+  fprintf(stderr, "true k -0.25 -> %.5f (err %.2e)\n", est.k, fabs(est.k+0.25));
+  test_bool(est.determined);
+  test_bool(fabs(est.k + 0.25) < 1e-3);
+
+  for(i=0; i<vs_vector_size(&mlms); i++) vs_vector_del(VSMLMGet(&mlms, i));
+  vs_vector_del(&mlms);
+  ldFreeClip(&clip);
+}
+
+void test_lensdistortion_estimate(void){
+  test_lensdistortion_recover_noisefree();
+  test_lensdistortion_null_case();
+  test_lensdistortion_recover_quantised();
+  test_lensdistortion_from_localmotions();
+}
+
 void test_lensdistortion_fit(void){
   test_lensdistortion_fit_recovers_path();
   test_lensdistortion_wrong_k_leaves_residual();

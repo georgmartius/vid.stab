@@ -171,6 +171,43 @@ Profiling is preferred over alternating optimisation: it cannot stall in a curve
 way block coordinate descent can, it has no convergence criterion to tune, and it yields the
 profile curve as a by-product.
 
+### Outlier rejection
+
+Local motions from real footage contain outliers: moving objects, mismatches. The
+per-frame rejection already in `localmotion2transform.c` is **not** reused here, and the
+reason is specific. Its first stage thresholds `lm->match`, the matcher's own confidence —
+model-independent, and safe to apply before `k` is known. Its second stage thresholds the
+residual under the currently fitted similarity, which assumes *no distortion*. Under
+uncorrected barrel those residuals are systematically radial, largest at the frame edge, so
+that stage would preferentially delete the fields carrying the entire distortion signal.
+
+Measured on clean barrel-distorted data with no outliers at all: rejecting at `k = 0` drops
+18 of 192 fields whose mean radius is 0.84 against 0.53 overall. Rejecting at the true `k`
+drops none.
+
+So the global search runs its own rejection, with two deliberate differences:
+
+- **Evaluated at the current `k`**, never at zero, so systematic distortion residual is not
+  mistaken for a frame full of outliers.
+- **The mask is fixed for the duration of each Brent search** and updated only between
+  passes. Rejecting inside the objective would let a wrong `k` discard more points and so
+  lower `E(k)` for free — biasing the profile and making it discontinuous, which is not a
+  function Brent can minimise.
+- **Threshold is median + n·1.4826·MAD**, not mean + n·σ. A moving object covering a fifth of
+  the fields inflates the standard deviation enough to hide inside its own threshold; MAD
+  tolerates up to half the data being bad.
+
+With a tenth of the fields carrying an object's own motion, this takes the error in `k` from
+1.2e-01 to 3.5e-03. On clean data it moves the answer by under 1e-3.
+
+**Known limit.** Beyond roughly a quarter to a third outliers it stops working: the inner
+similarity fit is plain least squares with no breakdown resistance, so once outliers drag the
+fit itself, the inliers' residuals inflate with it and nothing stands out to reject. Measured
+at 40% outliers, rejection removes nothing and `k` is off by 0.28. It does fail loudly rather
+than quietly — the inflated residual pushes the standard error past `maxUncertainty` and
+`determined` comes back 0. Fixing it properly needs a robust inner fit (IRLS or RANSAC), not
+a different threshold.
+
 ### Confidence
 
 The curvature `C = d^2E/dk^2` at the minimum is obtained by central difference. Raw curvature
@@ -220,6 +257,16 @@ From `tests --testLENS`, on a 1280x720 frame with a 16x12 field grid over 12 fra
 
 The search converges in 12 to 14 objective evaluations.
 
+Through the real detector — barrel-distorted frames rendered and put through
+`vsMotionDetection`, so the correspondences carry genuine matching error, quantisation and
+outliers — over nine frame pairs and roughly 2500 fields:
+
+| true `k` | recovered | error | dropped as outliers |
+|---|---|---|---|
+| -0.25 | -0.24613 | 3.9e-03 | 170 |
+| -0.10 | -0.09937 | 6.3e-04 | 158 |
+| 0.00 | +0.00147 | 1.5e-03 | 200 |
+
 Three things are worth drawing out. Recovery from the *integer* displacements a `LocalMotion`
 actually stores is accurate to about 1e-3, an order of magnitude better than the feasibility
 study set as its target. Adding a large rotation does not degrade the estimate, confirming the
@@ -227,10 +274,36 @@ commutation argument empirically. And the reported `sigma_k` is a usable predict
 actual error — 2.9e-3 against 4.9e-3 — while separating the identifiable cases from the
 rotation-only degeneracy by three orders of magnitude.
 
-## 6. Status and limitations
+## 6. Where this runs
 
-This is a feasibility study. The estimator is not wired into `motiondetect.c` or
-`transform.c`, and `VSTransform.barrel` remains unused.
+The estimate is made in the **transform pass**, in `vsLocalmotions2Transforms`, and nowhere
+near motion detection. That is forced by the structure of the problem rather than chosen:
+`k` is a single parameter pooled over the whole clip, while detection is streaming and never
+holds more than one frame pair at a time. The transform pass is the first point at which the
+complete set of local motions exists.
+
+`VSTransformConfig.estimateLensDistortion` controls it, on by default. When enabled, the
+clip's `k` is estimated once and the per-frame transforms are then fitted *through* the lens
+model by `vsLensMotionsToTransform`, rather than assuming no distortion. The estimate is
+acted on only when it comes back `determined` and `|k| > 0.01` — below that a corner pixel
+moves less than a pixel, so acting on it would only add noise. On undistorted footage the
+previous code path runs untouched, and the tests assert the two agree exactly rather than
+merely closely.
+
+The gain is in the accuracy of the reported camera motion: with `k = -0.25`, the worst
+per-frame shift error falls from 2.02 px to 0.08 px, because uncorrected distortion was
+previously being absorbed into the estimated motion. A verbose run prints the estimate, its
+standard error, how many motions were used and dropped, and what it decided to do:
+
+    lens distortion: k=-0.2507 +- 0.0015 from 2266 motions (38 dropped), correcting transforms
+    lens distortion: k=0.0002 +- 0.0011 from 2257 motions (47 dropped), too small to matter
+
+## 7. Status and limitations
+
+The distortion is used to *interpret* the motions, not to correct the picture: the output
+video still carries whatever barrel the lens produced. Undistorting the image itself is a
+separate step in `transform.c`, and `VSTransform.barrel` is still only carried, never acted
+on.
 
 Not addressed:
 
@@ -240,9 +313,6 @@ Not addressed:
   and `k2` fit from 2D motion alone are likely to be poorly conditioned against each other
   and against zoom.
 - **No tangential distortion.**
-- **Real motion fields are not yet tested.** The synthetic fields here are exact
-  correspondences plus noise; real ones carry outliers from moving objects and mismatches.
-  `vsLensFitSimilarity` has no outlier rejection yet — the pattern in
-  `localmotion2transform.c`, masking fields beyond one standard deviation and refitting, is
-  the obvious thing to reuse.
+- **Heavy outlier loads**, past about a quarter of the fields, defeat the least-squares inner
+  fit. See the known limit under outlier rejection above.
 - **Rolling shutter** is a separate distortion and is not modelled.

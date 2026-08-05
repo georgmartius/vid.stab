@@ -25,6 +25,7 @@
  */
 
 #include "localmotion2transform.h"
+#include "lensdistortion.h"
 #include "transformtype_operations.h"
 #include <assert.h>
 #include <string.h>
@@ -48,9 +49,42 @@ int vsLocalmotions2Transforms(VSTransformData* td,
     f = fopen("global_motions.trf","w");
   }
 
+  /* Lens distortion is estimated here rather than during detection because it
+     is a single parameter pooled over the entire clip: the detection pass is
+     streaming and never sees more than one frame pair, while this pass holds
+     all of them.  The estimate is only used when it came back determined and
+     is large enough to move a pixel worth mentioning, so ordinary undistorted
+     footage takes exactly the path it did before. */
+  VSLensDistortion lens;
+  int useLens = 0;
+  if(td->conf.estimateLensDistortion && td->conf.simpleMotionCalculation==0){
+    VSLensEstimateConfig lcfg = vsLensEstimateGetDefaultConfig();
+    VSLensEstimate le = vsEstimateLensDistortion(&td->fiSrc, motions, &lcfg);
+    /* |k| below this shifts a corner pixel by well under a pixel, so acting on
+       it would only add noise. */
+    useLens = le.determined && fabs(le.k) > 0.01;
+    lens = vsLensDistortionInit(&td->fiSrc, le.k);
+    if(td->conf.verbose)
+      vs_log_info(td->conf.modName,
+                  "lens distortion: k=%.4f +- %.4f from %i motions (%i dropped), %s\n",
+                  le.k, le.uncertainty, le.used, le.rejected,
+                  useLens ? "correcting transforms"
+                          : (le.determined ? "too small to matter" : "not determined"));
+  }
+
   if(td->conf.simpleMotionCalculation==0){
     for(int i=0; i< vs_vector_size(motions); i++) {
-      trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i), f);
+      if(useLens){
+        double residual = 0;
+        VSLensEstimateConfig lcfg = vsLensEstimateGetDefaultConfig();
+        trans->ts[i]=vsLensMotionsToTransform(&td->fiSrc, &lens,
+                                              VSMLMGet(motions,i), &lcfg, &residual);
+        if(f) fprintf(f,"0 %f %f %f %f %i\n#\t\t\t\t\t %f lens\n",
+                      trans->ts[i].x, trans->ts[i].y, trans->ts[i].alpha,
+                      trans->ts[i].zoom, trans->ts[i].extra, residual);
+      }else{
+        trans->ts[i]=vsMotionsToTransform(td,VSMLMGet(motions,i), f);
+      }
     }
   }else{
     for(int i=0; i< vs_vector_size(motions); i++) {

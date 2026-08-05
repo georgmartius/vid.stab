@@ -1106,6 +1106,84 @@ void test_lensdistortion_endtoend(void){
   ldRunEndToEnd( 0.00, "no distortion", 0.05, 0);
 }
 
+
+/* --- cycle 8: the transform pass uses it -------------------------------- */
+
+/* The wiring lives in vsLocalmotions2Transforms and nowhere else.  It has to:
+   k is one parameter for the whole clip, and the detection pass is streaming,
+   so it never holds more than a single frame pair.  This pass gets the lot.
+
+   What is checked here is not that a number is produced but that the resulting
+   per-frame transforms are closer to the truth than the distortion-blind path
+   they replace. */
+static void ldCheckTransformPass(double trueK, int enable, const char* label,
+                                 double* worstXYOut){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSManyLocalMotions mlms;
+  VSTransformConfig tdconf = vsTransformGetDefaultConfig("lens-phase2");
+  VSTransformData td;
+  VSTransformations trans;
+  int i;
+  double worstXY = 0;
+
+  cfg.k = trueK; cfg.quantise = 1; cfg.noiseSigma = 0.3;
+  cfg.pathMode = LD_PATH_MIXED;
+  clip = ldGenerate(&cfg);
+  ldClipToLocalMotions(&clip, &mlms);
+
+  tdconf.estimateLensDistortion = enable;
+  tdconf.verbose = 1;
+  test_bool(vsTransformDataInit(&td, &tdconf, &clip.fi, &clip.fi) == VS_OK);
+  memset(&trans, 0, sizeof(trans));
+  test_bool(vsLocalmotions2Transforms(&td, &mlms, &trans) == VS_OK);
+  test_bool(trans.len == clip.numFrames);
+
+  for(i=0; i<trans.len; i++){
+    double dx = fabs(trans.ts[i].x - clip.truth[i].x);
+    double dy = fabs(trans.ts[i].y - clip.truth[i].y);
+    if(dx > worstXY) worstXY = dx;
+    if(dy > worstXY) worstXY = dy;
+  }
+  fprintf(stderr, "%s: worst per-frame shift error %.4f px\n", label, worstXY);
+  if(worstXYOut) *worstXYOut = worstXY;
+
+  vsTransformationsCleanup(&trans);
+  vsTransformDataCleanup(&td);
+  for(i=0; i<vs_vector_size(&mlms); i++) vs_vector_del(VSMLMGet(&mlms, i));
+  vs_vector_del(&mlms);
+  ldFreeClip(&clip);
+}
+
+static void test_lensdistortion_transform_pass(void){
+  double off = 0, on = 0;
+
+  fprintf(stderr, "--- transform pass: distortion aware vs blind ---\n");
+  ldCheckTransformPass(-0.25, 0, "barrel k=-0.25, estimation off", &off);
+  ldCheckTransformPass(-0.25, 1, "barrel k=-0.25, estimation on ", &on);
+  /* Uncorrected barrel leaks into the reported camera motion; correcting for it
+     has to measurably shrink that error or the feature is not worth its cost. */
+  test_bool(off > 0.5);
+  test_bool(on < 0.5*off);
+}
+
+/* On footage with no distortion the feature must change nothing measurable:
+   the estimate comes back near zero, fails the "large enough to matter" guard,
+   and the old code path runs untouched. */
+static void test_lensdistortion_transform_pass_is_noop_when_undistorted(void){
+  double off = 0, on = 0;
+
+  fprintf(stderr, "--- transform pass: no distortion, must be a no-op ---\n");
+  ldCheckTransformPass(0.0, 0, "no distortion, estimation off", &off);
+  ldCheckTransformPass(0.0, 1, "no distortion, estimation on ", &on);
+  test_bool(fabs(on - off) < 1e-9);
+}
+
+void test_lensdistortion_phase2(void){
+  test_lensdistortion_transform_pass();
+  test_lensdistortion_transform_pass_is_noop_when_undistorted();
+}
+
 void test_lensdistortion_outliers(void){
   test_lensdistortion_blind_rejection_eats_the_edge();
   test_lensdistortion_moving_object();

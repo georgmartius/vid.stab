@@ -105,6 +105,16 @@ typedef struct _VSTransformConfig {
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
     VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
+    /* Lens distortion.  This belongs to the transform pass and only here: k is
+     * a single parameter pooled over the whole clip, and motion detection is
+     * streaming -- it never holds more than one frame pair at a time.  The
+     * transform pass is where the complete set of local motions exists.
+     * When enabled the transforms are fitted through the estimated lens rather
+     * than assuming none, so barrel distortion stops being absorbed into the
+     * reported camera motion.  It is a no-op unless the estimate comes back
+     * determined and large enough to matter, so undistorted footage is
+     * unaffected. */
+    int            estimateLensDistortion;
     /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
      * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,
      * see vsL1ConfigFromTransformConfig(). */

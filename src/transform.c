@@ -70,6 +70,9 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
   conf.camPathAlgo        = VSOptimalL1;
+  /* On by default: it costs one extra pass over the local motions and reverts
+     to the previous behaviour whenever the estimate is not trustworthy. */
+  conf.estimateLensDistortion = 1;
   return conf;
 }
 

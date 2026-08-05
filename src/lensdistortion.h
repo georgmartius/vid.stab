@@ -127,6 +127,21 @@ VS_API VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
                                                           int numFrames,
                                                           const VSLensEstimateConfig* cfg);
 
+/** Per-frame camera motion from local motions, under an already known lens.
+
+    The distortion-aware counterpart of vsMotionsToTransform: it fits the same
+    four similarity parameters, but through the lens model rather than assuming
+    none, so barrel distortion is not absorbed into the reported motion.  Runs
+    the two stage outlier handling when cfg->rejectOutliers is set -- first on
+    the matcher's own confidence, then on the residual at this k.  Sets
+    extra = 1 when no usable fit was possible.  Writes the RMS residual to
+    residual when that is non-NULL. */
+VS_API VSTransform vsLensMotionsToTransform(const VSFrameInfo* fi,
+                                            const VSLensDistortion* ld,
+                                            const LocalMotions* motions,
+                                            const VSLensEstimateConfig* cfg,
+                                            double* residual);
+
 /** as above, taking the local motions that vsMotionDetection produces.
     Displacements there are integers, so expect roughly a hundredth of
     distortion strength in quantisation-induced error. */

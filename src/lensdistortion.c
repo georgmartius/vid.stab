@@ -592,3 +592,66 @@ int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches* m,
   }
   return VS_OK;
 }
+
+VSTransform vsLensMotionsToTransform(const VSFrameInfo* fi, const VSLensDistortion* ld,
+                                     const LocalMotions* motions,
+                                     const VSLensEstimateConfig* cfg,
+                                     double* residual){
+  VSLensEstimateConfig defcfg = vsLensEstimateGetDefaultConfig();
+  VSTransform t = null_transform();
+  VSPointMatches m;
+  double *buf, *res;
+  unsigned char* act;
+  int n, j;
+
+  if(!fi || !ld || !motions) { t.extra = 1; return t; }
+  n = vs_vector_size(motions);
+  if(n < 3){ t.extra = 1; return t; }
+  if(!cfg) cfg = &defcfg;
+
+  buf = (double*)vs_malloc(sizeof(double)*5*n);
+  act = (unsigned char*)vs_malloc(sizeof(unsigned char)*n);
+  if(!buf || !act){ vs_free(buf); vs_free(act); t.extra = 1; return t; }
+  res = buf + 4*n;
+
+  for(j=0; j<n; j++){
+    const LocalMotion* lm = LMGet(motions, j);
+    buf[j]       = lm->f.x;
+    buf[n+j]     = lm->f.y;
+    buf[2*n+j]   = (double)lm->f.x + lm->v.x;
+    buf[3*n+j]   = (double)lm->f.y + lm->v.y;
+    act[j]       = 1;
+    res[j]       = lm->match;    /* reused below as the stage one criterion */
+  }
+  m.px = buf; m.py = buf+n; m.qx = buf+2*n; m.qy = buf+3*n;
+  m.active = act; m.n = n;
+
+  /* Stage one, as in localmotion2transform.c: drop fields the matcher itself
+     was unhappy with.  This criterion is model independent -- it says nothing
+     about any assumed transform -- so it is safe to apply before k is known. */
+  if(cfg->rejectOutliers) lensMaskOutliers(res, act, n, cfg->outlierStddevs);
+
+  if(vsLensFitSimilarity(ld, &m, cfg->gaussNewtonSteps, &t, residual) != VS_OK){
+    vs_free(buf); vs_free(act);
+    t = null_transform(); t.extra = 1;
+    return t;
+  }
+
+  /* Stage two: residual rejection, evaluated at the known k.  This is the step
+     that must not be done blind -- at k=0 on distorted footage it would reject
+     the frame edge, where the residual is systematic rather than anomalous. */
+  if(cfg->rejectOutliers &&
+     vsLensMatchResiduals(ld, &m, &t, res) == VS_OK &&
+     lensMaskOutliers(res, act, n, cfg->outlierStddevs) > 0){
+    VSTransform refined;
+    double r2;
+    if(vsLensFitSimilarity(ld, &m, cfg->gaussNewtonSteps, &refined, &r2) == VS_OK){
+      t = refined;
+      if(residual) *residual = r2;
+    }
+  }
+
+  t.barrel = ld->k;
+  vs_free(buf); vs_free(act);
+  return t;
+}

@@ -142,6 +142,35 @@ int test_serialize_robust(){
     fclose(f);
     fprintf(stderr,"** corrupt list length rejected OKAY\n");
   }
+
+  /* ---- 3b. a corrupt (implausibly large) *frame index* must be rejected the
+       same way instead of being used to size the frame vector (issue #168).
+       Without the bound, index-1 goes straight into vs_vector_set(), whose
+       growth loop overflows int and asks the allocator for a negative size.
+       On a 64-bit host with overcommit that absurd allocation often succeeds
+       and the bug stays invisible; on 32-bit it fails, and the failing resize
+       used to wipe the vector - which is how this surfaced as an ARM-only
+       test failure. ---- */
+  {
+    int32_t bogus = INT_MAX-1;
+    unsigned char* copy = vs_malloc(len);
+    memcpy(copy,buf,len);
+    memcpy(copy+24,&bogus,4);   /* header(24) -> frameNum of the first record */
+    sr_spit(testOut("srtest_bigindex.trf"), copy, len);
+    vs_free(copy);
+    f = fopen(testOut("srtest_bigindex.trf"),"rb");
+    test_bool(f!=0);
+    test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
+    /* the bogus record is dropped, the two well-formed ones that follow it
+       are still read - and the vector must not have been reset in between */
+    test_bool(vs_vector_size(&mlms)==SR_NFRAMES);
+    test_bool(VSMLMGet(&mlms,0)==0);
+    for(i=1; i<vs_vector_size(&mlms); i++)
+      test_bool(vs_vector_size(VSMLMGet(&mlms,i))==SR_NLM);
+    sr_free_mlms(&mlms);
+    fclose(f);
+    fprintf(stderr,"** corrupt frame index rejected OKAY\n");
+  }
   vs_free(buf);
 
   /* ---- 4. ascii file with CRLF line endings read from a binary handle ---- */

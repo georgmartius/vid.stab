@@ -25,6 +25,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <limits.h>
 #include "vidstab_api.h"
 
 /**
@@ -122,17 +123,39 @@ VS_API int vs_vector_append(VSVector *V, void *data);
 VS_API int vs_vector_append_dup(VSVector *V, void *data, int data_size);
 
 
-/* vs_vector_set:
- *      the newly inserted element BECOMES the position `pos' in the vector.
- *      and the old item is returned
+/*
+ * largest position/size a vector can hold. The buffer is an array of pointers
+ * indexed by int, so both the index and the byte size of the buffer have to
+ * stay representable. A position beyond this is not a large vector, it is a
+ * bogus index (typically taken from a corrupt file) and is rejected rather
+ * than turned into an absurd allocation.
  */
-VS_API void* vs_vector_set(VSVector *V, int pos, void *data);
+#define VS_VECTOR_MAX_SIZE ((int)(INT_MAX / sizeof(void*)))
+
+/* vs_vector_set:
+ *      the newly inserted element BECOMES the position `pos' in the vector,
+ *      which grows as needed. The vector does not take ownership of the data.
+ *
+ * Parameters:
+ *        V: pointer to vector to be used
+ *      pos: position to set, 0 <= pos < VS_VECTOR_MAX_SIZE
+ *     data: pointer to the data. Only the POINTER is stored, no deep copy.
+ *      old: if non-NULL, receives the element previously at `pos' (NULL if
+ *           there was none), so the caller can release it. It is set to NULL
+ *           when the call fails.
+ * Return Value:
+ *     VS_OK on success,
+ *     VS_ERROR if `pos' is out of range or the vector could not be grown.
+ *     On VS_ERROR the vector is left unchanged and still usable.
+ */
+VS_API int vs_vector_set(VSVector *V, int pos, void *data, void **old);
 
 /* vs_vector_set_dup:
- *      the newly inserted element is copied and BECOMES the position `pos' in the vector
- *      and the old item is returned
+ *      like vs_vector_set but copies `data_size' bytes of data. The copy is
+ *      released again if the element cannot be stored.
  */
-VS_API void* vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size);
+VS_API int vs_vector_set_dup(VSVector *V, int pos, void *data, int data_size,
+                             void **old);
 
 /*
  * vs_vector_get:

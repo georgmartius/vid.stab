@@ -91,6 +91,14 @@ const char* modname = "vid.stab - serialization";
  */
 #define VS_MAX_LOCALMOTIONS_PER_FRAME (1<<20)
 
+/*
+ * sanity limit for the frame index in a transform file. 1<<22 frames is more
+ * than 19 hours of 60fps material; a larger index means the file is corrupt
+ * and we must not size the frame vector after it - the index is used as a
+ * vector position, so an unbounded one turns into an absurd allocation.
+ */
+#define VS_MAX_FRAMES (1<<22)
+
 int vsPrepareFileText(const VSMotionDetect* md, FILE* f);
 int vsPrepareFileBinary(const VSMotionDetect* md, FILE* f);
 int vsWriteToFileText(const VSMotionDetect* md, FILE* f, const LocalMotions* lms);
@@ -494,6 +502,16 @@ int vsReadFromFileBinary(FILE* f, LocalMotions* lms){
   return frameNum;
 }
 
+/* releases a partially filled VSManyLocalMotions and everything in it */
+static void freeManyLocalMotions(VSManyLocalMotions* mlms){
+  int i;
+  for(i=0; i<vs_vector_size(mlms); i++){
+    LocalMotions* lms = (LocalMotions*)vs_vector_get(mlms,i);
+    if(lms) vs_vector_del(lms);
+  }
+  vs_vector_del(mlms);
+}
+
 int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
   const int serializationMode = vsGuessSerializationMode(f);
   int version = vsReadFileVersion(f, serializationMode);
@@ -506,7 +524,8 @@ int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
   }
   assert(mlms);
   // initial number of frames, but it will automatically be increaseed
-  vs_vector_init(mlms,1024);
+  if(vs_vector_init(mlms,1024)!=VS_OK)
+    return VS_ERROR;
   int index;
   int oldindex = 0;
   LocalMotions lms;
@@ -515,11 +534,25 @@ int vsReadLocalMotionsFile(FILE* f, VSManyLocalMotions* mlms){
       vs_log_info(modname,"VID.STAB file: index of frames is not continuous %i -< %i",
                   oldindex, index);
     }
-    if(index<1){
-      vs_log_info(modname,"VID.STAB file: Frame number < 1 (%i)", index);
+    if(index<1 || index>VS_MAX_FRAMES){
+      /* the index is used as a position in mlms, so an implausible one is
+         rejected here rather than passed on as a vector size */
+      vs_log_info(modname,"VID.STAB file: implausible frame number (%i), "
+                  "expect 1..%i", index, VS_MAX_FRAMES);
       vs_vector_del(&lms); // the motions are not stored, so release them
     } else {
-      vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions));
+      void* old = 0;
+      if(vs_vector_set_dup(mlms,index-1,&lms, sizeof(LocalMotions), &old)!=VS_OK){
+        vs_log_error(modname,"VID.STAB file: cannot store the localmotions of "
+                     "frame %i", index);
+        vs_vector_del(&lms);
+        freeManyLocalMotions(mlms); // the caller does not own mlms on error
+        return VS_ERROR;
+      }
+      if(old){ // the same frame occurs twice in the file
+        vs_vector_del((LocalMotions*)old);
+        vs_free(old);
+      }
     }
     oldindex=index;
   }

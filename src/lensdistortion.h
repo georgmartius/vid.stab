@@ -94,16 +94,17 @@ typedef struct VS_API _vslensestimateconfig {
   double tolerance;      // absolute convergence tolerance on k, default 1e-6
   int    maxIterations;  // cap on golden-section/parabolic iterations, default 100
   int    gaussNewtonSteps; // inner similarity refinement steps per frame, default 3
-  double minCurvature;   // below this second derivative k is reported undetermined, default 1e-3
+  double maxUncertainty; // largest standard error in k still called determined, default 0.02
 } VSLensEstimateConfig;
 
 /** Outcome of the search. */
 typedef struct VS_API _vslensestimate {
-  double k;          // recovered distortion strength, same convention as VSLensDistortion.k
-  double residual;   // RMS image-space residual per correspondence at the minimum, in pixels
-  double curvature;  // d2E/dk2 at the minimum; near zero means the data cannot pin k down
-  int    iterations; // how many objective evaluations the search used
-  int    determined; // 0 when curvature < minCurvature, i.e. k is not identifiable here
+  double k;           // recovered distortion strength, same convention as VSLensDistortion.k
+  double residual;    // RMS image-space residual per correspondence at the minimum, in pixels
+  double curvature;   // d2E/dk2 at the minimum; near zero means the data cannot pin k down
+  double uncertainty; // standard error of k, residual/sqrt(N*curvature); scale free
+  int    iterations;  // how many objective evaluations the search used
+  int    determined;  // 0 when k is not identifiable: flat objective, or pinned to the bracket
 } VSLensEstimate;
 
 VS_API VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void);

@@ -180,7 +180,10 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
     for(j=0; j<n; j++){
       double wx = c*ax[j] + s*ay[j] + tx;
       double wy = -s*ax[j] + c*ay[j] + ty;
-      double dpx, dpy, J[4], ex, ey;
+      double dpx, dpy, ex, ey;
+      /* zeroed so the optimiser can see it is never read unset: the guard below
+         returns before any use, but that is not visible to it across the call */
+      double J[4] = {0,0,0,0};
       double Jp[4][2];
       if(vsLensDistortPoint(ld, wx + ld->cx, wy + ld->cy, &dpx, &dpy) != VS_OK ||
          lensDistortJacobian(ld, wx, wy, J) != VS_OK){
@@ -252,7 +255,7 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
   c.tolerance = 1e-6;
   c.maxIterations = 100;
   c.gaussNewtonSteps = 3;
-  c.minCurvature = 1e-3;
+  c.maxUncertainty = 0.02;
   return c;
 }
 
@@ -260,6 +263,16 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
    walks away from that region instead of failing outright.  Large against any
    real residual in px^2, small enough to stay well clear of overflow. */
 #define LENS_PENALTY 1e12
+
+/* Curvature below this counts as numerically zero rather than small: over the
+   whole bracket it moves the objective by far less than one squared pixel, so
+   there is no evidence about k at all.  This is what separates a genuinely flat
+   objective -- a rotation-only path on exact data -- from a merely shallow one,
+   where the statistical uncertainty below is the right measure. */
+#define LENS_CURVATURE_FLOOR 1e-9
+/* Reported in place of a standard error when there is no curvature to divide
+   by; large enough that no sane maxUncertainty would accept it. */
+#define LENS_UNDETERMINED_SIGMA 1e6
 
 struct LensObjective {
   const VSFrameInfo*    fi;
@@ -286,7 +299,12 @@ static double lensObjective(double k, struct LensObjective* o){
     sum2  += r*r*o->frames[i].n;
     total += o->frames[i].n;
   }
-  return total > 0 ? sum2/total : LENS_PENALTY;
+  if(total < 1) return LENS_PENALTY;
+  sum2 /= total;
+  /* Non-finite input (a NaN coordinate) must not propagate into k and come back
+     looking like an answer; treat it the same as leaving the model's domain. */
+  if(!(sum2 == sum2) || sum2 > LENS_PENALTY) return LENS_PENALTY;
+  return sum2;
 }
 
 /* Brent's method: golden section with parabolic interpolation where the
@@ -348,15 +366,17 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
   VSLensEstimateConfig defcfg = vsLensEstimateGetDefaultConfig();
   struct LensObjective o;
   double h, e0, ep, em;
-  int iters = 0;
+  int iters = 0, nPoints = 0;
 
-  est.k = 0; est.residual = 0; est.curvature = 0;
+  est.k = 0; est.residual = 0; est.curvature = 0; est.uncertainty = 0;
   est.iterations = 0; est.determined = 0;
   if(!fi || !frames || numFrames < 1) return est;
   if(!cfg) cfg = &defcfg;
 
   o.fi = fi; o.frames = frames; o.numFrames = numFrames;
   o.gnSteps = cfg->gaussNewtonSteps; o.evals = 0;
+  for(iters=0; iters<numFrames; iters++) nPoints += frames[iters].n;
+  iters = 0;
 
   est.k = lensBrentMinimise(cfg->kMin, cfg->kMax, cfg->tolerance,
                             cfg->maxIterations, &o, &iters);
@@ -377,7 +397,25 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
 
   est.residual   = sqrt(e0 >= LENS_PENALTY ? 0 : e0);
   est.iterations = o.evals;
-  est.determined = (est.curvature > cfg->minCurvature);
+
+  /* Standard error of k.  With E the mean squared residual over nPoints
+     correspondences, the sum of squares curves as nPoints*curvature, and the
+     usual least squares result var(k) = 2*sigma^2 / d2SSE/dk2 reduces to
+     E/(nPoints*curvature).  Unlike raw curvature this is scale free, so one
+     threshold works regardless of field count, motion size or noise level. */
+  if(est.curvature > LENS_CURVATURE_FLOOR && nPoints > 0)
+    est.uncertainty = est.residual/sqrt((double)nPoints*est.curvature);
+  else
+    est.uncertainty = LENS_UNDETERMINED_SIGMA;
+
+  /* A minimum sitting on the bracket edge was never bracketed at all: Brent
+     converges to an endpoint when the objective still decreases through it, so
+     the value is a boundary artefact rather than an estimate. */
+  {
+    double edge = 1e-6*(cfg->kMax - cfg->kMin) + cfg->tolerance;
+    int pinned = (est.k - cfg->kMin < edge) || (cfg->kMax - est.k < edge);
+    est.determined = !pinned && (est.uncertainty < cfg->maxUncertainty);
+  }
   return est;
 }
 

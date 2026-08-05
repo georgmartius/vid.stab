@@ -26,7 +26,7 @@
 #define __TRANSFORM_INTERNAL_H
 
 #include "transform.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 #include "transformfixedpoint.h"
 #ifdef TESTING
 #include "transformfloat.h"

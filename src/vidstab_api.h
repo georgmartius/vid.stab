@@ -1,5 +1,5 @@
 /*
- *  vidstab_export.h
+ *  vidstab_api.h
  *
  *  Symbol visibility for the public library interface.
  *
@@ -14,9 +14,9 @@
  *                           anything that compiles the sources in directly
  *                           (the test suite and the transcode plugins do)
  *
- *  Names and semantics are those of CMake's generate_export_header(), so a
- *  build that would rather use the generated header can substitute it without
- *  touching a single source file.
+ *  The macro names are those of CMake's generate_export_header(), so a build
+ *  that would rather use the generated header only has to point the includes
+ *  at it; nothing else in the sources changes.
  *
  *  Copyright (C) Georg Martius - 2026
  *   georg dot martius at web dot de
@@ -40,8 +40,8 @@
  *
  */
 
-#ifndef VIDSTAB_EXPORT_H
-#define VIDSTAB_EXPORT_H
+#ifndef VIDSTAB_API_H
+#define VIDSTAB_API_H
 
 #ifdef VIDSTAB_STATIC_DEFINE
 #  define VS_API
@@ -59,4 +59,4 @@
 #  define VS_API
 #endif
 
-#endif /* VIDSTAB_EXPORT_H */
+#endif /* VIDSTAB_API_H */

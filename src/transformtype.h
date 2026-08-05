@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "vsvector.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /* structure to hold information about frame transformations
    x,y are translations, alpha is a rotation around the center in RAD,

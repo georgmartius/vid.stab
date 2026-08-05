@@ -25,7 +25,7 @@
 #ifndef VS_CPUDETECT_H
 #define VS_CPUDETECT_H
 
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /* --- target architecture ---------------------------------------------------
    One place that decides what the *target* is, so no other file has to repeat

@@ -28,7 +28,7 @@ endif()
 
 # The tests compile the library sources straight into the test binary, so the
 # public interface must not carry any import/export decoration (see
-# src/vidstab_export.h).
+# src/vidstab_api.h).
 add_definitions(-DVIDSTAB_STATIC_DEFINE)
 
 # Same SIMD setup as the library, so the equivalence tests check every kernel

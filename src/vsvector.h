@@ -25,7 +25,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /**
    A vector for arbitrary elements that resizes

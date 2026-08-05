@@ -31,7 +31,7 @@
 #include "transformtype.h"
 #include "motiondetect.h"
 #include "transform.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /*
  * IMPORTANT - contract for all FILE* passed to the functions below:

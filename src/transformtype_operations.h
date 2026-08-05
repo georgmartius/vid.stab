@@ -28,7 +28,7 @@
 #include "vidstabdefines.h"
 #include "vsvector.h"
 #include "frameinfo.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /// helper macro to access a localmotion in the VSVector
 #define LMGet(localmotions,index) \

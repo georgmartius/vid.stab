@@ -33,7 +33,7 @@
 #include "transformtype.h"
 #include "frameinfo.h"
 #include "vidstabdefines.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif

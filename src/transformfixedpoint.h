@@ -26,7 +26,7 @@
 #define __TRANSFORMFIXEDPOINT_H
 
 #include "transformtype.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 #include <stdint.h>
 
 typedef int32_t fp8;

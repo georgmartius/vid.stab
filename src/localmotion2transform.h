@@ -30,7 +30,7 @@
 #include "transform.h"
 #include "transformtype.h"
 #include "serialize.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 /** converts for each frame the localmotions into a transform
  */

@@ -36,7 +36,7 @@
 #include "vidstabdefines.h"
 #include "vsvector.h"
 #include "frameinfo.h"
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 
 #define ASCII_SERIALIZATION_MODE 1
 #define BINARY_SERIALIZATION_MODE 2

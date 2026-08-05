@@ -28,7 +28,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include "vidstab_export.h"
+#include "vidstab_api.h"
 /// pixel formats
 typedef enum {PF_NONE = -1,
               PF_GRAY8,     ///<        Y        ,  8bpp

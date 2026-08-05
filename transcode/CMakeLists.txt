@@ -23,7 +23,7 @@ endif ()
 
 # Each plugin compiles the library sources it needs directly into itself, so
 # the public interface must not carry any import/export decoration (see
-# src/vidstab_export.h).
+# src/vidstab_api.h).
 add_definitions(-DVIDSTAB_STATIC_DEFINE)
 
 

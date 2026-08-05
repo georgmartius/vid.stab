@@ -33,6 +33,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
   add_definitions(-Wall -Wno-pointer-sign)
 elseif(MSVC)
   add_definitions(/W3)
+  # MSVC's <math.h> only defines M_PI and friends when asked to.
+  add_definitions(-D_USE_MATH_DEFINES)
 endif()
 
 if(NOT WIN32)
@@ -105,8 +107,12 @@ add_library (vidstab ${SOURCES})
 set_target_properties(vidstab PROPERTIES SOVERSION ${MAJOR_VERSION}.${MINOR_VERSION})
 
 
-if(MSVC)
-  target_compile_definitions(vidstab PRIVATE VIDSTAB_EXPORTS)
+# VS_API (see src/vidstab_api.h) needs to expand to nothing for a static
+# build: there is no import library to point a __declspec(dllimport) at, and
+# saying so anyway makes consumers fail to link.  PUBLIC, because the headers
+# our users compile against have to see the same definition we did.
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(vidstab PUBLIC VIDSTAB_STATIC_DEFINE)
 endif()
 target_include_directories(vidstab PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>

@@ -21,6 +21,11 @@ endif ()
 # here we should check for SSE2
 # our  -DUSE_SSE2_ASM code does not work with fpic
 
+# Each plugin compiles the library sources it needs directly into itself, so
+# the public interface must not carry any import/export decoration (see
+# src/vidstab_api.h).
+add_definitions(-DVIDSTAB_STATIC_DEFINE)
+
 
 # Make sure the compiler can find include files from transcode
 include_directories (../src ${TRANSCODE_ROOT}/src ${TRANSCODE_ROOT}/ )

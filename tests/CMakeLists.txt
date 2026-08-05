@@ -17,7 +17,19 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-add_definitions(-Wall -Wno-pointer-sign -DTESTING -std=gnu99)
+if(MSVC)
+  # _CRT_*_NO_WARNINGS: the sources use strdup, snprintf and friends under their
+  # standard names, which MSVC deprecates in favour of its own spellings.
+  add_definitions(/W3 -DTESTING -D_USE_MATH_DEFINES
+                  -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS)
+else()
+  add_definitions(-Wall -Wno-pointer-sign -DTESTING -std=gnu99)
+endif()
+
+# The tests compile the library sources straight into the test binary, so the
+# public interface must not carry any import/export decoration (see
+# src/vidstab_api.h).
+add_definitions(-DVIDSTAB_STATIC_DEFINE)
 
 # Same SIMD setup as the library, so the equivalence tests check every kernel
 # this toolchain can build -- not merely the one the dispatcher would pick.
@@ -39,12 +51,17 @@ if(NOT VIDSTAB_HAVE_NEON)
   message(STATUS "tests: also checking the NEON kernel via neon_emu.h")
 endif()
 
-if(SSE2_FOUND)
+if(SSE2_FOUND AND NOT MSVC)
 add_definitions( -msse2 -ffast-math -fno-show-column ) # -DUSE_SSE2_ASM
 endif()
 
 if(USE_OMP)
-add_definitions(-fopenmp -DUSE_OMP)
+  if(MSVC)
+    add_compile_options(/openmp)
+    add_definitions(-DUSE_OMP)
+  else()
+    add_definitions(-fopenmp -DUSE_OMP)
+  endif()
 endif()
 
 # Make sure the compiler can find include files from transcode
@@ -94,16 +111,22 @@ add_executable (bench EXCLUDE_FROM_ALL ../bench/bench_motiondetect.c
   ../src/motiondetect.c ../src/boxblur.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
+# MSVC has the math functions in the C runtime and drives OpenMP from /openmp,
+# so neither libm nor libgomp exists to be linked there.
+if(NOT MSVC)
 target_link_libraries(bench m)
 if(USE_OMP)
 target_link_libraries(bench gomp)
 endif()
+endif()
 
+if(NOT MSVC)
 target_link_libraries(tests m)
+endif()
 if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
 target_link_libraries(tests GLPK::GLPK)
 endif()
-if(USE_OMP)
+if(USE_OMP AND NOT MSVC)
 target_link_libraries(tests gomp)
 endif()
 

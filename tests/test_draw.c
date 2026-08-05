@@ -31,7 +31,9 @@
 /* golden values for the end-to-end planar overlay, captured by running
    test_draw_planar_show() against the implementation as it stood before the
    primitives were rebuilt (origin/master at the time of this change) */
-#define PLANAR_SHOW_CHECKSUM 4339987323UL
+/* exceeds 2^32-1, so it needs a type wider than unsigned long -- which is
+   32 bit on Windows */
+#define PLANAR_SHOW_CHECKSUM 4339987323ULL
 #define PLANAR_SHOW_NONZERO  72349
 
 static void draw_clear(unsigned char* b){ memset(b, 0, DRAW_BUFSZ); }
@@ -198,7 +200,7 @@ void test_draw_planar_show(void){
   VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("test_planar_show");
   VSMotionDetect md;
   LocalMotions lms;
-  unsigned long sum = 0;
+  unsigned long long sum = 0;
   int count = 0;
 
   fprintf(stderr,"*** planar show: overlay output must not change\n");
@@ -238,10 +240,10 @@ void test_draw_planar_show(void){
   for(int y=0; y<fi.height; y++)
     for(int x=0; x<fi.width; x++){
       unsigned char v = f2.data[0][x + y*f2.linesize[0]];
-      sum += (unsigned long)v * (unsigned long)(x + 3*y + 1);
+      sum += (unsigned long long)v * (unsigned long long)(x + 3*y + 1);
       count += (v != 0);
     }
-  fprintf(stderr,"  planar show checksum=%lu nonzero=%d\n", sum, count);
+  fprintf(stderr,"  planar show checksum=%llu nonzero=%d\n", sum, count);
   test_bool(sum   == PLANAR_SHOW_CHECKSUM);
   test_bool(count == PLANAR_SHOW_NONZERO);
 

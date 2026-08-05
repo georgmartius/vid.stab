@@ -27,7 +27,7 @@
 #include "transformtype_operations.h"
 #include <assert.h>
 #include <string.h>
-#include "compat.h"
+#include <math.h>
 /* #include <sys/time.h> */
 /* long timeOfDayinMS() { */
 /*   struct timeval t; */

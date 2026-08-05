@@ -1,5 +1,9 @@
 #include <string.h>
-#include <sys/time.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 #include "testframework.h"
 
@@ -40,10 +44,18 @@ int unittest_summary(){
 
 }
 
+/* Milliseconds from an origin nobody should rely on: only differences between
+   two calls mean anything.  Monotonic on both branches, so a clock adjustment
+   in the middle of a measurement cannot turn an interval negative -- which the
+   gettimeofday() this replaces allowed, besides not existing on Windows. */
 long timeOfDayinMS() {
-  struct timeval t;
-  gettimeofday(&t, 0);
-  return t.tv_sec*1000 + t.tv_usec/1000;
+#ifdef _WIN32
+  return (long)GetTickCount64();
+#else
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return t.tv_sec*1000 + t.tv_nsec/1000000;
+#endif
 }
 
 //// INTERNALS
@@ -62,8 +74,8 @@ int test_summary(){
   return tests_failed==0;
 }
 
-void test_fails (__const char *__assertion, __const char *__file,
-                 unsigned int __line, __const char *__function){
-  fprintf(stderr, "%s:%i: Test Failed: %s\n in Function %s", __file,__line,__assertion,__function);
+void test_fails (const char *assertion, const char *file,
+                 unsigned int line, const char *function){
+  fprintf(stderr, "%s:%i: Test Failed: %s\n in Function %s", file,line,assertion,function);
   tests_failed++;
 }

@@ -23,17 +23,17 @@ int test_store_restore(TestData* testdata, int serializationMode){
     if (i==0) vs_vector_del(&lms);
   }
 
-  FILE* f = fopen(testOut("lmtest"),"w");
+  FILE* f = fopen(testOut("lmtest"),"wb");
   vsStoreLocalmotions(f,&lms,serializationMode);
   fclose(f);
-  f = fopen(testOut("lmtest"),"r");
+  f = fopen(testOut("lmtest"),"rb");
   LocalMotions test = vsRestoreLocalmotions(f,serializationMode);
   fclose(f);
   vsStoreLocalmotions(stderr,&test,ASCII_SERIALIZATION_MODE);
   compare_localmotions(&lms,&test);
   fprintf(stderr,"\n** LM and LMS OKAY\n");
 
-  f = fopen(testOut("lmstest"),"w");
+  f = fopen(testOut("lmstest"),"wb");
   md.frameNum=1;
   vsPrepareFile(&md,f);
   vsWriteToFile(&md,f,&lms);
@@ -41,7 +41,7 @@ int test_store_restore(TestData* testdata, int serializationMode){
   vsWriteToFile(&md,f,&test);
   fclose(f);
 
-  f = fopen(testOut("lmstest"),"r");
+  f = fopen(testOut("lmstest"),"rb");
   test_bool(vsReadFileVersion(f,serializationMode)==1);
   LocalMotions read1;
   test_bool(vsReadFromFile(f,&read1,serializationMode)==1);
@@ -56,7 +56,7 @@ int test_store_restore(TestData* testdata, int serializationMode){
   vs_vector_del(&test);
   vs_vector_del(&lms);
 
-  f = fopen(testOut("lmstest"),"r");
+  f = fopen(testOut("lmstest"),"rb");
   VSManyLocalMotions mlms;
   test_bool(vsReadLocalMotionsFile(f,&mlms)==VS_OK);
   test_bool(vs_vector_size(&mlms)==2);

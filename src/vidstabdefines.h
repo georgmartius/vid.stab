@@ -106,21 +106,13 @@ extern VS_API int VS_MSG_TYPE;
 
 extern VS_API int VS_ERROR;
 extern VS_API int VS_OK;
-#if defined(_MSC_VER)
-#define VS_LOG_MSVC_HELPER(log_func, log_type, tag, format, ...) log_func(log_type, tag, format, __VA_ARGS__)
-#define vs_log_error(tag, format, ...) VS_LOG_MSVC_HELPER(vs_log, VS_ERROR_TYPE, tag, format, __VA_ARGS__)
-#define vs_log_warn(tag, format, ...)  VS_LOG_MSVC_HELPER(vs_log, VS_WARN_TYPE, tag, format, __VA_ARGS__)
-#define vs_log_info(tag, format, ...)  VS_LOG_MSVC_HELPER(vs_log, VS_INFO_TYPE, tag, format, __VA_ARGS__)
-#define vs_log_msg(tag, format, ...)   VS_LOG_MSVC_HELPER(vs_log, VS_MSG_TYPE, tag, format, __VA_ARGS__)
-#else
-#define vs_log_error(tag, format, args...) \
-    vs_log(VS_ERROR_TYPE, tag, format , ## args)
-#define vs_log_warn(tag, format, args...) \
-    vs_log(VS_WARN_TYPE, tag, format , ## args)
-#define vs_log_info(tag, format, args...) \
-    vs_log(VS_INFO_TYPE, tag, format , ## args)
-#define vs_log_msg(tag, format, args...) \
-    vs_log(VS_MSG_TYPE, tag, format , ## args)
-#endif
+/* The message type goes in front of __VA_ARGS__, which leaves tag and format
+   inside the variadic part.  The variadic part is therefore never empty, and
+   these need neither the GNU ", ## args" extension nor C23's __VA_OPT__ to
+   swallow the comma of an argument list that stops after the format. */
+#define vs_log_error(...) vs_log(VS_ERROR_TYPE, __VA_ARGS__)
+#define vs_log_warn(...)  vs_log(VS_WARN_TYPE,  __VA_ARGS__)
+#define vs_log_info(...)  vs_log(VS_INFO_TYPE,  __VA_ARGS__)
+#define vs_log_msg(...)   vs_log(VS_MSG_TYPE,   __VA_ARGS__)
 
 #endif /* VIDSTABDEFINES_H_ */

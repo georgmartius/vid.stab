@@ -52,7 +52,7 @@ VS_API VSTransform mult_transform_(const VSTransform t1, double f);
 VS_API void storeVSTransform(FILE* f, const VSTransform* t);
 
 
-typedef struct VS_API _preparedtransform {
+typedef struct _preparedtransform {
   const VSTransform* t;
   double zcos_a;
   double zsin_a;

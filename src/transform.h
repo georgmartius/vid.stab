@@ -39,14 +39,14 @@
 #endif
 
 
-typedef struct VS_API _vstransformations {
+typedef struct _vstransformations {
     VSTransform* ts; // array of transformations
     int current;   // index to current transformation
     int len;       // length of trans array
     short warned_end; // whether we warned that there is no transform left
 } VSTransformations;
 
-typedef struct VS_API _vsslidingavgtrans {
+typedef struct _vsslidingavgtrans {
     VSTransform avg; // average transformation
     VSTransform accum; // accumulator for relative to absolute conversion
     double zoomavg;     // average zoom value
@@ -80,7 +80,7 @@ typedef void (*vsInterpolateFun)(uint8_t *rv, int32_t x, int32_t y,
                                  const uint8_t *img, int linesize,
                                  int width, int height, uint8_t def);
 
-typedef struct VS_API _VSTransformConfig {
+typedef struct _VSTransformConfig {
 
     /* whether to consider transforms as relative (to previous frame)
      * or absolute transforms
@@ -109,7 +109,7 @@ typedef struct VS_API _VSTransformConfig {
      * see vsL1ConfigFromTransformConfig(). */
 } VSTransformConfig;
 
-typedef struct VS_API _VSTransformData {
+typedef struct _VSTransformData {
     VSFrameInfo fiSrc;
     VSFrameInfo fiDest;
 

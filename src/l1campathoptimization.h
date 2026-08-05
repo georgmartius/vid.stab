@@ -63,7 +63,7 @@
  *
  * matching prepare_transform() in transformtype.c.
  * -------------------------------------------------------------------------- */
-typedef struct VS_API _VSTransformLS {
+typedef struct _VSTransformLS {
   double x;
   double y;
   double a;
@@ -89,7 +89,7 @@ VS_API VSTransform   transformLStoAZ(const VSTransformLS* t);
 
 /** parameters of the L1 optimization, independent of VSTransformData so that
     the core can be exercised on its own */
-typedef struct VS_API _VSL1Config {
+typedef struct _VSL1Config {
   double w1;          ///< weight of |D(P)|_1   (constant segments)
   double w2;          ///< weight of |D^2(P)|_1 (linear segments)
   double w3;          ///< weight of |D^3(P)|_1 (parabolic segments)

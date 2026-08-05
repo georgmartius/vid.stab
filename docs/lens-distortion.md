@@ -138,9 +138,10 @@ another. Zoom-dominated segments contribute little.
 
 Barrel distortion makes a constant ideal translation appear as a field that compresses toward
 the frame edges, in a pattern that is a distinctive function of `k`. The test measures this
-directly: at `k = -0.25`, mean displacement is 20.4 px near the centre against 16.6 px near
-the edge. Because handheld camera shake is translation-dominated, this is the favourable case
-for real footage.
+directly: at `k = -0.25`, mean displacement is 4.73 px for fields inside `r < 0.25` against
+3.35 px for fields beyond `r > 0.65` — a 29% compression, far above any plausible noise floor.
+Because handheld camera shake is translation-dominated, this is the favourable case for real
+footage.
 
 ## 4. The estimator
 

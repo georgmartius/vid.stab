@@ -953,6 +953,159 @@ static void test_lensdistortion_rejection_harmless_when_clean(void){
   ldFreeClip(&clip);
 }
 
+
+/* --- cycle 7: end to end through the real motion detector ---------------- */
+
+/* Everything above feeds the estimator analytic correspondences.  This section
+   renders actual barrel-distorted frames, runs vsMotionDetection on them, and
+   estimates k from whatever the matcher really found -- outliers, quantisation,
+   matching error and all. */
+
+static uint8_t ldSampleBilinear(const uint8_t* src, int w, int h, int stride,
+                                double x, double y){
+  int x0, y0;
+  double fx, fy, top, bot;
+  if(x < 0) x = 0; if(x > w-1.001) x = w-1.001;
+  if(y < 0) y = 0; if(y > h-1.001) y = h-1.001;
+  x0 = (int)x; y0 = (int)y;
+  fx = x - x0; fy = y - y0;
+  top = src[y0*stride + x0]*(1-fx)      + src[y0*stride + x0+1]*fx;
+  bot = src[(y0+1)*stride + x0]*(1-fx)  + src[(y0+1)*stride + x0+1]*fx;
+  return (uint8_t)(top*(1-fy) + bot*fy + 0.5);
+}
+
+/* Texture with detail at every scale, so measurement fields have something to
+   lock onto right out to the frame edge where the distortion signal lives. */
+static void ldFillTexture(VSFrame* f, const VSFrameInfo* fi, uint32_t* seed){
+  int x, y, i;
+  uint8_t* d = f->data[0];
+  int stride = f->linesize[0];
+  for(y=0; y<fi->height; y++)
+    for(x=0; x<fi->width; x++)
+      d[y*stride+x] = (uint8_t)(110 + 30*ldRandUniform(seed));
+  for(i=0; i<900; i++){
+    int rw = 4 + (int)(40*ldRandUnit(seed));
+    int rh = 4 + (int)(40*ldRandUnit(seed));
+    int rx = (int)((fi->width  - rw)*ldRandUnit(seed));
+    int ry = (int)((fi->height - rh)*ldRandUnit(seed));
+    int v  = (int)(255*ldRandUnit(seed));
+    for(y=ry; y<ry+rh; y++)
+      for(x=rx; x<rx+rw; x++)
+        d[y*stride+x] = (uint8_t)v;
+  }
+}
+
+/* Renders src as seen after camera motion cum, through a lens of strength k.
+
+   A pixel y of the output shows the scene point that lands there, so the source
+   is sampled at D_k(S^-1(U_k(y))): undistort the output position, undo the
+   camera motion in ideal coordinates, then distort back into the source image.
+   That is exactly the inverse of the forward relation the estimator models. */
+static void ldRenderWarped(const VSFrame* src, VSFrame* dst, const VSFrameInfo* fi,
+                           const VSLensDistortion* ld, const VSTransform* cum){
+  double z = 1.0 + cum->zoom/100.0;
+  double c = z*cos(cum->alpha), sn = z*sin(cum->alpha);
+  double det = c*c + sn*sn;
+  int x, y;
+  for(y=0; y<fi->height; y++){
+    for(x=0; x<fi->width; x++){
+      double ux, uy, wx, wy, rx, ry, sx, sy;
+      if(vsLensUndistortPoint(ld, x, y, &ux, &uy) != VS_OK){
+        dst->data[0][y*dst->linesize[0]+x] = 0;
+        continue;
+      }
+      /* undo the similarity: r = M^-1 (u - c - t), M = [[c,s],[-s,c]] */
+      wx = ux - ld->cx - cum->x;
+      wy = uy - ld->cy - cum->y;
+      rx = ( c*wx - sn*wy)/det;
+      ry = ( sn*wx + c*wy)/det;
+      if(vsLensDistortPoint(ld, rx + ld->cx, ry + ld->cy, &sx, &sy) != VS_OK){
+        dst->data[0][y*dst->linesize[0]+x] = 0;
+        continue;
+      }
+      dst->data[0][y*dst->linesize[0]+x] =
+        ldSampleBilinear(src->data[0], fi->width, fi->height, src->linesize[0], sx, sy);
+    }
+  }
+}
+
+#define LD_E2E_FRAMES 10
+
+static void ldRunEndToEnd(double trueK, const char* label,
+                          double tol, int requireDetermined){
+  VSFrameInfo fi;
+  VSFrame frames[LD_E2E_FRAMES];
+  VSTransform cum[LD_E2E_FRAMES];
+  VSLensDistortion ld;
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("lens-e2e");
+  VSMotionDetect md;
+  VSManyLocalMotions mlms;
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+  uint32_t seed = 4242u;
+  int i, totalFields = 0;
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+  ld = vsLensDistortionInit(&fi, trueK);
+
+  for(i=0; i<LD_E2E_FRAMES; i++) vsFrameAllocate(&frames[i], &fi);
+  ldFillTexture(&frames[0], &fi, &seed);
+
+  /* a random walk, so consecutive frames differ by roughly ten pixels of shift
+     and a fraction of a degree -- ordinary handheld shake */
+  cum[0] = null_transform();
+  for(i=1; i<LD_E2E_FRAMES; i++){
+    cum[i] = cum[i-1];
+    cum[i].x     += 10.0*ldRandUniform(&seed);
+    cum[i].y     += 10.0*ldRandUniform(&seed);
+    cum[i].alpha += 0.008*ldRandUniform(&seed);
+  }
+  /* frame 0 is the undisplaced view through the same lens */
+  {
+    VSFrame base;
+    vsFrameAllocate(&base, &fi);
+    memcpy(base.data[0], frames[0].data[0], (size_t)frames[0].linesize[0]*fi.height);
+    for(i=0; i<LD_E2E_FRAMES; i++) ldRenderWarped(&base, &frames[i], &fi, &ld, &cum[i]);
+    vsFrameFree(&base);
+  }
+
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+  vs_vector_init(&mlms, LD_E2E_FRAMES);
+  for(i=0; i<LD_E2E_FRAMES; i++){
+    LocalMotions lms;
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    /* the first call only establishes the reference frame and reports no
+       motion, which carries no information about k */
+    if(i == 0){ vs_vector_del(&lms); continue; }
+    totalFields += vs_vector_size(&lms);
+    vs_vector_append_dup(&mlms, &lms, sizeof(LocalMotions));
+  }
+
+  est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
+  fprintf(stderr,
+          "%s: true k %6.3f -> %8.5f  (err %.2e, %i fields over %i pairs, "
+          "%i dropped, res %.3f px, sigma_k %.2e, determined=%i)\n",
+          label, trueK, est.k, fabs(est.k-trueK), totalFields,
+          vs_vector_size(&mlms), est.rejected, est.residual,
+          est.uncertainty, est.determined);
+
+  test_bool(fabs(est.k - trueK) < tol);
+  if(requireDetermined) test_bool(est.determined);
+
+  for(i=0; i<vs_vector_size(&mlms); i++) vs_vector_del(VSMLMGet(&mlms, i));
+  vs_vector_del(&mlms);
+  vsMotionDetectionCleanup(&md);
+  for(i=0; i<LD_E2E_FRAMES; i++) vsFrameFree(&frames[i]);
+}
+
+void test_lensdistortion_endtoend(void){
+  fprintf(stderr, "--- end to end: rendered frames through vsMotionDetection ---\n");
+  ldRunEndToEnd(-0.25, "strong barrel", 0.05, 1);
+  ldRunEndToEnd(-0.10, "mild barrel  ", 0.05, 1);
+  ldRunEndToEnd( 0.00, "no distortion", 0.05, 0);
+}
+
 void test_lensdistortion_outliers(void){
   test_lensdistortion_blind_rejection_eats_the_edge();
   test_lensdistortion_moving_object();

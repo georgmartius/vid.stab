@@ -200,6 +200,7 @@ int main(int argc, char** argv){
     UNIT(test_lensdistortion_estimate());
     UNIT(test_lensdistortion_robustness());
     UNIT(test_lensdistortion_outliers());
+    UNIT(test_lensdistortion_endtoend());
   }
 
   if(contains(argv,argc,"--dumpSynthetic", "dump synthetic frames as PPM for visual inspection")){

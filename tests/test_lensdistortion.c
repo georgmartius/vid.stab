@@ -1,0 +1,426 @@
+/*
+ * test_lensdistortion.c
+ *
+ *  Tests for recovering the barrel distortion parameter from local motions.
+ *  See docs/lens-distortion.md for the math.
+ *
+ *  This file is part of vid.stab video stabilization library
+ *  and is licensed under the GNU GPL v2 or later, see the other
+ *  source files for the full notice.
+ */
+
+#include "lensdistortion.h"
+
+/* --- cycle 1: the model is an exact inverse pair ------------------------- */
+
+/* Radii to probe, as a fraction of rho (=1 at the image corner).  0.999 rather
+   than 1.0 so the corner itself is inside the open domain of U_k. */
+static const double LD_TEST_RADII[] = {0.0, 0.05, 0.2, 0.5, 0.75, 0.999};
+#define LD_NUM_RADII ((int)(sizeof(LD_TEST_RADII)/sizeof(LD_TEST_RADII[0])))
+
+static const double LD_TEST_KS[] = {-0.3, -0.1, 0.0, 0.1};
+#define LD_NUM_KS ((int)(sizeof(LD_TEST_KS)/sizeof(LD_TEST_KS[0])))
+
+static void test_lensdistortion_roundtrip(void){
+  VSFrameInfo fi;
+  int ki, ri, ai;
+  /* a few angles so we check the map is radial in every direction, not just
+     along an axis where a sign error would cancel */
+  const double angles[] = {0.0, 0.7, 2.4, 4.1, 5.9};
+  const int numAngles = (int)(sizeof(angles)/sizeof(angles[0]));
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+
+  fprintf(stderr, "--- lens distortion model round trip ---\n");
+  for(ki=0; ki<LD_NUM_KS; ki++){
+    VSLensDistortion ld = vsLensDistortionInit(&fi, LD_TEST_KS[ki]);
+    double worst = 0.0;
+    for(ri=0; ri<LD_NUM_RADII; ri++){
+      for(ai=0; ai<numAngles; ai++){
+        /* build a point at the requested normalised radius */
+        double r  = LD_TEST_RADII[ri] * ld.rho;
+        double px = ld.cx + r*cos(angles[ai]);
+        double py = ld.cy + r*sin(angles[ai]);
+        double ux, uy, dx, dy, err;
+
+        test_bool(vsLensUndistortPoint(&ld, px, py, &ux, &uy) == VS_OK);
+        test_bool(vsLensDistortPoint(&ld, ux, uy, &dx, &dy) == VS_OK);
+
+        err = sqrt(sqr(dx-px) + sqr(dy-py));
+        if(err > worst) worst = err;
+      }
+    }
+    fprintf(stderr, "k=%6.3f: worst round-trip error %.3e px\n",
+            LD_TEST_KS[ki], worst);
+    test_bool(worst < 1e-9);
+  }
+
+  /* k=0 must be exactly the identity, not merely close: the rationalised
+     form exists precisely so this needs no special case */
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, 0.0);
+    double ux, uy, dx, dy;
+    test_bool(vsLensUndistortPoint(&ld, 100.0, 640.0, &ux, &uy) == VS_OK);
+    test_bool(ux == 100.0 && uy == 640.0);
+    test_bool(vsLensDistortPoint(&ld, 100.0, 640.0, &dx, &dy) == VS_OK);
+    test_bool(dx == 100.0 && dy == 640.0);
+  }
+}
+
+static void test_lensdistortion_domain(void){
+  VSFrameInfo fi;
+  double ux, uy;
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+
+  fprintf(stderr, "--- lens distortion domain guards ---\n");
+
+  /* Strong pincushion: U_k needs 1 + k*r^2 > 0, so a large enough radius
+     leaves the domain.  It must report an error rather than divide by
+     something near zero and hand back a NaN. */
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, -1.5);
+    double r = 0.95*ld.rho;
+    test_bool(vsLensUndistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) != VS_OK);
+  }
+  /* D_k needs 1 - 4*k*r^2 >= 0, which only bites for positive k */
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, 0.9);
+    double r = 0.95*ld.rho;
+    test_bool(vsLensDistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) != VS_OK);
+  }
+  /* barrel is always in the domain of D_k, however strong */
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, -0.9);
+    double r = 0.999*ld.rho;
+    test_bool(vsLensDistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) == VS_OK);
+    test_bool(!isnan(ux) && !isnan(uy));
+  }
+}
+
+/* Barrel (k<0) must pull the undistorted point outward, pincushion inward.
+   This pins the sign convention, which is the easiest thing to get backwards
+   and the hardest to notice once everything else is symmetric. */
+static void test_lensdistortion_sign_convention(void){
+  VSFrameInfo fi;
+  double ux, uy, r;
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+  fprintf(stderr, "--- lens distortion sign convention ---\n");
+
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, -0.2); /* barrel */
+    r = 0.6*ld.rho;
+    test_bool(vsLensUndistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) == VS_OK);
+    fprintf(stderr, "barrel     k=-0.2: r %.1f -> %.1f (expect outward)\n",
+            r, ux - ld.cx);
+    test_bool(ux - ld.cx > r);
+    test_bool(fabs(uy - ld.cy) < 1e-12);  /* stays on the ray */
+  }
+  {
+    VSLensDistortion ld = vsLensDistortionInit(&fi, 0.2); /* pincushion */
+    r = 0.6*ld.rho;
+    test_bool(vsLensUndistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) == VS_OK);
+    fprintf(stderr, "pincushion k= 0.2: r %.1f -> %.1f (expect inward)\n",
+            r, ux - ld.cx);
+    test_bool(ux - ld.cx < r);
+  }
+}
+
+void test_lensdistortion_model(void){
+  test_lensdistortion_roundtrip();
+  test_lensdistortion_domain();
+  test_lensdistortion_sign_convention();
+}
+
+/* --- cycle 2: synthetic local motions ------------------------------------ */
+
+/* Camera path shapes.  They exist to probe identifiability: translation is the
+   only one that constrains k well, rotation not at all.  See the docs. */
+typedef enum {
+  LD_PATH_TRANSLATION,  /* shift only, the favourable case */
+  LD_PATH_ROTATION,     /* rotation about the centre only, the degenerate case */
+  LD_PATH_MIXED,        /* translation plus large rotation */
+  LD_PATH_ZOOM          /* zoom plus small translation, the weak case */
+} LDPathMode;
+
+typedef struct {
+  int    width, height;
+  int    gridX, gridY;   /* number of measurement fields across and down */
+  int    margin;         /* inset of the field grid from the frame border, px */
+  double k;              /* ground-truth distortion to bake into the motions */
+  int    numFrames;      /* number of frame pairs */
+  double noiseSigma;     /* gaussian pixel noise added to each displacement */
+  int    quantise;       /* round displacements to integers, as int16 Vec would */
+  uint32_t seed;         /* LCG seed, so every run is bit-reproducible */
+  LDPathMode pathMode;
+} LDSynthConfig;
+
+/* Everything a generated clip consists of, owned by the caller. */
+typedef struct {
+  VSFrameInfo    fi;
+  VSPointMatches* frames;     /* numFrames entries */
+  int            numFrames;
+  int            numFields;   /* correspondences per frame */
+  VSTransform*   truth;       /* ground-truth inter-frame similarity per frame */
+  double*        storage;     /* backing buffer for all the px/py/qx/qy arrays */
+} LDSynthClip;
+
+static LDSynthConfig ldDefaultSynthConfig(void){
+  LDSynthConfig c;
+  c.width = 1280; c.height = 720;
+  c.gridX = 16;   c.gridY = 12;
+  c.margin = 40;
+  c.k = -0.1;
+  c.numFrames = 12;
+  c.noiseSigma = 0.0;
+  c.quantise = 0;
+  c.seed = 20260805u;
+  c.pathMode = LD_PATH_TRANSLATION;
+  return c;
+}
+
+/* Numerical Recipes style LCG.  Deliberately local: the tests must not depend
+   on rand(), whose sequence differs between platforms and would be perturbed
+   by any other test that happens to draw from it first. */
+static uint32_t ldRandNext(uint32_t* s){
+  *s = (*s) * 1664525u + 1013904223u;
+  return *s;
+}
+/* uniform in [-1,1] */
+static double ldRandUniform(uint32_t* s){
+  return (double)(ldRandNext(s) >> 8) / (double)(1<<23) * 2.0 - 1.0;
+}
+/* standard normal, Box-Muller; returns one of the pair and discards the other,
+   which costs a little entropy and keeps the call site simple */
+static double ldRandGauss(uint32_t* s){
+  double u1, u2;
+  do { u1 = (double)(ldRandNext(s) >> 8) / (double)(1<<23); } while(u1 <= 1e-12);
+  u2 = (double)(ldRandNext(s) >> 8) / (double)(1<<23);
+  return sqrt(-2.0*log(u1)) * cos(2.0*M_PI*u2);
+}
+
+/* Applies a VSTransform to a point in full double precision.
+
+   This mirrors transform_vec_double() in transformtype.c exactly, but that one
+   only accepts an integer Vec, which would reintroduce quantisation in the very
+   place the test is trying to avoid it.  test_lensdistortion_similarity_matches_lib
+   below pins the two together so this copy cannot drift. */
+static void ldApplySimilarity(const VSTransform* t, double cx, double cy,
+                              double xi, double yi, double* xo, double* yo){
+  double z = 1.0 + t->zoom/100.0;
+  double zcos_a = z*cos(t->alpha);
+  double zsin_a = z*sin(t->alpha);
+  double rx = xi - cx;
+  double ry = yi - cy;
+  *xo =  zcos_a*rx + zsin_a*ry + t->x + cx;
+  *yo = -zsin_a*rx + zcos_a*ry + t->y + cy;
+}
+
+static VSTransform ldSamplePathStep(LDPathMode mode, uint32_t* s){
+  VSTransform t = null_transform();
+  switch(mode){
+   case LD_PATH_TRANSLATION:
+    t.x = 15.0*ldRandUniform(s);
+    t.y = 15.0*ldRandUniform(s);
+    break;
+   case LD_PATH_ROTATION:
+    t.alpha = 0.05*ldRandUniform(s);
+    break;
+   case LD_PATH_MIXED:
+    t.x     = 15.0*ldRandUniform(s);
+    t.y     = 15.0*ldRandUniform(s);
+    t.alpha = 0.087*ldRandUniform(s);   /* about +/- 5 degrees */
+    break;
+   case LD_PATH_ZOOM:
+    t.zoom  = 2.0*ldRandUniform(s);
+    t.x     = 2.0*ldRandUniform(s);
+    t.y     = 2.0*ldRandUniform(s);
+    break;
+  }
+  return t;
+}
+
+/* Builds a clip of synthetic correspondences:
+     p_u = U_k(p);   q_u = S_i * p_u;   q = D_k(q_u)
+   so the observed pair (p,q) is exactly what a rigid scene seen through a lens
+   of strength k would produce under inter-frame camera motion S_i. */
+static LDSynthClip ldGenerate(const LDSynthConfig* cfg){
+  LDSynthClip clip;
+  VSLensDistortion ld;
+  int i, gx, gy, idx;
+  uint32_t seed = cfg->seed;
+  double stepX, stepY;
+
+  test_bool(vsFrameInfoInit(&clip.fi, cfg->width, cfg->height, PF_GRAY8) != 0);
+  ld = vsLensDistortionInit(&clip.fi, cfg->k);
+
+  clip.numFrames = cfg->numFrames;
+  clip.numFields = cfg->gridX * cfg->gridY;
+  clip.frames    = (VSPointMatches*)vs_malloc(sizeof(VSPointMatches)*cfg->numFrames);
+  clip.truth     = (VSTransform*)vs_malloc(sizeof(VSTransform)*cfg->numFrames);
+  clip.storage   = (double*)vs_malloc(sizeof(double)*4*clip.numFields*cfg->numFrames);
+
+  stepX = (double)(cfg->width  - 2*cfg->margin) / (cfg->gridX - 1);
+  stepY = (double)(cfg->height - 2*cfg->margin) / (cfg->gridY - 1);
+
+  for(i=0; i<cfg->numFrames; i++){
+    double* base = clip.storage + 4*clip.numFields*i;
+    double* px = base;
+    double* py = base +   clip.numFields;
+    double* qx = base + 2*clip.numFields;
+    double* qy = base + 3*clip.numFields;
+
+    clip.truth[i] = ldSamplePathStep(cfg->pathMode, &seed);
+    idx = 0;
+    for(gy=0; gy<cfg->gridY; gy++){
+      for(gx=0; gx<cfg->gridX; gx++){
+        /* field centres are integers, as real measurement fields are */
+        double sx = floor(cfg->margin + gx*stepX);
+        double sy = floor(cfg->margin + gy*stepY);
+        double ux, uy, vx, vy, dx, dy;
+
+        test_bool(vsLensUndistortPoint(&ld, sx, sy, &ux, &uy) == VS_OK);
+        ldApplySimilarity(&clip.truth[i], ld.cx, ld.cy, ux, uy, &vx, &vy);
+        test_bool(vsLensDistortPoint(&ld, vx, vy, &dx, &dy) == VS_OK);
+
+        if(cfg->noiseSigma > 0){
+          dx += cfg->noiseSigma*ldRandGauss(&seed);
+          dy += cfg->noiseSigma*ldRandGauss(&seed);
+        }
+        if(cfg->quantise){
+          /* what a LocalMotion would store: an integer displacement */
+          dx = sx + floor(dx - sx + 0.5);
+          dy = sy + floor(dy - sy + 0.5);
+        }
+        px[idx] = sx; py[idx] = sy;
+        qx[idx] = dx; qy[idx] = dy;
+        idx++;
+      }
+    }
+    clip.frames[i].px = px; clip.frames[i].py = py;
+    clip.frames[i].qx = qx; clip.frames[i].qy = qy;
+    clip.frames[i].n  = clip.numFields;
+  }
+  return clip;
+}
+
+static void ldFreeClip(LDSynthClip* clip){
+  vs_free(clip->frames); vs_free(clip->truth); vs_free(clip->storage);
+  clip->frames = 0; clip->truth = 0; clip->storage = 0;
+}
+
+/* The double similarity used by the generator must agree with the library's
+   own, or the estimator could be fitting a different convention than
+   production code and every test would still pass. */
+static void test_lensdistortion_similarity_matches_lib(void){
+  VSFrameInfo fi;
+  VSTransform t = new_transform(7.0, -3.0, 0.04, 1.5, 0, 0, 0);
+  PreparedTransform pt;
+  int i;
+  const int pts[][2] = {{0,0},{100,50},{639,359},{1279,719},{320,600}};
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+  pt = prepare_transform(&t, &fi);
+
+  fprintf(stderr, "--- generator similarity matches transform_vec_double ---\n");
+  for(i=0; i<5; i++){
+    Vec v = {(int16_t)pts[i][0], (int16_t)pts[i][1]};
+    double ex, ey, gx, gy;
+    transform_vec_double(&ex, &ey, &pt, &v);
+    ldApplySimilarity(&t, fi.width/2.0, fi.height/2.0, pts[i][0], pts[i][1], &gx, &gy);
+    test_bool(fabs(ex-gx) < 1e-9 && fabs(ey-gy) < 1e-9);
+  }
+}
+
+/* With no distortion, the observed displacement must be exactly the camera
+   translation at every field.  If this fails the generator is wrong, not the
+   estimator. */
+static void test_lensdistortion_generator_undistorted(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  int i, j;
+  double worst = 0.0;
+
+  cfg.k = 0.0;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+
+  fprintf(stderr, "--- generator: k=0 translation reproduces the shift exactly ---\n");
+  for(i=0; i<clip.numFrames; i++){
+    for(j=0; j<clip.numFields; j++){
+      double ex = clip.frames[i].qx[j] - clip.frames[i].px[j] - clip.truth[i].x;
+      double ey = clip.frames[i].qy[j] - clip.frames[i].py[j] - clip.truth[i].y;
+      double e = sqrt(ex*ex + ey*ey);
+      if(e > worst) worst = e;
+    }
+  }
+  fprintf(stderr, "worst deviation from pure shift: %.3e px\n", worst);
+  test_bool(worst < 1e-9);
+  ldFreeClip(&clip);
+}
+
+/* The physical signature the estimator lives on: under barrel distortion a
+   constant ideal translation shows up as a field that is compressed towards
+   the frame edges.  No compression, no signal, nothing to recover. */
+static void test_lensdistortion_generator_edge_compression(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip clip;
+  VSLensDistortion ld;
+  int i, j;
+  double centreSum = 0, edgeSum = 0;
+  int centreN = 0, edgeN = 0;
+
+  cfg.k = -0.25;
+  cfg.numFrames = 1;
+  cfg.pathMode = LD_PATH_TRANSLATION;
+  clip = ldGenerate(&cfg);
+  ld = vsLensDistortionInit(&clip.fi, cfg.k);
+
+  for(i=0; i<clip.numFrames; i++){
+    for(j=0; j<clip.numFields; j++){
+      double dx = clip.frames[i].px[j] - ld.cx;
+      double dy = clip.frames[i].py[j] - ld.cy;
+      double r  = sqrt(dx*dx + dy*dy)/ld.rho;
+      double mx = clip.frames[i].qx[j] - clip.frames[i].px[j];
+      double my = clip.frames[i].qy[j] - clip.frames[i].py[j];
+      double mag = sqrt(mx*mx + my*my);
+      if(r < 0.25){ centreSum += mag; centreN++; }
+      else if(r > 0.65){ edgeSum += mag; edgeN++; }
+    }
+  }
+  test_bool(centreN > 0 && edgeN > 0);
+  fprintf(stderr, "--- generator: barrel compresses motion toward the edge ---\n");
+  fprintf(stderr, "mean |v| centre %.3f px, edge %.3f px (k=%.2f)\n",
+          centreSum/centreN, edgeSum/edgeN, cfg.k);
+  /* the whole approach depends on this being a clearly measurable difference */
+  test_bool(edgeSum/edgeN < 0.9 * centreSum/centreN);
+  ldFreeClip(&clip);
+}
+
+/* Same seed must give byte-identical motions, or failures will not reproduce. */
+static void test_lensdistortion_generator_deterministic(void){
+  LDSynthConfig cfg = ldDefaultSynthConfig();
+  LDSynthClip a, b;
+  int i, j, same = 1;
+
+  a = ldGenerate(&cfg);
+  b = ldGenerate(&cfg);
+  for(i=0; i<a.numFrames && same; i++){
+    if(a.truth[i].x != b.truth[i].x || a.truth[i].y != b.truth[i].y) same = 0;
+    for(j=0; j<a.numFields && same; j++){
+      if(a.frames[i].qx[j] != b.frames[i].qx[j]) same = 0;
+      if(a.frames[i].qy[j] != b.frames[i].qy[j]) same = 0;
+    }
+  }
+  fprintf(stderr, "--- generator: reproducible across runs ---\n");
+  test_bool(same);
+  ldFreeClip(&a); ldFreeClip(&b);
+}
+
+void test_lensdistortion_generator(void){
+  test_lensdistortion_similarity_matches_lib();
+  test_lensdistortion_generator_undistorted();
+  test_lensdistortion_generator_edge_compression();
+  test_lensdistortion_generator_deterministic();
+}

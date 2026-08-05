@@ -106,6 +106,7 @@ add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/boxblur.c
+  ../src/lensdistortion.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
 

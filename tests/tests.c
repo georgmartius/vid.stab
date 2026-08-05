@@ -51,6 +51,7 @@
 #include "test_draw.c"
 #include "test_synthetic.c"
 #include "test_tripod.c"
+#include "test_lensdistortion.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
 #endif
@@ -190,6 +191,11 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testTRIPOD", "virtual tripod mode")){
     UNIT(test_tripod_transforms());
     UNIT(test_tripod_detection());
+  }
+
+  if(all || contains(argv,argc,"--testLENS", "barrel distortion model and estimation")){
+    UNIT(test_lensdistortion_model());
+    UNIT(test_lensdistortion_generator());
   }
 
   if(contains(argv,argc,"--dumpSynthetic", "dump synthetic frames as PPM for visual inspection")){

@@ -2,7 +2,7 @@
 
 [![C/C++ CI](https://github.com/georgmartius/vid.stab/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/georgmartius/vid.stab/actions/workflows/c-cpp.yml)
 
-Vidstab is a video stabilization library which can be plugged-in with Ffmpeg and Transcode.
+Vidstab is a video stabilization library which can be plugged-in with Ffmpeg.
 
 **Why is it needed**
 
@@ -25,12 +25,10 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
  * Optional drawing of measurement fields and detected transformations for visual analysis.
  * Zooming possible to get rid of jiggling borders (automatic mode).
  * Resulting images are interpolated (different algorithms).
- * Sharpening of the stabilized movie to compensate for interpolation effects due to rotation/zooming (only with Transcode).
- * Single pass filter for streaming applications(only with Transcode).
  * Virtual-tripod-mode to get a tripod experience.
 
-**NOTE:** This readme focuses mainly on using vidstab with Ffmpeg. See
-[here](http://public.hronopik.de/vid.stab) for information regarding installation, usage and examples for using vidstab with Transcode. Or contact me at georg dot martius @ web dot de
+**NOTE:** This readme covers using vidstab with Ffmpeg. Questions are welcome at
+georg dot martius @ web dot de
 
 ## System Requirements
  * A Linux-based system
@@ -95,8 +93,8 @@ export LD_LIBRARY_PATH=path/to/install_dir/lib:$LD_LIBRARY_PATH
 
 **Currently with ffmpeg, vidstab library must run in two-pass mode.** The first pass employs the **vidstabdetect** filter and the second pass uses the **vidstabtransform** filter.
 
-*Single pass filter with vidstab library is only available with Transcode. The
-[deshake](http://www.ffmpeg.org/ffmpeg-filters.html#deshake) filter of ffmpeg can be used for a single-pass encoding, though using the vidstab two-pass filters will give superior results.*
+*If you need a single pass, ffmpeg's own
+[deshake](http://www.ffmpeg.org/ffmpeg-filters.html#deshake) filter can do that, though the vidstab two-pass filters give superior results.*
 
 The vidstabdetect filter (in first pass) will generate a file with relative-translation and rotation-transform information about subsequent frames. This information will then be read by vidstabtransform filter (in second pass) to compensate for the jerky motions and produce a stable video output.
 

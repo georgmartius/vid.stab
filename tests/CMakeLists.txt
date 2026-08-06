@@ -64,7 +64,7 @@ if(USE_OMP)
   endif()
 endif()
 
-# Make sure the compiler can find include files from transcode
+# Make sure the compiler can find the library's own headers
 include_directories (../src)
 # neon_emu.h lives here, for the emulated NEON build below
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})

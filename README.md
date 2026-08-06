@@ -241,4 +241,6 @@ Vidstab is an open source library - pull requests are very welcome. Some things 
 
 ## License
 
-See [LICENSE](./LICENSE).
+**GNU Lesser General Public License, version 2.1 or later**
+([COPYING.LESSER](./COPYING.LESSER)). Releases up to v1.1.2 were GPL; see
+[RELICENSE.md](./RELICENSE.md).

@@ -2,6 +2,9 @@
 	API change: vs_vector_set() and vs_vector_set_dup() return
 	VS_OK/VS_ERROR and report the replaced element through a
 	`void **old' out parameter.
+	Relicensed the library (src/) from GPL-2.0-or-later to
+	LGPL-2.1-or-later, with the agreement of its copyright holders;
+	see RELICENSE.md.
 	Removed the transcode plugins and the vendored sse2neon.h shim.
 	Transcode is no longer maintained, and ARM has had native NEON
 	kernels since the SIMD dispatch rework, so nothing included the

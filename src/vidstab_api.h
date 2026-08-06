@@ -12,7 +12,7 @@
  *                           units, and only for a shared build
  *    VIDSTAB_STATIC_DEFINE  defined by the build for a static library, and by
  *                           anything that compiles the sources in directly
- *                           (the test suite and the transcode plugins do)
+ *                           (the test suite does)
  *
  *  The macro names are those of CMake's generate_export_header(), so a build
  *  that would rather use the generated header only has to point the includes

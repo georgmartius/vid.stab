@@ -60,7 +60,16 @@ if(USE_OMP)
     add_compile_options(/openmp)
     add_definitions(-DUSE_OMP)
   else()
-    add_definitions(-fopenmp -DUSE_OMP)
+    # Let CMake work out the toolchain's OpenMP flag and runtime, the same way
+    # the library does.  Hardcoding -fopenmp and then linking gomp compiles
+    # clang against libomp while forcing GCC's runtime on the link line, and
+    # the __kmpc_* symbols clang emits go unresolved.
+    find_package(OpenMP)
+    if(OpenMP_C_FOUND)
+      add_definitions(${OpenMP_C_FLAGS} -DUSE_OMP)
+    else()
+      message(WARNING "USE_OMP is on but no OpenMP was found; building without it")
+    endif()
   endif()
 endif()
 
@@ -112,11 +121,11 @@ add_executable (bench EXCLUDE_FROM_ALL ../bench/bench_motiondetect.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
 # MSVC has the math functions in the C runtime and drives OpenMP from /openmp,
-# so neither libm nor libgomp exists to be linked there.
+# so neither libm nor an OpenMP runtime exists to be linked there.
 if(NOT MSVC)
 target_link_libraries(bench m)
-if(USE_OMP)
-target_link_libraries(bench gomp)
+if(USE_OMP AND TARGET OpenMP::OpenMP_C)
+target_link_libraries(bench OpenMP::OpenMP_C)
 endif()
 endif()
 
@@ -126,8 +135,8 @@ endif()
 if(GLPK_FOUND AND VIDSTAB_LPSOLVER STREQUAL "glpk")
 target_link_libraries(tests GLPK::GLPK)
 endif()
-if(USE_OMP AND NOT MSVC)
-target_link_libraries(tests gomp)
+if(USE_OMP AND NOT MSVC AND TARGET OpenMP::OpenMP_C)
+target_link_libraries(tests OpenMP::OpenMP_C)
 endif()
 
 # Everything the tests write goes into this directory (TEST_OUTPUT_DIR in

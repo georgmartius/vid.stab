@@ -18,9 +18,7 @@ A video acquired using a hand-held camera or a camera mounted on a vehicle, typi
    as a linear program with a built-in solver, so it needs no extra dependency.
    It is steered by the usual knobs: `zoom`/`optzoom` give it the crop budget it
    may spend, `smoothing` the horizon over which the path should stay rigid.
- * Detection algorithms:
-  * Smart and fast multi measurement fields algorithm with contrast selection.
-  * Brute force algorithm only for translations.
+ * Smart and fast multi measurement fields detection algorithm with contrast selection.
  * Clipping options: keep blank (black) or keep from previous frames.
  * Optional drawing of measurement fields and detected transformations for visual analysis.
  * Zooming possible to get rid of jiggling borders (automatic mode).
@@ -63,6 +61,11 @@ make
 sudo make install
 ```
 
+**On `--enable-gpl`:** vidstab itself is LGPL-2.1-or-later and does not require
+it, but ffmpeg's `configure` still gates `--enable-libvidstab` behind
+`--enable-gpl`, so it remains necessary when building ffmpeg. It is an ffmpeg
+packaging decision, not a licence requirement of this library.
+
 ### Alternatively one can install vidstab into a custom directory this way:
 ##### Installing vidstab library:
 
@@ -103,6 +106,36 @@ Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsha
 NOTE: 10-bit 4:2:2 video must be downsampled to 8-bit 4:2:0 to avoid distortions like chroma shift or color bleed/smearing (see `format=yuv420p` example below).
 
 *See [the list of ffmpeg filters](http://www.ffmpeg.org/ffmpeg-filters.html) to know more about vidstabdetect, vidstabtransform and all other filters available with ffmpeg.*
+
+### Interlaced video
+
+**Deinterlace before stabilizing.** Vidstab has no notion of fields: it treats
+every input frame as one progressive image. Feeding it interlaced material means
+the two fields — half a frame period apart, and thus showing different motion —
+are analysed as a single picture, so the comb artefacts are measured as image
+content and the detected motion is a meaningless average of the two fields.
+Transforming then shifts both fields together, which does not undo the shake and
+smears the combing across the frame.
+
+Put a deinterlacer before `vidstabdetect` in both passes, e.g. with
+[yadif](http://www.ffmpeg.org/ffmpeg-filters.html#yadif-1):
+
+```shell
+ffmpeg -i input.mkv -vf yadif,vidstabdetect -f null -
+ffmpeg -i input.mkv -vf yadif,vidstabtransform,unsharp=5:5:0.8:3:3:0.4 out_stabilized.mp4
+```
+
+Use the same deinterlacer settings in both passes, since the transforms are
+measured in pixels of the frames the first pass saw. If you deinterlace to
+double rate (`yadif=1`, one frame per field) that is fine — just do it in both
+passes so the frame counts line up. Stabilizing and re-interlacing to keep an
+interlaced deliverable is not supported.
+
+### The transform file
+
+The `.trf` file written by the first pass is documented in
+[docs/trf-format.md](docs/trf-format.md) — both encodings, the meaning of the
+stored values, and how to supply a camera path of your own.
 
 ### Available options with vidstab filters:
 

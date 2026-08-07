@@ -1,5 +1,5 @@
 /*
- * lensdistortion.h
+ *  lensdistortion.h
  *
  *  Single-parameter radial lens distortion (division model) and recovery of
  *  its parameter from detected local motions, assuming a rigid scene.
@@ -8,26 +8,27 @@
  *  conventions, and the identifiability analysis that motivates the estimator.
  *
  *  Copyright (C) Georg Martius - 2026
+ *   georg dot martius at web dot de
+ *
+ *  SPDX-License-Identifier: LGPL-2.1-or-later
  *
  *  This file is part of vid.stab video stabilization library
  *
  *  vid.stab is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License,
- *  as published by the Free Software Foundation; either version 2, or
+ *  it under the terms of the GNU Lesser General Public License as published
+ *  by the Free Software Foundation; either version 2.1 of the License, or
  *  (at your option) any later version.
  *
  *  vid.stab is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with GNU Make; see the file COPYING.  If not, write to
- *  the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *  Boston, MA 02110-1301, USA.
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with vid.stab; see the file COPYING.LESSER.  If not, see
+ *  <https://www.gnu.org/licenses/>.
  *
  */
-
 #ifndef __LENSDISTORTION_H
 #define __LENSDISTORTION_H
 
@@ -42,7 +43,7 @@
     Distort   (ideal -> observed) inverts:   D(x) = x * 2/(1 + sqrt(1 - 4*k*r^2))
     with r the radius measured in units of rho.  Barrel distortion is k < 0.
  */
-typedef struct VS_API _vslensdistortion {
+typedef struct _vslensdistortion {
   double k;    // distortion strength, dimensionless; <0 barrel, >0 pincushion, 0 none
   double cx;   // distortion centre x in pixels, always the frame centre width/2
   double cy;   // distortion centre y in pixels, always the frame centre height/2
@@ -68,7 +69,7 @@ VS_API int vsLensDistortPoint(const VSLensDistortion* ld,
 
     These are still *distorted* image positions: p is where a measurement field
     sat, q is where it was found.  Parallel arrays of length n. */
-typedef struct VS_API _vspointmatches {
+typedef struct _vspointmatches {
   const double* px;  // x of the source points, length n
   const double* py;  // y of the source points, length n
   const double* qx;  // x of the matched destination points, length n
@@ -95,7 +96,7 @@ VS_API int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches
                                 const VSTransform* t, double* residuals);
 
 /** Tuning for the distortion search; vsLensEstimateGetDefaultConfig fills it. */
-typedef struct VS_API _vslensestimateconfig {
+typedef struct _vslensestimateconfig {
   double kMin;           // low end of the bracket searched for k, default -0.6
   double kMax;           // high end of the bracket; stays >0 so k=0 is interior, default 0.3
   double tolerance;      // absolute convergence tolerance on k, default 1e-6
@@ -108,7 +109,7 @@ typedef struct VS_API _vslensestimateconfig {
 } VSLensEstimateConfig;
 
 /** Outcome of the search. */
-typedef struct VS_API _vslensestimate {
+typedef struct _vslensestimate {
   double k;           // recovered distortion strength, same convention as VSLensDistortion.k
   double residual;    // RMS image-space residual per correspondence at the minimum, in pixels
   double curvature;   // d2E/dk2 at the minimum; near zero means the data cannot pin k down

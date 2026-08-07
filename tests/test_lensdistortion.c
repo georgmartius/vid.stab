@@ -3,12 +3,7 @@
  *
  *  Tests for recovering the barrel distortion parameter from local motions.
  *  See docs/lens-distortion.md for the math.
- *
- *  This file is part of vid.stab video stabilization library
- *  and is licensed under the GNU GPL v2 or later, see the other
- *  source files for the full notice.
  */
-
 #include "lensdistortion.h"
 
 /* --- cycle 1: the model is an exact inverse pair ------------------------- */
@@ -965,8 +960,10 @@ static uint8_t ldSampleBilinear(const uint8_t* src, int w, int h, int stride,
                                 double x, double y){
   int x0, y0;
   double fx, fy, top, bot;
-  if(x < 0) x = 0; if(x > w-1.001) x = w-1.001;
-  if(y < 0) y = 0; if(y > h-1.001) y = h-1.001;
+  if(x < 0) x = 0;
+  if(x > w-1.001) x = w-1.001;
+  if(y < 0) y = 0;
+  if(y > h-1.001) y = h-1.001;
   x0 = (int)x; y0 = (int)y;
   fx = x - x0; fy = y - y0;
   top = src[y0*stride + x0]*(1-fx)      + src[y0*stride + x0+1]*fx;

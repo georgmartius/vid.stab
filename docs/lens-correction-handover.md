@@ -247,10 +247,18 @@ on. Rewarping every output pixel is a visible, irreversible change to the pictur
 cost, so it stays opt-in until it has been run over a decent range of real footage. Do not flip
 this as part of implementing the feature — it is a separate call to make later, on evidence.
 
-The ffmpeg filter lives in ffmpeg's tree, not here (`libavfilter/` holds only a README). The
-in-tree consumer is `transcode/filter_transform.c:202`, which already calls
-`vsLocalmotions2Transforms(td, &mlms, &fd->trans)` with the same `td` — so the estimate is
-available at render time with no plumbing changes.
+**There is no in-tree consumer any more.** The transcode plugins were removed in 95243b7, and
+`libavfilter/` holds only a README — ffmpeg's `vf_vidstabtransform.c` lives in ffmpeg's own tree.
+
+So the only caller of `vsLocalmotions2Transforms` outside the library is out of tree. The design
+assumption is that it calls `vsLocalmotions2Transforms(td, ...)` and then transforms frames
+through the *same* `VSTransformData`, which would make the estimate available at render time with
+no plumbing changes. That held for the transcode plugin when it existed and is how ffmpeg's filter
+is structured, but **verify it against the ffmpeg source before relying on it** — it is not
+checkable from this repository.
+
+If it does not hold, the estimate needs an explicit setter on `VSTransformData` that the consumer
+calls between the two stages.
 
 ## 8. Open questions for whoever picks this up
 
@@ -279,7 +287,7 @@ available at render time with no plumbing changes.
 | Config structs | `src/transform.h:83` `VSTransformConfig`, `:112` `VSTransformData` |
 | Transforms file parser | `src/serialize.c:561` |
 | Tests | `tests/test_lensdistortion.c`, `tests --testLENS` |
-| In-tree consumer | `transcode/filter_transform.c:202` |
+| Consumer | out of tree: ffmpeg `vf_vidstabtransform.c` (see 7) |
 
 Build and run:
 

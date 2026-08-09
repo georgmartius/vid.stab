@@ -495,9 +495,17 @@ int cameraPathAvg(VSTransformData* td, VSTransformations* trans){
    against test_lensmap_required_zoom's independent, much finer sweep). */
 #define VS_LENS_ZOOM_SAMPLES_PER_EDGE 64
 
-/* Does every destination boundary sample land inside the source at this zoom? */
+/* Does every destination boundary sample land inside the source at this zoom?
+   The boundary is walked in DESTINATION dimensions (dw, dh) because that is
+   the frame vsLensMapBackward's caller is filling in, pixel by destination
+   pixel; the resulting source coordinate is then tested for containment
+   against the SOURCE dimensions (sw, sh), because that is the buffer the
+   sample is actually read from. The two are the same value today -- the
+   transform pass never resizes -- but they are conceptually distinct axes of
+   the same map, and conflating them would silently stop being correct the
+   day that changes. */
 static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
-                          double zoom, int w, int h){
+                          double zoom, int dw, int dh, int sw, int sh){
   const int n = VS_LENS_ZOOM_SAMPLES_PER_EDGE;
   VSTransform t = *t0;
   int e, j;
@@ -507,20 +515,21 @@ static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
       double u = (double)j/(n-1);   /* 0..1 along this edge, corners included */
       double xd, yd, xs, ys;
       switch(e){
-       case 0: xd = u*(w-1);       yd = 0;             break;
-       case 1: xd = w-1;           yd = u*(h-1);       break;
-       case 2: xd = (1-u)*(w-1);   yd = h-1;           break;
-       default:xd = 0;             yd = (1-u)*(h-1);   break;
+       case 0: xd = u*(dw-1);       yd = 0;              break;
+       case 1: xd = dw-1;           yd = u*(dh-1);        break;
+       case 2: xd = (1-u)*(dw-1);   yd = dh-1;            break;
+       default:xd = 0;              yd = (1-u)*(dh-1);    break;
       }
       if(vsLensMapBackward(lm, &t, xd, yd, &xs, &ys) != VS_OK) return 0;
-      if(xs < -0.5 || xs > w-0.5 || ys < -0.5 || ys > h-0.5) return 0;
+      if(xs < -0.5 || xs > sw-0.5 || ys < -0.5 || ys > sh-0.5) return 0;
     }
   }
   return 1;
 }
 
 double vsTransformRequiredZoom(VSTransformData* td, const VSTransform* t){
-  int w = td->fiDest.width, h = td->fiDest.height;
+  int dw = td->fiDest.width, dh = td->fiDest.height;
+  int sw = td->fiSrc.width,  sh = td->fiSrc.height;
   double lo, hi;
   int i;
   lensEnsureMaps(td);
@@ -529,11 +538,11 @@ double vsTransformRequiredZoom(VSTransformData* td, const VSTransform* t){
   /* Zoom sits inside M, so the required zoom is a fixed point rather than a
      formula.  Overshoot is monotone in zoom, so bisect. */
   lo = 0.0; hi = 60.0;
-  if(lensFitsAtZoom(&td->lensMaps[0], t, lo, w, h)) return 0.0;
-  if(!lensFitsAtZoom(&td->lensMaps[0], t, hi, w, h)) return hi;
+  if(lensFitsAtZoom(&td->lensMaps[0], t, lo, dw, dh, sw, sh)) return 0.0;
+  if(!lensFitsAtZoom(&td->lensMaps[0], t, hi, dw, dh, sw, sh)) return hi;
   for(i=0; i<15; i++){
     double mid = 0.5*(lo+hi);
-    if(lensFitsAtZoom(&td->lensMaps[0], t, mid, w, h)) hi = mid; else lo = mid;
+    if(lensFitsAtZoom(&td->lensMaps[0], t, mid, dw, dh, sw, sh)) hi = mid; else lo = mid;
   }
   return hi;
 }

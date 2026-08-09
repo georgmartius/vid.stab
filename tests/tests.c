@@ -30,6 +30,7 @@
 
 #include "generate.c"
 #include "generate_synthetic.c"
+#include "generate_lensclip.c"
 
 #include "test_frameinfo.c"
 #include "test_transform.c"
@@ -53,6 +54,7 @@
 #include "test_tripod.c"
 #include "test_lensdistortion.c"
 #include "test_lensmap.c"
+#include "test_lenscorrect_roundtrip.c"
 #include "test_transform_baseline.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
@@ -230,6 +232,10 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_pincushion_border());
     UNIT(test_lensmap_config_override());
     UNIT(test_lensmap_estimate_reaches_render());
+  }
+
+  if(all || contains(argv,argc,"--testLCR", "checkerboard lens clip round trip")){
+    UNIT(test_lenscorrect_pattern());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

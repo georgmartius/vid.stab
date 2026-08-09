@@ -602,8 +602,11 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
        before td->lensActive is read (see the other call sites). When the
        lens is active, additionally budget from the real backward map at the
        four corner combinations of the same 99th-percentile x/y extremes
-       already computed above, plus the largest-magnitude rotation seen in
-       this batch of transforms (cheap: one more pass over ts). This can
+       already computed above, combined with the largest-magnitude rotation
+       seen in this batch of transforms (cheap: one more pass over ts) --
+       sampled at BOTH +maxAlpha and -maxAlpha, since the composite backward
+       map is non-linear in alpha and the two signs need not require the
+       same zoom. That makes eight sample points instead of four. This can
        only ever raise the budget, never lower it: under-budgeting shows up
        as black slivers at the border, so the closed-form value is always a
        floor. */
@@ -612,14 +615,17 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
       double cx[2] = { min_t.x, max_t.x };
       double cy[2] = { min_t.y, max_t.y };
       double maxAlpha = 0.0;
-      int ix, iy;
+      int ix, iy, ia;
       for(int i = 0; i < trans->len; i++)
         if(fabs(ts[i].alpha) > fabs(maxAlpha)) maxAlpha = ts[i].alpha;
+      double alphas[2] = { maxAlpha, -maxAlpha };
       for(ix = 0; ix < 2; ix++){
         for(iy = 0; iy < 2; iy++){
-          VSTransform corner = null_transform();
-          corner.x = cx[ix]; corner.y = cy[iy]; corner.alpha = maxAlpha;
-          zoom = VS_MAX(zoom, vsTransformRequiredZoom(td, &corner));
+          for(ia = 0; ia < 2; ia++){
+            VSTransform corner = null_transform();
+            corner.x = cx[ix]; corner.y = cy[iy]; corner.alpha = alphas[ia];
+            zoom = VS_MAX(zoom, vsTransformRequiredZoom(td, &corner));
+          }
         }
       }
     }

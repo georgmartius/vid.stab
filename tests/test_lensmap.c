@@ -1260,6 +1260,84 @@ static void test_lensmap_optzoom1_lens_budget(void){
   }
 }
 
+/* The backward map is non-linear in alpha, so the sign of the rotation
+   matters at a translation corner, not just its magnitude: sampling only the
+   largest-magnitude signed alpha (as the eight-point/four-corner budget
+   above did before this fix) can miss the worse-fitting sign entirely.
+
+   Built by direct measurement with a standalone probe against this exact
+   geometry (k=0.10 pincushion, 640x360, corners (-30,-25)/(-30,20)/(42,-25)/
+   (42,20), |alpha|=0.03): sampling alpha=+0.03 only across the four corners
+   gives a floor of 18.0597 (worst corner (-30,-25)); the true worst point is
+   corner (42,-25) at alpha=-0.03, which needs 18.5669 -- 0.51 zoom units
+   more. The batch below is built so cleanmaxmin_xy_transform yields exactly
+   those four corners and the largest-magnitude alpha in the batch is +0.03
+   (no transform has a larger-magnitude negative alpha), so a version that
+   only tried +maxAlpha would under-budget by that same 0.51. */
+static void test_lensmap_optzoom1_lens_budget_bothsigns(void){
+  VSFrameInfo fi;
+  const int n = 4;
+  VSTransform ts[4];
+  VSTransformations trans;
+  VSTransformData td;
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("optzoom1-bothsigns");
+  double posOnlyFloor, bothSignsFloor;
+  int ix, iy;
+  vsFrameInfoInit(&fi, 640, 360, PF_GRAY8);
+
+  ts[0] = null_transform(); ts[0].x = -30; ts[0].y = -25; ts[0].alpha =  0.01;
+  ts[1] = null_transform(); ts[1].x =  42; ts[1].y =  20; ts[1].alpha =  0.03;
+  ts[2] = null_transform(); ts[2].x = -10; ts[2].y =   5; ts[2].alpha =  0.005;
+  ts[3] = null_transform(); ts[3].x =   0; ts[3].y =   0; ts[3].alpha = -0.02;
+
+  cfg.relative               = 0;
+  cfg.smoothing              = 0;
+  cfg.optZoom                = 1;
+  cfg.lensCorrection         = VSLensCorrectWobble;
+  cfg.estimateLensDistortion = 0;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  vsTransformSetLensK(&td, 0.10);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 1);
+
+  /* independently reproduce both the pos-only (pre-fix) and both-signs
+     (post-fix) corner budgets, using the same four x/y corners the
+     production code derives from this batch */
+  {
+    double cx[2] = { -30.0, 42.0 };
+    double cy[2] = { -25.0, 20.0 };
+    posOnlyFloor = 0.0;
+    bothSignsFloor = 0.0;
+    for(ix=0; ix<2; ix++){
+      for(iy=0; iy<2; iy++){
+        VSTransform tp = null_transform(), tn = null_transform();
+        double zp, zn;
+        tp.x = cx[ix]; tp.y = cy[iy]; tp.alpha =  0.03;
+        tn.x = cx[ix]; tn.y = cy[iy]; tn.alpha = -0.03;
+        zp = vsTransformRequiredZoom(&td, &tp);
+        zn = vsTransformRequiredZoom(&td, &tn);
+        posOnlyFloor   = VS_MAX(posOnlyFloor, zp);
+        bothSignsFloor = VS_MAX(bothSignsFloor, VS_MAX(zp, zn));
+      }
+    }
+  }
+  fprintf(stderr, "  optZoom==1 both-signs: pos-only floor %.4f, both-signs floor %.4f\n",
+                  posOnlyFloor, bothSignsFloor);
+  /* the gap is real for this geometry, not a wash */
+  test_bool(bothSignsFloor > posOnlyFloor + 0.1);
+
+  trans.ts = ts; trans.len = n; trans.current = 0; trans.warned_end = 0;
+  test_bool(vsPreprocessTransforms(&td, &trans) == VS_OK);
+  fprintf(stderr, "  optZoom==1 both-signs: actual budget %.4f\n", td.conf.zoom);
+  /* the fixed budget must cover the true (both-signs) floor ... */
+  test_bool(td.conf.zoom >= bothSignsFloor - 1e-6);
+  /* ... strictly more than the pos-only floor would have guaranteed, i.e.
+     the extra sampling actually mattered here */
+  test_bool(td.conf.zoom > posOnlyFloor + 0.1);
+
+  vsTransformDataCleanup(&td);
+}
+
 /* --- estimate-to-render plumbing ------------------------------------------ */
 
 /* An explicit conf.lensK must win over anything estimated, and must survive

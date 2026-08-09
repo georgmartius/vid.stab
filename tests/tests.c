@@ -226,6 +226,7 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_required_zoom());
     UNIT(test_lensmap_required_zoom_off());
     UNIT(test_lensmap_optzoom1_lens_budget());
+    UNIT(test_lensmap_optzoom1_lens_budget_bothsigns());
     UNIT(test_lensmap_column_bend_metric());
     UNIT(test_lensmap_straightness());
     UNIT(test_lensmap_pincushion_border());

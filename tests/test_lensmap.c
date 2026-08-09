@@ -2,6 +2,7 @@
    that the wobble mode's safety rests on, and the lookup tables. */
 
 #include "lensmap.h"
+#include "transform_internal.h"     /* for lensEnsureMaps(), tested directly below */
 
 static const double LM_KS[] = {-0.3, -0.25, -0.1, 0.1, 0.15};
 #define LM_NUM_KS ((int)(sizeof(LM_KS)/sizeof(LM_KS[0])))
@@ -353,4 +354,50 @@ static void test_lensmap_removes_wobble(void){
           worstOff, worstWob);
   test_bool(worstWob < worstOff * 0.5);
   vsFrameFree(&base);
+}
+
+/* lensK == 0.0 is the "no manual override" sentinel (VSTransformConfig.lensK),
+   not a request for correction -- Wobble with k == 0.0 must build no active
+   map at all, the same as if correction were never asked for. */
+static void test_lensmap_zero_k_stays_inactive(void){
+  VSFrameInfo fi;
+  VSTransformData td;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  lmInitTd(&td, &fi, VSLensCorrectWobble, 0.0, VS_BiLinear);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 0);
+  /* This alone does not prove the per-plane build loop actually ran for this
+     k == 0.0 call, only that the end state is "inactive" -- which is also
+     what a fresh, never-touched VSTransformData already looks like after
+     vsTransformDataInit's memset. td.lensMapK's "no map built yet" sentinel
+     must not be 0.0 itself, or this call would silently short-circuit
+     without ever reaching vsLensPlaneMapInit. vsLensPlaneMapInit sets
+     m->tDomD = INFINITY on every call, even its own early return for
+     k == 0.0 (see lensmap.c) -- and a bare memset leaves it 0.0 -- so
+     checking tDomD tells apart "the loop ran and (correctly) built an
+     inactive map" from "the loop never ran at all". See the mutation
+     evidence in the round-2 handover: asserting only lensActive == 0 here,
+     as a first draft of this test did, does NOT fail when lensMapK is
+     mis-initialised to 0.0 -- only this tDomD check does. */
+  test_bool(td.lensMaps[0].tDomD == INFINITY);
+  vsTransformDataCleanup(&td);
+}
+
+/* Companion check in the other direction: a real, nonzero k must still
+   build active maps on the very first call, i.e. the "no map built yet"
+   sentinel must not accidentally equal a genuine effective k either. With
+   lensMapK's actual sentinel (-1.0, chosen because no effective k can ever
+   be -1.0) this is not distinguishing on its own -- 0.0 != -0.25 regardless
+   of which of the two sentinel candidates was picked -- but it documents
+   the property the ruling asked to preserve and guards against a
+   differently-broken sentinel choice (e.g. one that collided with -0.25
+   itself). */
+static void test_lensmap_nonzero_k_builds_on_first_call(void){
+  VSFrameInfo fi;
+  VSTransformData td;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  lmInitTd(&td, &fi, VSLensCorrectWobble, -0.25, VS_BiLinear);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 1);
+  vsTransformDataCleanup(&td);
 }

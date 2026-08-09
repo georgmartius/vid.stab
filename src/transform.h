@@ -124,9 +124,13 @@ typedef struct _VSTransformConfig {
        undistorts the picture outright and stays opt-in.  See
        docs/superpowers/specs/2026-08-09-lens-correction-render-design.md */
     VSLensCorrectMode lensCorrection;
-    /* Manual override for k; NaN means "use whatever was estimated".  Needed
+    /* Manual override for k; 0.0 means "use whatever was estimated".  Needed
        for the transforms-file path, which carries no k, and for users who know
-       their lens. */
+       their lens.  A user who wants no lens correction at all sets
+       lensCorrection = VSLensCorrectOff rather than lensK = 0.0 -- forcing
+       k = 0 and switching correction off produce byte-identical output (both
+       make U_k and D_k the identity), so 0.0 does not need to also mean
+       "disabled"; that job belongs to the mode switch. */
     double            lensK;
     /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
      * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,
@@ -156,8 +160,9 @@ typedef struct _VSTransformData {
        runs, so the per-plane maps are built lazily by lensEnsureMaps(). */
     VSLensCorrectMode lensMode;
     int               lensActive;
-    double            lensK;      /* NaN until set */
-    double            lensMapK;   /* k the maps were built for, NaN if none */
+    double            lensK;      /* 0.0 until overridden; see VSTransformConfig.lensK */
+    double            lensMapK;   /* k the maps were built for; see lensEnsureMaps() for
+                                      the sentinel that means "no map built yet" */
     VSLensPlaneMap    lensMaps[3];
 
     int initialized; // 1 if initialized and 2 if configured

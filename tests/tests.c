@@ -216,6 +216,8 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_wobble_identity_takes_fast_path());
     UNIT(test_lensmap_wobble_cancellation_through_loop());
     UNIT(test_lensmap_removes_wobble());
+    UNIT(test_lensmap_zero_k_stays_inactive());
+    UNIT(test_lensmap_nonzero_k_builds_on_first_call());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

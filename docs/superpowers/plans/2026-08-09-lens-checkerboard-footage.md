@@ -1,5 +1,20 @@
 # Checkerboard lens footage and pixel round trip — Implementation Plan
 
+> **Historical record.** This plan documents how the work was sequenced, not
+> its final state. Its code listings were superseded during execution and are
+> NOT current; the design spec
+> (`docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md`)
+> plus the committed source in `tests/generate_lensclip.c` and
+> `tests/test_lenscorrect_roundtrip.c` are authoritative. Notably, after this
+> plan was written: `LC_BAND` was retuned from 60 to 61 (a tangency defect in
+> the pattern, diagnosed mid-execution); `lcIsFlat` grew from a 5x5 to a 7x7
+> window; the single `LC_MAX_FLAT_DELTA`/`LC_MIN_PSNR` pair split into five
+> constants (`LC_MAX_FLAT_DELTA`, `LC_MIN_PSNR`, `LC_MIN_PSNR_WOBBLE`,
+> `LC_MIN_PSNR_420`) plus per-channel 4:2:0 caps
+> (`LC_MAX_FLAT_DELTA_420_R/G/B`); and the barrel-correction border-fill
+> claim was corrected (Full mode at k = -0.25 leaves no border fill at all,
+> rather than a small one).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Generate a synthetic checkerboard clip distorted by a known lens, and

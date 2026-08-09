@@ -880,3 +880,69 @@ static void test_lensmap_fixed_reference_packed(void){
   }
   vsFrameFree(&src);
 }
+
+/* With the returned zoom applied, no destination pixel may sample outside the
+   source.  Checked on the frame boundary, densely, not just at the corners. */
+static void test_lensmap_required_zoom(void){
+  const double ks[] = {-0.3, -0.25, -0.1, 0.12};
+  VSFrameInfo fi;
+  int ik, im, it, i;
+  vsFrameInfoInit(&fi, 640, 360, PF_GRAY8);
+  for(im=1; im<=2; im++){
+    VSLensCorrectMode cm = im == 1 ? VSLensCorrectWobble : VSLensCorrectFull;
+    for(ik=0; ik<4; ik++){
+      for(it=0; it<3; it++){
+        VSTransformData td;
+        VSTransform t = null_transform();
+        double z;
+        switch(it){
+         case 0: t.x = 20; t.y = -14;               break;
+         case 1: t.alpha = 0.05;                    break;
+         case 2: t.x = -25; t.y = 18; t.alpha = 0.03; break;
+        }
+        lmInitTd(&td, &fi, cm, ks[ik], VS_BiLinear);
+        lensEnsureMaps(&td);
+        z = vsTransformRequiredZoom(&td, &t);
+        test_bool(z >= 0 && z < 60);
+        t.zoom = z + 1e-6;
+        /* Walk the destination boundary at 500 samples/edge (2000 total) --
+           deliberately independent of and much denser than the 64
+           samples/edge vsTransformRequiredZoom uses internally (see
+           VS_LENS_ZOOM_SAMPLES_PER_EDGE in transform.c).  This test's whole
+           point is to catch under-sampling in the implementation; if it
+           used the same density (or anything close to it) it would only
+           confirm the implementation against itself and could not have
+           caught the eight-point version's 2.47 px miss that motivated
+           this test in the first place. */
+        for(i=0; i<2000; i++){
+          double u = i/500.0, xd, yd, xs, ys;
+          if(u < 1)      { xd = u*(fi.width-1);   yd = 0; }
+          else if(u < 2) { xd = fi.width-1;       yd = (u-1)*(fi.height-1); }
+          else if(u < 3) { xd = (3-u)*(fi.width-1); yd = fi.height-1; }
+          else           { xd = 0;                yd = (4-u)*(fi.height-1); }
+          test_bool(vsLensMapBackward(&td.lensMaps[0], &t, xd, yd, &xs, &ys) == VS_OK);
+          test_bool(xs >= -0.51 && xs <= fi.width-0.49 &&
+                    ys >= -0.51 && ys <= fi.height-0.49);
+        }
+        vsTransformDataCleanup(&td);
+      }
+    }
+  }
+}
+
+/* Inactive lens: identical to the old closed form, to the last bit. */
+static void test_lensmap_required_zoom_off(void){
+  VSFrameInfo fi;
+  VSTransformData td;
+  int i;
+  vsFrameInfoInit(&fi, 640, 360, PF_GRAY8);
+  lmInitTd(&td, &fi, VSLensCorrectOff, -0.25, VS_BiLinear);
+  lensEnsureMaps(&td);
+  for(i=0; i<20; i++){
+    VSTransform t = null_transform();
+    t.x = i - 10.0; t.y = 0.5*i - 4.0; t.alpha = 0.002*i;
+    test_bool(vsTransformRequiredZoom(&td, &t) ==
+              transform_get_required_zoom(&t, fi.width, fi.height));
+  }
+  vsTransformDataCleanup(&td);
+}

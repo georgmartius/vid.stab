@@ -223,6 +223,8 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_fixed_reference());
     UNIT(test_lensmap_packed());
     UNIT(test_lensmap_fixed_reference_packed());
+    UNIT(test_lensmap_required_zoom());
+    UNIT(test_lensmap_required_zoom_off());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

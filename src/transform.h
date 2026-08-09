@@ -243,6 +243,13 @@ VS_API VSTransform vsGetNextTransform(const VSTransformData* td, VSTransformatio
  */
 VS_API int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans);
 
+/** The zoom (in the same percentage units as transform_get_required_zoom) needed
+    so that applying t leaves no border visible.  Delegates to the closed-form
+    transform_get_required_zoom verbatim when the lens is inactive; otherwise the
+    zoom sits inside the backward map being measured, so the required value is
+    found by bisection against vsLensMapBackward rather than by formula. */
+VS_API double vsTransformRequiredZoom(VSTransformData* td, const VSTransform* t);
+
 /**
  * vsLowPassTransforms: single step smoothing of transforms, using only the past.
  *  see also vsPreprocessTransforms. */

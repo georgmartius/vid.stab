@@ -476,6 +476,69 @@ int cameraPathAvg(VSTransformData* td, VSTransformations* trans){
 }
 
 
+/* Boundary samples per edge used to decide whether a zoom fits.  MUST be
+   dense, not just corners and edge midpoints: the extremum of a similarity
+   composed with the radial lens map is NOT confined to those eight points.
+   The radial map is monotone in distance from the lens centre, which bounds
+   the *radius* extremum to a corner, but containment here is tested per axis
+   against a rectangle, not against a radius -- composed with a rotation, the
+   radial expansion can push a point strictly BETWEEN two corners outside the
+   source in x (or y) while both corners stay inside.  Measured counter-
+   example: VSLensCorrectFull, k=-0.10, t={x=-25, y=18, alpha=0.03} on a
+   640x360 frame -- the eight-point check reports a fit at zoom=7.14%, but
+   the true worst destination-boundary point (on an edge, not a corner or
+   midpoint) maps 2.47 px outside the source.  64 samples/edge (256 total)
+   keeps every excursion of that width or wider inside the sampling
+   resolution (~10 px spacing on the long edge of a 640-wide frame; the
+   measured counterexample's violating stretch spans only ~5 px, which is
+   why the eight-point version missed it but 64/edge does not -- verified
+   against test_lensmap_required_zoom's independent, much finer sweep). */
+#define VS_LENS_ZOOM_SAMPLES_PER_EDGE 64
+
+/* Does every destination boundary sample land inside the source at this zoom? */
+static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
+                          double zoom, int w, int h){
+  const int n = VS_LENS_ZOOM_SAMPLES_PER_EDGE;
+  VSTransform t = *t0;
+  int e, j;
+  t.zoom = zoom;
+  for(e=0; e<4; e++){
+    for(j=0; j<n; j++){
+      double u = (double)j/(n-1);   /* 0..1 along this edge, corners included */
+      double xd, yd, xs, ys;
+      switch(e){
+       case 0: xd = u*(w-1);       yd = 0;             break;
+       case 1: xd = w-1;           yd = u*(h-1);       break;
+       case 2: xd = (1-u)*(w-1);   yd = h-1;           break;
+       default:xd = 0;             yd = (1-u)*(h-1);   break;
+      }
+      if(vsLensMapBackward(lm, &t, xd, yd, &xs, &ys) != VS_OK) return 0;
+      if(xs < -0.5 || xs > w-0.5 || ys < -0.5 || ys > h-0.5) return 0;
+    }
+  }
+  return 1;
+}
+
+double vsTransformRequiredZoom(VSTransformData* td, const VSTransform* t){
+  int w = td->fiDest.width, h = td->fiDest.height;
+  double lo, hi;
+  int i;
+  lensEnsureMaps(td);
+  if(!td->lensActive)
+    return transform_get_required_zoom(t, td->fiSrc.width, td->fiSrc.height);
+  /* Zoom sits inside M, so the required zoom is a fixed point rather than a
+     formula.  Overshoot is monotone in zoom, so bisect. */
+  lo = 0.0; hi = 60.0;
+  if(lensFitsAtZoom(&td->lensMaps[0], t, lo, w, h)) return 0.0;
+  if(!lensFitsAtZoom(&td->lensMaps[0], t, hi, w, h)) return hi;
+  for(i=0; i<15; i++){
+    double mid = 0.5*(lo+hi);
+    if(lensFitsAtZoom(&td->lensMaps[0], t, mid, w, h)) hi = mid; else lo = mid;
+  }
+  return hi;
+}
+
+
 /**
  * vsPreprocessTransforms: camera path optimization, relative to absolute conversion,
  *  and cropping of too large transforms.
@@ -534,12 +597,10 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
    */
   if (td->conf.optZoom == 2 && trans->len > 1){
     double* zooms=(double*)vs_zalloc(sizeof(double)*trans->len);
-    int w = td->fiSrc.width;
-    int h = td->fiSrc.height;
     double req;
     double meanzoom;
     for (int i = 0; i < trans->len; i++) {
-      zooms[i] = transform_get_required_zoom(&ts[i], w, h);
+      zooms[i] = vsTransformRequiredZoom(td, &ts[i]);
     }
 
     double prezoom = 0.;

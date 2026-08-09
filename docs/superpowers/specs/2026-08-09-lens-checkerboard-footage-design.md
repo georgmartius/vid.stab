@@ -136,8 +136,10 @@ new zlib dependency. Convert for documents with `pnmtopng` or `convert`.
 
 `generate_lensclip.c` is `#include`d from `tests.c` alongside
 `generate_synthetic.c`; the test file likewise, registered as `--testLCR`.
-All dumping is gated behind the existing `--store` flag, so an ordinary
-`make test` writes nothing.
+All dumping sits behind its own `--dumpLensClip` flag, following the
+`--dumpSynthetic` precedent at `tests/tests.c:238` rather than the `--store`
+flag, which is reserved for the raw frame captures at the top of `main`. An
+ordinary `make test` therefore writes nothing.
 
 ## Out of scope
 

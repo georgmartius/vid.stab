@@ -222,16 +222,35 @@ per pixel, one serial dependency chain per column, nothing vectorizable — to a
 row-sequential sweep holding all columns' accumulators in an array, then
 parallelised over blocks of columns.
 
+Both passes then divide by `size` once per pixel. `size` is a runtime value, so
+that is a real integer division — ~20-30 cycles in `hori`'s serial chain, and in
+`vert` it blocked the output loop from vectorizing at all, since no SIMD unit
+has an integer divide. It is now an exact magic-number reciprocal,
+`(acc*mul) >> shift` with `mul = ceil(2^shift/size)`.
+
+The constants are *checked*, not assumed. With `acc <= 255*size` the product
+must stay in 32 bits, which caps `shift` at 24; exactness then needs
+`255*size*(size-1) < 2^24`, i.e. it holds for every odd size up to 265 and
+fails first at 267. So `vs_reciprocal()` searches for a shift satisfying both
+conditions and reports failure if there is none, in which case both passes keep
+the division. (`boxblurPlanar` only ever passes stepSize-derived sizes, far
+inside the range.)
+
 Measured on the Ryzen 9 9900X, 1080p, `size=15` (`bench/bench_boxblur.c`):
 
 | | 1 thread | 24 threads |
 |---|---|---|
-| `boxblur_hori` | 2.24 | 0.22 ms/frame |
-| `boxblur_vert` | 2.34 | 0.89 ms/frame |
+| `boxblur_hori` | 2.24 -> 1.15 | 0.22 -> 0.11 ms/frame |
+| `boxblur_vert` | 2.34 -> 0.44 | 0.88 -> 0.27 ms/frame |
+
+(before -> after the reciprocal; the `vert` output loop now vectorizes, which is
+where its 5.3x single-threaded comes from.)
 
 The rewrite is bit-identical to the original including its edge behaviour, and
-`tests/test_boxblur.c` checks that against a verbatim copy of the old algorithm
-over 500 geometries. (It used to be a timing harness that asserted nothing.)
+`tests/test_boxblur.c` checks both passes against a verbatim copy of the old
+algorithm over ~1200 geometries, with sizes straddling 265/267 so that the
+reciprocal and the division fallback are both exercised. (It used to be a
+timing harness that asserted nothing.)
 
 ## Reproducing
 
@@ -256,10 +275,6 @@ since a build machine's compiler routinely supports more than its processor.
   sanity check that NEON beats scalar, not a figure to quote.
 * `boxblur_hori` is still a serial running sum within a row (parallel across
   rows). A prefix-sum formulation would vectorize it.
-* The `acc[i]/size` division in `boxblur_vert` blocks full auto-vectorization of
-  the output loop (runtime divisor). A magic-number reciprocal would fix it,
-  provably exact for `size <= 4096` with a 32-bit multiply, which covers every
-  geometry the caller can produce.
 * `USE_SSE2_ASM`, the historical hand-written assembly variant, is outside the
   runtime dispatch: it ignores `linesize2` and is only correct when both frames
   share a stride. Reachable only through an explicit opt-in build.

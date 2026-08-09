@@ -287,14 +287,26 @@ void test_lenscorrect_generator(void){
 #define LC_MAX_FLAT_DELTA 2
 #define LC_MIN_PSNR       30.5
 
-/* Wobble's own floor.  Its round trip resamples through a net-identity map
-   composed of two nonlinear lens evaluations (U_k then, after the affine,
-   D_k) where Full's single contraction low-passes the source and loses
-   less -- see wobble-diagnosis.md for the mechanism (a checkerboard feature
-   thinner than the generator's supersampling pitch, rasterised at different
-   sub-pixel phases by the reference and the clip).  That is a per-mode
-   property of Wobble, not generic slack, so it gets its own constant rather
-   than loosening LC_MIN_PSNR for every mode.
+/* Wobble's own floor.  Wobble measures about 2.5 dB below Full
+   (30.0 dB vs 32.5 dB) even with the LC_BAND = 61 retune above in place --
+   that retune eliminated the supersampling-aliasing artefact that used to
+   explain a much larger gap (maxFlat 51 at the old LC_BAND = 60; see
+   wobble-diagnosis.md for THAT mechanism, which is no longer why Wobble
+   reads 30.0 dB).  The cause of the remaining ~2.5 dB gap is not
+   established.  Leading hypothesis, offered as a hypothesis and not fact:
+   Wobble's reference is frame 0 of the clip, which is pattern(U_k(x)) --
+   already barrel-compressed at the edges, and so carrying more near-Nyquist
+   energy there than Full's reference (the flat, undistorted base image) --
+   so a given half-pixel resampling error costs more PSNR against it. This
+   has not been measured directly and may not be the whole story.
+
+   What IS measured, from the review's perturbation of the render path's
+   Wobble-branch U_k gain: a +0.1% gain error drives frames 1-5 to
+   28.25-28.34 dB, failing the floor below, while +0.05% passes at
+   29.54-29.64 dB.  So this floor is not merely absorbing Wobble's ordinary
+   budget -- it detects roughly a 0.05-0.1% U_k gain error, i.e. about a
+   0.2-0.4 px displacement at the frame corner, and the margin below is
+   doing real work rather than padding a number nobody will hit.
 
    Measured worst over frames 1-5 (frame 0 is the memcpy fast path and reads
    99.00 dB, excluded): 30.00, 30.08, 30.05, 30.00, 30.02 dB -- worst 30.00
@@ -302,12 +314,12 @@ void test_lenscorrect_generator(void){
    spread, the floor is worst - 1.0 dB rounded down to the nearest 0.5:
    30.00 - 1.0 = 29.00, already on the grid.
 
-   This floor sits BELOW the 28.73 dB a genuine geometry defect produced in
-   Full mode above.  That is deliberate, not an oversight: Wobble's PSNR
-   check here is verifying mode SEMANTICS -- that the shake is removed and
-   the lens retained -- not sub-pixel geometry.  LC_MIN_PSNR (Full,
-   pincushion) is what guards sub-pixel geometry; do not assume Wobble
-   carries the same guarantee. */
+   This floor is 1.5 dB weaker than LC_MIN_PSNR = 30.5, not merely a
+   different number -- and that is deliberate, not an oversight: Wobble's
+   PSNR check here is verifying mode SEMANTICS -- that the shake is removed
+   and the lens retained -- not the sub-pixel geometry guarantee that
+   LC_MIN_PSNR (Full, pincushion) polices via the 28.73 dB injected-defect
+   figure above.  Do not assume Wobble carries that stronger guarantee. */
 #define LC_MIN_PSNR_WOBBLE 29.0
 
 /* Measured worst case on 4:2:0 at k = -0.25 (Full mode): maxFlat = 25,
@@ -599,10 +611,16 @@ void test_lenscorrect_roundtrip_full(void){
    still camera comes back unchanged.
 
    Note frame 0 of the loop is trivially exact: an identity transform in
-   Wobble mode takes the memcpy fast path (transformfloat.c:331), so nothing
-   is resampled.  Frames 1..5 are the real test.  The Full-mode cases have no
-   such hole -- that same line excludes Full from the fast path explicitly, so
-   their i == 0 walks the inner loop like the rest. */
+   Wobble mode takes the memcpy fast path.  PF_RGB24 is a packed format
+   (frameinfo.h: PF_RGB24 > PF_PACKED), so vsDoTransform (transform.c:239-243)
+   calls transformPacked, and tests/CMakeLists.txt's -DTESTING renames the
+   float entry points to the _float suffix (transformfloat.h:35) without
+   renaming src/transformfixedpoint.c's -- so the unqualified transformPacked
+   these tests actually run is the fixed-point one, and the fast path is
+   transformfixedpoint.c:288.  Nothing is resampled at frame 0.  Frames 1..5
+   are the real test.  The Full-mode cases have no such hole -- that same
+   condition excludes Full from the fast path explicitly, so their i == 0
+   walks the inner loop like the rest. */
 static void test_lenscorrect_wobble_holds_the_lens(void){
   LCCase c;
   c.pf          = PF_RGB24;

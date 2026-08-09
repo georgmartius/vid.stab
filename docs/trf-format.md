@@ -159,14 +159,19 @@ line carrying diagnostics, which a reader ignores:
 ```
 0 0 0 0 0 1
 # no fields
-0 0.216345 -4.491032 0.021718 1.540513 0
-#					 17.486730 2
-0 0.295468 -4.358188 0.019088 0.794120 0
-#					 19.948448 2
+0 2.000000 1.000000 0.000000 0.000000 0
+#					 0.000000 1
+0 2.000000 1.000000 0.000000 0.000000 0
+#					 0.000000 1
 ```
 
 There is no header line. The first frame has no measurements, so it is written
 as all zeros with `extra = 1`.
+
+The dump records exactly the transforms the run used, so replaying it through
+`vidstabtransform` reproduces that run. Note that the `zoom` column is `0`
+unless `smoothZoom` is enabled, because the per-frame zoom estimate is
+discarded by default.
 
 The same format is accepted as *input* to `vidstabtransform`, which is the
 supported way to feed in a camera path you computed yourself: the reader tries

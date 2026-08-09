@@ -260,11 +260,21 @@ void test_lenscorrect_generator(void){
 
 /* --- the round trip ------------------------------------------------------- */
 
-/* Measured worst case over the six frames at k = -0.25: maxFlat = 1,
-   PSNR = 32.47 dB.  Set with margin; the `off` control scores 8.57 dB, so the
-   floor is nowhere near loose enough to let an uncorrected frame through. */
-#define LC_MAX_FLAT_DELTA 3
-#define LC_MIN_PSNR       28.0
+/* Measured worst case over the six frames at k = -0.25, after distinguishing
+   the two tones' blue channel (LC_TONE) so PSNR is no longer computed with a
+   dead third of its denominator: maxFlat = 1, PSNR = 32.39 dB.  The `off`
+   control scores 8.50 dB.
+
+   The margin here is deliberately tight, not generous: the per-frame spread
+   is only 0.06 dB (32.39 .. 32.46), so the six numbers are effectively
+   deterministic and there is no flakiness risk to buy slack against. A
+   genuine geometry bug -- a sign error in lcInverseTransform worth up to
+   0.38 px, or a uniform 0.25 px pose error -- was measured to still clear a
+   28.0 dB floor, so that much slack hides real defects rather than
+   tolerating noise.  maxFlat = 2 similarly reflects that a k*1.02
+   perturbation was measured to read maxFlat = 3 on four of six frames. */
+#define LC_MAX_FLAT_DELTA 2
+#define LC_MIN_PSNR       30.5
 
 typedef struct {
   int    n;        /* pixels inside the valid mask                          */
@@ -327,11 +337,17 @@ static void lcValidMask(unsigned char* valid, const VSFrameInfo* fi,
     }
 }
 
-/* True when every pixel of the 5x5 neighbourhood of (x,y) in `ideal` carries
-   the identical colour.  5x5 rather than 3x3 because the map's local scale is
-   not exactly 1: near the frame edge under k = -0.25 it compresses by up to
-   about 1.3x, so an output neighbourhood draws on a slightly larger source
-   neighbourhood, and the wider window keeps the guarantee honest.
+/* True when every pixel of the 7x7 neighbourhood of (x,y) in `ideal` carries
+   the identical colour.  What governs how far a bilinear tap reaches back
+   into ideal space is not the tangential compression (1/g = 1.22 at the
+   corner) but the RADIAL derivative of the distortion,
+   f'(r) = [2(1+s) - 2r^2/s] / (1+s)^2, s = sqrt(1-4kr^2): at k = -0.25 and
+   r ~ 1.04 (frame corner plus the ~12 px of pose motion) f' = 0.567, so
+   1/f' = 1.76 -- an output neighbourhood there draws on a source
+   neighbourhood 1.76x as wide.  Source pixels are themselves box-averaged
+   over +-0.5 px (LC_SS supersampling), which pushes the true support out to
+   about 2.6 px, and a half-width of 2 (5x5) does not cover that; a
+   half-width of 3 (7x7) does.
 
    Using exact equality rather than a gradient threshold means there is no
    magic number to tune here: inside a checkerboard cell the pattern is
@@ -339,10 +355,10 @@ static void lcValidMask(unsigned char* valid, const VSFrameInfo* fi,
 static int lcIsFlat(const VSFrame* ideal, const VSFrameInfo* fi, int x, int y){
   uint8_t r0,g0,b0, r,g,b;
   int i, j;
-  if(x < 2 || y < 2 || x >= fi->width-2 || y >= fi->height-2) return 0;
+  if(x < 3 || y < 3 || x >= fi->width-3 || y >= fi->height-3) return 0;
   getPixelRGB(ideal, fi, x, y, &r0,&g0,&b0);
-  for(j=-2; j<=2; j++)
-    for(i=-2; i<=2; i++){
+  for(j=-3; j<=3; j++)
+    for(i=-3; i<=3; i++){
       getPixelRGB(ideal, fi, x+i, y+j, &r,&g,&b);
       if(r!=r0 || g!=g0 || b!=b0) return 0;
     }

@@ -316,3 +316,154 @@ Not addressed:
 - **Heavy outlier loads**, past about a quarter of the fields, defeat the least-squares inner
   fit. See the known limit under outlier rejection above.
 - **Rolling shutter** is a separate distortion and is not modelled.
+
+## 8. Applying the correction to the output
+
+Sections 1-7 cover using `k` to *interpret* the motions. This section covers the render-side
+work that consumes that estimate: rewarping the actual output pixels. Implementation:
+`src/lensmap.{c,h}`, integrated into the four warp loops in `src/transformfloat.c` and
+`src/transformfixedpoint.c`. Tests: `tests/test_lensmap.c`, run with `tests --testLMAP`. Full
+design: `docs/superpowers/specs/2026-08-09-lens-correction-render-design.md`.
+
+### The three modes
+
+The render path applies a backward map: for each destination pixel it computes a source
+coordinate and interpolates. `VSTransformConfig.lensCorrection` selects which map:
+
+| Mode | Backward map | Output looks like |
+|---|---|---|
+| `Off` | `M` | today's behaviour, bit for bit |
+| `Wobble` (default) | `D_k ∘ M ∘ U_k` | the same lens, on a camera held still |
+| `Full` | `D_k ∘ M` | an ideal lens; straight lines straight |
+
+`M` is the stabilising similarity (rotation, zoom, translation) already computed by the transform
+pass. `U_k` maps observed coordinates to ideal ones, `D_k` the reverse; `D_k` is always the last
+step of a backward map because it is the step that lands on the sensor coordinate that must
+actually be sampled.
+
+### Why Wobble is the default
+
+Lens distortion is anchored to the sensor, not the scene: a scene point near the frame centre in
+one frame and near the edge in the next carries a different distortion displacement in each frame,
+and a global similarity cannot remove that difference. It survives stabilisation as a residual
+warp that grows toward the periphery — the wobble that motivated estimating `k` in the first
+place. `Wobble` removes exactly that and nothing else: undistort into ideal coordinates, apply the
+stabilising similarity there, redistort back into the sensor's own coordinates.
+
+The property that makes it safe to default on is that `D_k` and `U_k` are exact inverses, so
+`M = identity ⇒ D_k ∘ M ∘ U_k = identity`. A locked-off shot — or the identity-transform case any
+shot passes through — is left completely untouched: no field of view lost, no peripheral
+softening, no resampling at all. `Full`, by contrast, rewarps every pixel of every frame
+unconditionally, whether or not the camera moved.
+
+Measured on a synthetic clip filmed by a moving camera through a barrel lens (`k = -0.25`,
+`test_lensmap_removes_wobble`): the mean absolute inter-frame difference over the region stable
+across all frames is 26.93 with the lens correction off and 2.65 with `Wobble` on — the residual
+wobble is not eliminated to numerical zero (interpolation error remains), but it drops to about a
+tenth of its uncorrected size.
+
+`Full` mode earns its keep on a different claim — straightness, not stability. On a distorted grid
+(`test_lensmap_straightness`, same `k = -0.25`), the maximum deviation of a fitted grid column from
+a straight line is 9.60 px on the distorted input, 0.00 px after `Full` correction, and 9.60 px
+after `Wobble` — `Wobble` leaves the lens's own curvature exactly as it was, which is the point:
+it corrects motion-induced *change*, not the lens's static signature.
+
+### Config surface
+
+- `VSTransformConfig.lensCorrection` (`VSLensCorrectMode`) selects the mode above. It defaults to
+  `VSLensCorrectWobble`. Undistorting the picture outright (`Full`, the direct descendant of what
+  an earlier design proposal, since superseded, called `correctLensDistortion`) stays opt-in:
+  it is a visible, irreversible change to every frame with a real field-of-view cost for
+  pincushion, so it is not switched on until a user asks for it, in contrast to
+  `estimateLensDistortion`, which is on by default because merely *interpreting* the motions
+  through the lens has no visible downside.
+- `VSTransformConfig.lensK` is the manual override, and `0.0` is its "no override, use whatever
+  was estimated" sentinel — not `NaN`. Both build with `-ffast-math`, under which `isnan()` can
+  fold away and `NaN == x` can spuriously return true, so a `NaN` sentinel in a public header would
+  be a trap; `0.0` costs nothing, because forcing `k = 0` and switching correction off already
+  produce byte-identical output (both make `U_k` and `D_k` the identity). A user who wants no lens
+  correction at all should set `lensCorrection = VSLensCorrectOff`, not `lensK = 0.0` — the latter
+  reads as "I have no opinion about k", not "turn correction off", and a `lensCorrection` other
+  than `Off` would keep the map wired up (just inactive, since `k = 0` builds no active map). An
+  explicit non-zero `lensK` always wins over the estimate: see `vsLocalmotions2Transforms` in
+  `src/localmotion2transform.c`, which only calls `vsTransformSetLensK` when
+  `fabs(td->conf.lensK) <= 0.01`.
+
+### The transforms-file path carries no k
+
+`src/serialize.c`'s reader parses each line of a `.trf` file as `"%i %lf %lf %lf %lf %i"` — id, x,
+y, alpha, zoom, extra. There is no field for `k`, and that is deliberate: extending the file format
+would mean bumping `LIBVIDSTAB_FILE_FORMAT_VERSION` and carrying the compatibility burden of an old
+reader meeting a new file forever, for a single scalar that is far more naturally supplied as a
+command-line override than baked into a per-frame transform record. So a consumer that stabilises
+by reading a transforms file, rather than by running detection and the transform pass back to
+back in the same process, gets no estimate at all: `VSTransformData.lensK` stays at its `0.0`
+default and correction is off, exactly like undistorted footage, unless that consumer sets
+`VSTransformConfig.lensK` explicitly (or calls `vsTransformSetLensK` after init). This is the
+scenario `vsTransformSetLensK` exists for in the first place — a consumer that does not share one
+`VSTransformData` between the estimation pass and the render pass has no other way to hand the
+number across.
+
+### Full mode softens the periphery
+
+For barrel distortion, `D_k`'s derivative falls below 1 away from the centre — `dD/dr ≈ 0.71` at
+`r = 1`, `k = -0.25` — so the outer region of the frame is magnified: a small patch of source
+pixels is stretched to cover a larger patch of output pixels. That shows up as softening toward the
+edges under `Full` correction, worst at the corners. Bicubic interpolation (`VS_BiCubic`) reduces
+the visible effect noticeably compared to bilinear, but **the interpolation type is not changed
+automatically** when `lensCorrection` is set to `Full` — a caller who wants the sharper result
+has to select `VS_BiCubic` themselves via `VSTransformConfig.interpolType`.
+
+Chroma tracks luma correctly through this softening: on a hard vertical edge warped with the lens
+active (`test_lensmap_chroma_render`, `k = -0.25`), the worst luma/chroma step offset measured is
+0.27 luma px on 4:2:0, 0.28 on 4:2:2, and 0.00 on 4:4:4 (which has no subsampling to get wrong in
+the first place). The 4:2:0 and 4:2:2 figures are nearly identical because both share the same
+horizontal subsampling factor, and the residual is real curvature error from averaging a nonlinear
+radial map over a chroma sample's footprint, not a bug — see the derivation in
+`tests/test_lensmap.c`'s `lmCheckChromaAlignment`.
+
+The lookup tables that make this all cheap enough to run per pixel are accurate to 7.13e-07 in `g`
+over the part of their domain an in-frame sample can actually land on, i.e. a worst-case pixel
+displacement of 0.0002 px (`test_lensmap_lut`) — negligible next to the interpolation error above.
+Beyond that domain — samples that are off-frame by construction, reachable only under zoom-out or
+past a pincushion lens's genuine mathematical domain edge — the tables are only required to stay
+finite, positive and monotone, not accurate, since nothing depends on their precision there.
+
+The production, fixed-point warp loop that ships agrees with an independent double-precision
+reference through the same interpolator to a mean of 0.081 pixel levels (`test_lensmap_fixed_
+reference`), and a companion test (`test_lensmap_fixed_float_equivalence`) is sensitive enough to
+detect a systematic 0.02% error deliberately injected into the distortion lookup — the accuracy
+bar is set from measurement, not chosen to make a test pass.
+
+### Zoom budget: it cuts both ways
+
+With the lens active, the required-zoom calculation that keeps the stabilised frame free of border
+is computed from the real backward map (`vsTransformRequiredZoom` sampling
+`vsLensMapBackward`), not from the old closed-form corner calculation, because the two disagree in
+both directions once a lens is in the picture:
+
+- For pure translation under barrel distortion, the old closed form **over-budgets** — it zooms in
+  more than necessary — by up to 6.25 percentage points, because it reasons about corner motion
+  under a pure similarity and does not know that barrel distortion already pulls the periphery
+  inward. The lens-aware budget zooms less and preserves more of the field of view.
+- Combined with rotation, the closed form instead **under-budgets**: in the measured worst case it
+  leaves up to 2.47 px of the destination frame uncovered by the source, because rotation moves the
+  point of maximum required zoom off the corner in a way the old calculation, tuned for a pure
+  similarity's corner-is-worst assumption, does not track once the backward map is no longer a
+  similarity at all.
+
+Both failure directions matter equally: over-budgeting silently throws away field of view the user
+never needed to lose, and under-budgeting silently leaves border pixels in the output. Neither is
+acceptable, which is why the budget calculation was changed rather than patched with a fixed
+margin in one direction.
+
+### Out of scope: zoom lenses
+
+`k` is one value for the whole clip, fit once by the estimator in section 4 and carried unchanged
+through every frame the render path processes. Footage that zooms during the shot has a physical
+`k` that genuinely drifts — typically barrel at the wide end and pincushion at the telephoto end —
+and the estimator has no way to see that: it will return a single confident average across the
+whole range, and the render path will apply that average everywhere, correctly by its own model but
+not by the lens's actual, changing shape. If this needs to be handled later, the natural extension
+is a windowed estimate feeding a `k` that varies over the clip, not a change to the render-path
+plumbing described here.

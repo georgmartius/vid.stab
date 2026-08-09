@@ -228,6 +228,8 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_column_bend_metric());
     UNIT(test_lensmap_straightness());
     UNIT(test_lensmap_pincushion_border());
+    UNIT(test_lensmap_config_override());
+    UNIT(test_lensmap_estimate_reaches_render());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

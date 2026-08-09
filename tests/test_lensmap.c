@@ -1154,3 +1154,113 @@ static void test_lensmap_required_zoom_off(void){
   }
   vsTransformDataCleanup(&td);
 }
+
+/* --- estimate-to-render plumbing ------------------------------------------ */
+
+/* An explicit conf.lensK must win over anything estimated, and must survive
+   into the render path without any further call. */
+static void test_lensmap_config_override(void){
+  VSFrameInfo fi;
+  VSTransformData td;
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("override");
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  cfg.lensK = -0.25;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 1);
+  test_bool(td.lensMaps[0].k == -0.25);
+  vsTransformDataCleanup(&td);
+
+  /* the default is wobble, but with no k there is nothing to do */
+  cfg = vsTransformGetDefaultConfig("override");
+  test_bool(cfg.lensCorrection == VSLensCorrectWobble);
+  test_bool(cfg.lensK == 0.0);
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 0);
+  vsTransformDataCleanup(&td);
+
+  /* an explicit Off beats an explicit k */
+  cfg = vsTransformGetDefaultConfig("override");
+  cfg.lensK = -0.25;
+  cfg.lensCorrection = VSLensCorrectOff;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 0);
+  vsTransformDataCleanup(&td);
+}
+
+/* The estimate reaches the renderer through the shared VSTransformData:
+   after vsLocalmotions2Transforms, rendering through the same td must apply
+   the k it just fitted, with no further call from the consumer.
+
+   The clip construction below is lifted verbatim from
+   test_lensdistortion_endtoend()/ldRunEndToEnd() in test_lensdistortion.c: a
+   random-walk camera motion rendered through a known barrel lens, run
+   through vsMotionDetection to collect a VSManyLocalMotions. That is the
+   only part not already given by the plan; every assertion after it was
+   written into the task brief up front. */
+static void test_lensmap_estimate_reaches_render(void){
+  const double trueK = -0.25;
+  const int NF = 10;
+  VSTransformData td;
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("e2e-render");
+  VSTransformations trans;
+  VSManyLocalMotions mlms;
+  VSFrameInfo fi;
+  VSFrame frames[10];
+  VSTransform cum[10];
+  VSLensDistortion ld;
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("lens-e2e-render");
+  VSMotionDetect md;
+  uint32_t seed = 4242u;
+  int i;
+
+  test_bool(vsFrameInfoInit(&fi, 1280, 720, PF_GRAY8) != 0);
+  ld = vsLensDistortionInit(&fi, trueK);
+
+  for(i=0; i<NF; i++) vsFrameAllocate(&frames[i], &fi);
+  ldFillTexture(&frames[0], &fi, &seed);
+
+  cum[0] = null_transform();
+  for(i=1; i<NF; i++){
+    cum[i] = cum[i-1];
+    cum[i].x     += 10.0*ldRandUniform(&seed);
+    cum[i].y     += 10.0*ldRandUniform(&seed);
+    cum[i].alpha += 0.008*ldRandUniform(&seed);
+  }
+  {
+    VSFrame base;
+    vsFrameAllocate(&base, &fi);
+    memcpy(base.data[0], frames[0].data[0], (size_t)frames[0].linesize[0]*fi.height);
+    for(i=0; i<NF; i++) ldRenderWarped(&base, &frames[i], &fi, &ld, &cum[i]);
+    vsFrameFree(&base);
+  }
+
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+  vs_vector_init(&mlms, NF);
+  for(i=0; i<NF; i++){
+    LocalMotions lms;
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    if(i == 0){ vs_vector_del(&lms); continue; }
+    vs_vector_append_dup(&mlms, &lms, sizeof(LocalMotions));
+  }
+  vsMotionDetectionCleanup(&md);
+  for(i=0; i<NF; i++) vsFrameFree(&frames[i]);
+
+  cfg.estimateLensDistortion = 1;
+  cfg.lensCorrection         = VSLensCorrectWobble;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  vsTransformationsInit(&trans);
+  test_bool(vsLocalmotions2Transforms(&td, &mlms, &trans) == VS_OK);
+  test_bool(fabs(td.lensK - trueK) < 0.05);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 1);
+  test_bool(td.lensMaps[0].active == 1);
+  vsTransformationsCleanup(&trans);
+  vsTransformDataCleanup(&td);
+
+  for(i=0; i<vs_vector_size(&mlms); i++) vs_vector_del(VSMLMGet(&mlms, i));
+  vs_vector_del(&mlms);
+}

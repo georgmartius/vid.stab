@@ -64,6 +64,10 @@ int vsLocalmotions2Transforms(VSTransformData* td,
        it would only add noise. */
     useLens = le.determined && fabs(le.k) > 0.01;
     lens = vsLensDistortionInit(&td->fiSrc, le.k);
+    /* Hand the estimate to the render path.  An explicit conf.lensK wins: the
+       user knows their lens better than a fit over one clip does. */
+    if(fabs(td->conf.lensK) <= 0.01 && useLens)
+      vsTransformSetLensK(td, le.k);
     if(td->conf.verbose)
       vs_log_info(td->conf.modName,
                   "lens distortion: k=%.4f +- %.4f from %i motions (%i dropped), %s\n",

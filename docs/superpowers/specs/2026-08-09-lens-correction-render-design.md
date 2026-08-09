@@ -70,17 +70,27 @@ typedef enum {
 
 /* Everything one plane's inner loop needs. Built once per (mode, k, geometry). */
 typedef struct _vslensplanemap {
-  int      active;    /* 0 -> the caller takes the existing affine-only path        */
-  float    invRho2;   /* 1/rho^2 in luma-equivalent units; rho from the SOURCE frame */
-  float    sx, sy;    /* luma-equivalent axis scales, (1<<wsub) and (1<<hsub)        */
-  float    tMax;      /* LUT domain in t = r^2                                        */
-  int      n;         /* LUT entries, 2048                                            */
-  int32_t* gU;        /* U_k radial scale, 16.16 fixed point                          */
-  int32_t* gD;        /* D_k radial scale, 16.16 fixed point                          */
-  float*   gUf;       /* same tables in float for the _FLT path                       */
-  float*   gDf;
+  int      active;      /* 0 -> the caller takes the existing affine-only path        */
+  VSLensCorrectMode mode;
+  double   k;
+  double   cdx, cdy;    /* destination plane centre, plane units                      */
+  double   csx, csy;    /* source plane centre, plane units                           */
+  double   tMaxU, tMaxD;/* LUT domains in t = r^2 -- U_k and D_k get separate tables,  */
+                         /* since their domains differ (see 2.4)                       */
+  double   tDomD;       /* t beyond which D_k is undefined; INFINITY if k <= 0        */
+  double   invRho2;     /* 1/rho^2 in luma-equivalent pixels^2                        */
+  int      sxShift, syShift; /* wsub/hsub: plane units -> luma units is << these      */
+  int32_t  idxScaleU, idxScaleD; /* fixed-point index scale, see vsLensLutFp          */
+  int32_t* gU;          /* VS_LENS_LUT_N entries, 16.16                               */
+  int32_t* gD;
 } VSLensPlaneMap;
 ```
+
+`VS_LENS_LUT_N` is 1024, not the 2048 sketched in an earlier draft of this design; measured accuracy
+at that size is already 7.13e-07 in `g` over the domain that matters (see `docs/lens-distortion.md`),
+so there was no reason to pay for the larger table. There is no `zoomHeadroom` parameter on the init
+function either — the table domain is derived from `fiSrc`/`fiDest`/`mode` alone (see 2.4), so the
+caller does not need to guess how much headroom the zoom budget will want.
 
 The two scale functions are the whole model:
 
@@ -94,10 +104,12 @@ what makes the chroma handling in 2.3 cheap.
 
 Public surface of the unit:
 
-- `VSLensPlaneMap vsLensPlaneMapInit(const VSFrameInfo* fiSrc, const VSFrameInfo* fiDest, int plane, double k, VSLensCorrectMode mode, double zoomHeadroom)`
+- `int vsLensPlaneMapInit(VSLensPlaneMap* m, const VSFrameInfo* fiSrc, const VSFrameInfo* fiDest, int plane, double k, VSLensCorrectMode mode)`
 - `void vsLensPlaneMapFree(VSLensPlaneMap*)`
-- inline `lensScaleU(const VSLensPlaneMap*, float t)` / `lensScaleD(...)` and fixed-point twins,
-  each with a direct-computation fallback outside `[0, tMax]`
+- `vsLensScaleUDirect`/`vsLensScaleDDirect` (double precision, exact) plus fixed/float table lookups,
+  `vsLensLutFp`/`vsLensLutF`, that **clamp to the table's last entry** past `tMax` rather than falling
+  back to direct computation — every sample that far out is off-frame by construction (see 2.4 and
+  2.5), so accuracy there is not required, only that the value stay finite, positive and monotone
 - `int vsLensMapBackward(const VSLensPlaneMap*, const VSTransform*, double xd, double yd, double* xs, double* ys)`
   — a double-precision reference implementation of the whole composite map, used by the zoom budget
   in 2.4 and by the tests. The inner loops do not call it; they inline the same arithmetic.
@@ -134,26 +146,48 @@ not replicate it.
 
 ### 2.4 LUT
 
-`tMax` is derived from the actual geometry rather than hardcoded: the largest `t` reachable is at a
-destination corner (`t = 1` after `U_k` at worst) carried through `M`, so
+What shipped diverges from the sketch this section originally carried: `U_k` and `D_k` get separate
+table domains, `tMaxU` and `tMaxD`, rather than one shared `tMax`, because the two functions see
+different inputs and have different failure geometry. `U_k` only ever sees destination-centred
+coordinates, so its domain is fixed from geometry alone, with a flat margin rather than a
+zoom-dependent one:
 
 ```
-zMax = 1 - min(0, conf.zoom)/100          /* the most zoomed-out scale factor, >= 1 */
-tMax = ((1 + maxShift/rho) * zMax)^2 * safetyMargin
+tMaxU = 1.2 * (rhoDest/rho)^2
 ```
 
-with `safetyMargin = 1.1`. Note the sign convention: the loop uses `z = 1 - zoom/100`, so negative
-`zoom` is zoom-out and pushes samples to larger radii — that is the case `tMax` must cover. 2048 entries with linear interpolation; `g` is smooth and monotone in `t`
-on this domain. Beyond `tMax` the inline helpers fall back to direct computation — those samples are
-off-frame anyway, so the branch is cold.
+`D_k` sees ideal coordinates after the similarity `M`, which can push them arbitrarily far under
+zoom-out, but every point beyond the frame corner (`t = 1` in ideal units) is off-frame by
+construction, so accuracy past that is not needed — only that the table stay finite, positive and
+monotone. `tMaxD` is therefore a fixed constant, tightened only when pincushion's genuine domain
+edge is closer:
+
+```
+tMaxD = min(4.0, 0.99 * tDomD)     /* tDomD = 1/(4k) for k > 0, else no limit */
+```
+
+There is no `conf.zoom`/`maxShift`-derived formula and no `safetyMargin` parameter — the zoom budget
+in §3.3 queries the map through `vsLensMapBackward` rather than the map sizing itself around the
+budget, so the two are decoupled and neither needs to guess the other's headroom.
+
+Both tables have `VS_LENS_LUT_N = 1024` entries with linear interpolation; `g` is smooth and
+monotone in `t` on each domain. Beyond `tMaxU`/`tMaxD` the table lookups (`vsLensLutFp` for the
+fixed-point path, `vsLensLutF` for the float path used in tests) **clamp to the table's last
+entry** rather than falling back to a direct computation — there is no such fallback in the shipped
+code. That is sufficient because those samples are off-frame anyway (the branch doesn't need to be
+cold; it doesn't exist), and clamping trivially preserves finiteness, positivity and monotonicity
+without evaluating `sqrt` on an argument that may have gone negative past `tDomD`.
 
 Fixed-point tables are 16.16, consistent with the coordinate representation in
 `transformfixedpoint.c:39-56`. The multiply back uses a 64-bit intermediate:
 `x = c + (((int64_t)dx_fp16 * g_fp16) >> 16)`.
 
-The float path keeps a float table for consistency with the fixed-point path and to keep one code
-shape across both; a test compares it against direct `sqrtf` evaluation, and if the table shows no
-benefit there it can be dropped from the float path later without changing behaviour.
+The float table (`gUf`/`gDf`, `vsLensLutF`) exists only under `TESTING` — `transformfloat.c`, which
+uses it, is a test-only twin of the production fixed-point loop and is never built into the shipped
+library (see `CMakeLists.txt`'s `SOURCES`, which lists `transformfixedpoint.c` and `lensmap.c` but
+not `transformfloat.c`). A test compares the float table against direct evaluation — see
+`docs/lens-distortion.md`'s "Applying the correction to the output" section for the measured
+accuracy.
 
 ### 2.5 Domain failures
 

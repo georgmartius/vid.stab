@@ -679,3 +679,74 @@ void test_lenscorrect_roundtrip_modes(void){
   test_lenscorrect_pincushion_roundtrip();
   test_lenscorrect_full_yuv420();
 }
+
+/* --- the figure ----------------------------------------------------------- */
+
+/* Copies src into dest at (ox,oy).  Both must be PF_RGB24. */
+static void lcBlit(VSFrame* dest, const VSFrameInfo* fid, int ox, int oy,
+                   const VSFrame* src, const VSFrameInfo* fis){
+  int x, y;
+  for(y=0; y<fis->height; y++)
+    for(x=0; x<fis->width; x++){
+      uint8_t r,g,b;
+      getPixelRGB(src, fis, x, y, &r,&g,&b);
+      setPixelRGB(dest, fid, ox+x, oy+y, r,g,b);
+    }
+}
+
+/* Writes the clip and its corrections to testout/lensclip/, plus one contact
+   sheet -- base | distorted | Full-corrected for frame 0 -- which is the
+   figure for docs/lens-distortion.md.  Asserts nothing; it exists to be
+   looked at, and is reached only via --dumpLensClip. */
+void lcDumpClip(void){
+  VSFrameInfo fi, fiSheet;
+  VSFrame base, full, wobble, sheet, frames[LC_NUM_FRAMES];
+  char name[256];
+  int i;
+
+  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_BARREL, LC_NUM_FRAMES);
+  vsFrameAllocate(&base,   &fi);
+  vsFrameAllocate(&full,   &fi);
+  vsFrameAllocate(&wobble, &fi);
+  lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
+
+  test_bool(storePPMImage(testOut("lensclip/base.ppm"), &base, &fi));
+
+  for(i=0; i<LC_NUM_FRAMES; i++){
+    VSTransform ti = lcInverseTransform(lcClipTransform(i));
+    snprintf(name, sizeof(name), "lensclip/distorted_%03i.ppm", i);
+    test_bool(storePPMImage(testOut(name), &frames[i], &fi));
+
+    lcCorrect(&full, &frames[i], &fi, VSLensCorrectFull, LC_K_BARREL, ti);
+    snprintf(name, sizeof(name), "lensclip/full_%03i.ppm", i);
+    test_bool(storePPMImage(testOut(name), &full, &fi));
+
+    lcCorrect(&wobble, &frames[i], &fi, VSLensCorrectWobble, LC_K_BARREL, ti);
+    snprintf(name, sizeof(name), "lensclip/wobble_%03i.ppm", i);
+    test_bool(storePPMImage(testOut(name), &wobble, &fi));
+  }
+
+  /* The contact sheet: three panels of frame 0 side by side, separated by an
+     8px gutter left in the mid grey the frame is cleared to. */
+  {
+    const int gutter = 8;
+    test_bool(vsFrameInfoInit(&fiSheet, 3*LC_WIDTH + 2*gutter, LC_HEIGHT,
+                              PF_RGB24) != 0);
+    vsFrameAllocate(&sheet, &fiSheet);
+    fillFrameRGB(&sheet, &fiSheet, 128, 128, 128);
+    lcCorrect(&full, &frames[0], &fi, VSLensCorrectFull, LC_K_BARREL,
+              lcInverseTransform(lcClipTransform(0)));
+    lcBlit(&sheet, &fiSheet, 0,                       0, &base,      &fi);
+    lcBlit(&sheet, &fiSheet, LC_WIDTH + gutter,       0, &frames[0], &fi);
+    lcBlit(&sheet, &fiSheet, 2*(LC_WIDTH + gutter),   0, &full,      &fi);
+    test_bool(storePPMImage(testOut("lensclip/sheet.ppm"), &sheet, &fiSheet));
+    vsFrameFree(&sheet);
+  }
+
+  fprintf(stderr, "dumped lens clip PPMs to %s/lensclip "
+          "(base | distorted | corrected sheet.ppm, k = %.2f)\n",
+          TEST_OUTPUT_DIR, LC_K_BARREL);
+
+  vsFrameFree(&base); vsFrameFree(&full); vsFrameFree(&wobble);
+  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+}

@@ -270,6 +270,11 @@ int main(int argc, char** argv){
     }
   }
 
+  if(contains(argv,argc,"--dumpLensClip",
+              "dump the checkerboard lens clip and the contact sheet as PPM")){
+    lcDumpClip();
+  }
+
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){
     UNIT(test_gradientoptimizer());
   }

@@ -225,13 +225,18 @@ double vsTransformRequiredZoom(const VSTransformData* td, const VSTransform* t);
 When the lens is inactive it delegates to the existing closed form, so the `k = 0` path stays bit
 identical. When active, note that zoom sits *inside* `M`, making the required zoom a fixed point
 rather than a formula. Solve it directly: overshoot is monotone in `z`, so bisect on `z` over
-`[0, zoomMax]`, at each step pushing the four destination corners and four edge midpoints through
-`vsLensMapBackward` and asking whether all eight land inside the source rectangle. 15 iterations
-reach 0.01% and cost ~120 evaluations per frame, which is nothing against a per-pixel warp.
+`[0, zoomMax]`, at each step walking the destination boundary densely through `vsLensMapBackward`
+and asking whether every sample lands inside the source rectangle. 15 iterations over a boundary
+sampled every few pixels is a few thousand evaluations per frame, which is nothing against a
+per-pixel warp.
 
-The eight-point sample is justified by the extremum of a radial-plus-similarity map on a rectangle
-lying on the boundary, with corners and midpoints the candidates; a test validates it against a
-dense boundary sweep rather than relying on the argument.
+The boundary is sampled **densely**, not at eight points. An early draft assumed the extremum lay
+at a corner or edge midpoint, reasoning that a radial map is monotone in radius. That is wrong:
+containment is tested per axis against a rectangle, not against a radius, so composed with a
+rotation the radial expansion can push a point in the middle of an edge outside the source while
+both adjacent corners stay inside. Measured counterexample: `Full`, `k = -0.10`, `t = (-25, 18)`,
+`alpha = 0.03` overshoots by 2.47 px past what the eight-point sample admits. The cost of dense
+sampling is irrelevant — this runs once per transform, not per pixel.
 
 Callers are the `optZoom` paths at `src/transform.c:456-491`.
 
@@ -335,7 +340,9 @@ a similarity — the forward direction needed to *create* distorted input), `ldF
 5. **Chroma alignment** on YUV420P *and* YUV422P. The 4:2:2 case is the one that catches §2.3;
    without it that bug ships silently.
 6. **Zoom budget**: no border pixel is ever sampled, over a sweep of `k` × transform × mode; and the
-   eight-point sample matches a dense boundary sweep.
+   implementation's boundary sampling is validated against an independently, and significantly
+   more finely, sampled sweep — a test at the same density would only confirm the implementation
+   against itself.
 7. **Full mode: straight lines become straight.** Render a grid, distort, correct, fit lines to the
    grid rows and columns, measure maximum deviation.
 8. **Wobble mode: straight lines stay curved, identically in every frame.** The inverse of 7, and

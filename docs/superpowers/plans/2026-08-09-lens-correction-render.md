@@ -1544,12 +1544,13 @@ static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
   VSTransform t = *t0;
   int i;
   t.zoom = zoom;
-  /* corners and edge midpoints: the extremum of a radial-plus-similarity map
-     over a rectangle lies on the boundary, and these are the candidates.
-     test_lensmap_required_zoom checks that against a dense sweep. */
-  static const double us[8][2] = {{0,0},{1,0},{1,1},{0,1},
-                                  {0.5,0},{1,0.5},{0.5,1},{0,0.5}};
-  for(i=0; i<8; i++){
+  /* Walk the boundary densely.  Corners and midpoints are NOT sufficient:
+     containment is per axis against a rectangle, not against a radius, so
+     composed with a rotation the radial expansion can push a mid-edge point
+     outside while both adjacent corners stay inside.  Measured counterexample:
+     Full, k=-0.10, t=(-25,18), alpha=0.03 overshoots by 2.47 px.  This runs
+     once per transform, not per pixel, so the cost is irrelevant. */
+  for(i=0; i<nBoundary; i++){
     double xs, ys;
     if(vsLensMapBackward(lm, &t, us[i][0]*(w-1), us[i][1]*(h-1), &xs, &ys) != VS_OK)
       return 0;

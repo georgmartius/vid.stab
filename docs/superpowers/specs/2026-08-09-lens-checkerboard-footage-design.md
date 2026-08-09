@@ -5,12 +5,20 @@ Branch: `feature/lens-checkerboard-footage`, off `feature/lens-distortion-estima
 
 ## Why
 
-`test_lensdistortion.c` works entirely on synthetic *point matches* and
-`test_lensmap.c` on the map's numbers. Neither ever renders a picture, so
-nothing in the suite answers the question a reader actually asks: put a
-distorted frame in, does the corrected frame come back straight?
+`test_lensdistortion.c` works entirely on synthetic *point matches*,
+`test_lensmap.c` mostly on the map's numbers -- except for
+`test_lensmap_straightness` (pre-dating this branch), which already renders a
+distorted grid, corrects it in Full and Wobble mode, and measures how much a
+column bends. That test establishes the map straightens lines; it does not
+give per-pixel ground truth, does not exercise pose motion or pincushion, and
+checks one 640x480 GRAY8 grid, not the packed/planar and 4:2:0 formats the
+render path actually ships.
 
-This adds the missing image-level test, and the same generator produces the
+This adds an image-level test with an *analytic* ground truth -- every pixel
+of the corrected frame has a known correct colour, not just "straighter than
+before" -- covering pose motion, both barrel and pincushion, 4:2:0 chroma
+subsampling, and per-pixel tolerances split by what a bilinear tap can and
+cannot be expected to get exactly right. The same generator also produces the
 figure for `docs/lens-distortion.md`.
 
 The existing synthetic scenes (`generate_synthetic.c`: eight circles on a dark
@@ -81,8 +89,15 @@ frame_i(x) = pattern( S_i( U_k(x) ) )
 - `U_k` is `vsLensUndistortPoint()` from `lensdistortion.h` — the model, which
   `test_lensdistortion.c` already covers independently.
 - `S_i` is the render path's own backward affine, transcribed from
-  `transformfloat.c:263`:
-  `S_i(x) = z * R(-alpha_i) * (x - c) + c - t_i`.
+  `transformfixedpoint.c:279-361` (`transformPacked`):
+  `S_i(x) = z * R(-alpha_i) * (x - c) + c - t_i`. These tests build with
+  `-DTESTING` (`tests/CMakeLists.txt`), which renames the float path's entry
+  points to the `_float` suffix (`transformfloat.h:35`) while the
+  fixed-point path's stay unqualified, and `vsDoTransform`
+  (`src/transform.c:241-243`) calls the unqualified names -- so it is the
+  fixed-point path these tests actually exercise. `transformfloat.c`
+  implements the same map in floating point; `test_lensmap.c`'s fixed/float
+  equivalence tests keep the two paths in step, not this generator.
 
 The generator deliberately does **not** call `vsLensPlaneMapInit()`. Building
 the footage with the same lookup tables the test then checks would make the
@@ -116,18 +131,49 @@ therefore be either vacuous or false, so the comparison is split:
 - **Validity mask.** A pixel is excluded when its backward map leaves the
   source frame. Computed exactly from the map, not approximated by an
   arbitrary inset border.
-- **Flat pixels** — those where the ideal image's local gradient is below a
-  threshold — must satisfy `max |delta| <= 2`.
+- **Flat pixels** — a pixel qualifies when every pixel of its 7x7
+  neighbourhood in the ideal image is byte-identical to it. Exact equality
+  rather than a gradient threshold, so there is no magic number to tune:
+  inside a checkerboard cell the pattern is constant to the byte, and any
+  antialiased edge pixel fails the test outright. (7x7, not smaller: the
+  radial derivative of the distortion at the frame corner plus pose motion
+  compresses by up to ~1.76x source-to-destination, and source pixels are
+  themselves box-averaged over the supersampling window, pushing the true
+  support a bilinear tap can draw on out to about 2.6 px -- a half-width of
+  3 covers that, a half-width of 2 does not.) Flat pixels must satisfy
+  `max |delta| <= cap`.
 - **Whole valid mask**: PSNR above a floor, so a gross geometric error in the
   textured regions still fails even though it cannot be caught per pixel.
 - **Anti-vacuity control.** The same clip run with `lensCorrection = Off` must
   score dramatically worse against the base. Without this the whole test would
   pass with the lens map stubbed out to a no-op.
 
-The gradient threshold and the PSNR floor are fixed during implementation, to
-the tightest values that pass with a clear margin, and the margin actually
-measured is recorded in a comment next to each. A threshold loose enough that
-the `Off` control would also pass it is a bug in the test.
+The flat-pixel cap and the PSNR floor are fixed during implementation, to the
+tightest values that pass with a clear margin, and the margin actually
+measured is recorded in a comment next to each. A cap loose enough that the
+`Off` control would also pass it is a bug in the test.
+
+There is no single global cap; the tolerances split five ways because the
+render paths they check genuinely differ:
+
+- **Full and pincushion (PF_RGB24)**: `max |delta| <= 2` on every channel.
+  Both measure a worst of 1; the extra count is margin confirmed by a
+  perturbation test (see `LC_MAX_FLAT_DELTA`'s comment in
+  `test_lenscorrect_roundtrip.c`).
+- **Wobble (PF_RGB24)**: the same `<= 2` cap, but its own, looser PSNR floor
+  (`LC_MIN_PSNR_WOBBLE`) -- Wobble's check is verifying mode semantics (shake
+  removed, lens retained), not the same sub-pixel geometry guarantee Full and
+  pincushion's floor polices.
+- **PF_YUV420P**: a *per-channel* cap, not one shared number. `setPixelRGB`
+  writes one pixel's chroma per 2x2 block and `getPixelRGB` reads it back
+  nearest neighbour, so chroma is quantised on both sides of the comparison
+  in a way the packed path never is, and the RGB reconstruction weights that
+  quantised chroma differently per channel -- B carries the largest
+  coefficient, G the smallest. Measured worst per channel: R = 7, G = 1,
+  B = 25 (5-count frame-to-frame spread). R and G get worst + 1; B gets
+  worst plus enough headroom to clear that spread comfortably rather than
+  sitting 1 above it. See `LC_MAX_FLAT_DELTA_420_R/G/B` in
+  `test_lenscorrect_roundtrip.c` for the exact numbers and their derivation.
 
 Tight numerical guarantees on the map itself stay in `test_lensmap.c`. This
 test's job is end-to-end pixel sanity.
@@ -143,8 +189,8 @@ test's job is end-to-end pixel sanity.
 
 Into `testout/lensclip/`, via the existing `storePPMImage()`:
 
-- `base_NNN.ppm`, `distorted_NNN.ppm`, `full_NNN.ppm`, `wobble_NNN.ppm`
-- `lensclip_sheet.ppm` — one contact sheet, base | distorted | Full-corrected
+- `base.ppm`, `distorted_NNN.ppm`, `full_NNN.ppm`, `wobble_NNN.ppm`
+- `sheet.ppm` — one contact sheet, base | distorted | Full-corrected
   side by side for frame 0. This is the illustration; it is the only artefact
   that exists for documentation rather than for the test.
 

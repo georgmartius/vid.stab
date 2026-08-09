@@ -221,6 +221,7 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_chroma_render());
     UNIT(test_lensmap_fixed_float_equivalence());
     UNIT(test_lensmap_fixed_reference());
+    UNIT(test_lensmap_packed());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

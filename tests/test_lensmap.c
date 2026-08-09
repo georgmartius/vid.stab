@@ -742,3 +742,48 @@ static void test_lensmap_fixed_reference(void){
   }
   vsFrameFree(&src);
 }
+
+/* Packed formats go through a different loop with no subsampling. */
+static void test_lensmap_packed(void){
+  const double k = -0.25;
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  VSTransformData td;
+  VSTransform id = null_transform();
+  int x, y, diff = 0;
+  vsFrameInfoInit(&fi, 320, 240, PF_RGB24);
+  vsFrameAllocate(&src, &fi);
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++)
+      setPixelRGB(&src, &fi, x, y, (uint8_t)(x*7), (uint8_t)(y*5), (uint8_t)(x^y));
+
+  /* wobble + identity must be a bit-exact copy, in both paths */
+  lmInitTd(&td, &fi, VSLensCorrectWobble, k, VS_BiLinear);
+  vsFrameAllocate(&dest, &fi);
+  test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+  test_bool(vsDoTransform(&td, id) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  for(y=0; y<fi.height; y++)
+    if(memcmp(src.data[0] + (size_t)y*src.linesize[0],
+              dest.data[0] + (size_t)y*dest.linesize[0],
+              (size_t)fi.width*fi.bytesPerPixel) != 0) diff++;
+  test_bool(diff == 0);
+  vsFrameFree(&dest);
+  vsTransformDataCleanup(&td);
+
+  /* full mode with identity must NOT be a copy -- it undistorts */
+  lmInitTd(&td, &fi, VSLensCorrectFull, k, VS_BiLinear);
+  vsFrameAllocate(&dest, &fi);
+  test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+  test_bool(vsDoTransform(&td, id) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  diff = 0;
+  for(y=0; y<fi.height; y++)
+    if(memcmp(src.data[0] + (size_t)y*src.linesize[0],
+              dest.data[0] + (size_t)y*dest.linesize[0],
+              (size_t)fi.width*fi.bytesPerPixel) != 0) diff++;
+  test_bool(diff > fi.height/2);
+  vsFrameFree(&dest);
+  vsTransformDataCleanup(&td);
+  vsFrameFree(&src);
+}

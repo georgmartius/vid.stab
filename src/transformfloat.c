@@ -220,12 +220,22 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
   uint8_t *D_1, *D_2;
   char crop = td->conf.crop;
 
+  lensEnsureMaps(td);
+
   D_1  = td->src.data[0];
   D_2  = td->destbuf.data[0];
   float c_s_x = td->fiSrc.width/2.0;
   float c_s_y = td->fiSrc.height/2.0;
   float c_d_x = td->fiDest.width/2.0;
   float c_d_y = td->fiDest.height/2.0;
+
+  /* Packed formats have no chroma subsampling: only lensMaps[0] applies, and
+     the luma-equivalent scale factors are 1 (sxShift == syShift == 0). */
+  const VSLensPlaneMap* lm = &td->lensMaps[0];
+  int lensOn = lm->active;
+  int wobble = lensOn && td->lensMode == VSLensCorrectWobble;
+  float sxf = 1.0f, syf = 1.0f;
+  float irho2 = (float)lm->invRho2;
 
   /* for each pixel in the destination image we calc the source
    * coordinate and make an interpolation:
@@ -237,15 +247,33 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
    */
   int channels = td->fiSrc.bytesPerPixel;
   /* All channels */
-  if (fabs(t.alpha) > 0.1*M_PI/180.0) { // 0.1 deg
+  /* The translation-only shortcut copies whole pixels and cannot express a
+     radial map, so the lens forces the general path. */
+  if (fabs(t.alpha) > 0.1*M_PI/180.0 || td->lensActive) { // 0.1 deg
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
         float x_d1 = (x - c_d_x);
         float y_d1 = (y - c_d_y);
-        float x_s  =  cos(-t.alpha) * x_d1
+        float x_s, y_s;
+        if (wobble) {
+          float lx = x_d1*sxf, ly = y_d1*syf;
+          float g  = vsLensLutF(lm->gUf, lm->tMaxU, (lx*lx + ly*ly)*irho2);
+          x_d1 *= g; y_d1 *= g;
+        }
+        x_s  =  cos(-t.alpha) * x_d1
           + sin(-t.alpha) * y_d1 + c_s_x -t.x;
-        float y_s  = -sin(-t.alpha) * x_d1
+        y_s  = -sin(-t.alpha) * x_d1
           + cos(-t.alpha) * y_d1 + c_s_y -t.y;
+        if (lensOn) {
+          float ex = x_s - c_s_x, ey = y_s - c_s_y;
+          float lx = ex*sxf, ly = ey*syf;
+          float tt = (lx*lx + ly*ly)*irho2;
+          if (tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
+          else {
+            float g = vsLensLutF(lm->gDf, lm->tMaxD, tt);
+            x_s = c_s_x + ex*g; y_s = c_s_y + ey*g;
+          }
+        }
         for (z = 0; z < channels; z++) { // iterate over colors
           // linesize is in bytes, only the column is scaled by the channel count
           uint8_t *dest = &D_2[x * channels + y * td->destbuf.linesize[0] + z];

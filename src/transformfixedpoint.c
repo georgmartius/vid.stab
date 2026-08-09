@@ -281,7 +281,12 @@ int transformPacked(VSTransformData* td, VSTransform t)
   int x = 0, y = 0, k = 0;
   uint8_t *D_1, *D_2;
 
-  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
+  lensEnsureMaps(td);
+
+  /* Wobble mode maps identity to identity (D_k . U_k = id), so the fast path
+     stays correct and stays reachable.  Full mode must still undistort. */
+  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0 &&
+      !(td->lensActive && td->lensMode == VSLensCorrectFull)){
     // identity: like transformPlanar, do not run the interpolation at all
     if(vsFramesEqual(&td->src,&td->destbuf))
       return VS_OK; // noop
@@ -312,13 +317,43 @@ int transformPacked(VSTransformData* td, VSTransform t)
   fp16  c_tx    = c_s_x - fToFp16(t.x);
   fp16  c_ty    = c_s_y - fToFp16(t.y);
   int channels = td->fiSrc.bytesPerPixel;
+
+  /* Packed formats have no chroma subsampling: only lensMaps[0] applies, and
+     the luma-equivalent scale factors are 1 (sxShift == syShift == 0). */
+  const VSLensPlaneMap* lm = &td->lensMaps[0];
+  int lensOn = lm->active;
+  int wobble = lensOn && td->lensMode == VSLensCorrectWobble;
+  int lsx = lm->sxShift, lsy = lm->syShift;
+  double domR2d = lm->tDomD / lm->invRho2 * 4294967296.0;
+  int64_t domR2 = (lm->tDomD == INFINITY || domR2d > (double)(INT64_MAX/2))
+                  ? INT64_MAX : (int64_t)domR2d;
+
   /* All channels */
   for (y = 0; y < td->fiDest.height; y++) {
     int32_t y_d1 = (y - c_d_y);
     for (x = 0; x < td->fiDest.width; x++) {
       int32_t x_d1 = (x - c_d_x);
-      fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-      fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
+      fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
+      fp16 x_s, y_s;
+      if (wobble) {
+        int64_t lx = (int64_t)dx * (1 << lsx), ly = (int64_t)dy * (1 << lsy);
+        int32_t g  = vsLensLutFp(lm->gU, lx*lx + ly*ly, lm->idxScaleU);
+        dx = (fp16)(((int64_t)dx * g) >> 16);
+        dy = (fp16)(((int64_t)dy * g) >> 16);
+      }
+      x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
+      y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
+      if (lensOn) {
+        int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
+        int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
+        int64_t r2 = lx*lx + ly*ly;
+        if (r2 > domR2) { x_s = iToFp16(VS_LENS_OUTSIDE_PX); y_s = iToFp16(VS_LENS_OUTSIDE_PX); }
+        else {
+          int32_t g = vsLensLutFp(lm->gD, r2, lm->idxScaleD);
+          x_s = (fp16)(c_s_x + ((ex * g) >> 16));
+          y_s = (fp16)(c_s_y + ((ey * g) >> 16));
+        }
+      }
 
       for (k = 0; k < channels; k++) { // iterate over colors
         // linesize is in bytes, only the column is scaled by the channel count

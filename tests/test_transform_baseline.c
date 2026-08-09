@@ -73,6 +73,18 @@ static uint32_t tbRun(const VSFrame* src, const VSFrameInfo* fi,
   return crc;
 }
 
+/* Deterministic analytic pattern for the packed source, so the packed warp
+   loops (transformPacked / _FLT(transformPacked)) are exercised too -- a
+   PF_YUV420P frame never reaches them since fi->pFormat < PF_PACKED always
+   picks the planar branch in tbRun(). No rand() involved, just an
+   x/y-dependent pattern with enough structure to be sensitive to warping. */
+static void tbFillPackedTexture(VSFrame* f, const VSFrameInfo* fi){
+  int x, y;
+  for(y=0; y<fi->height; y++)
+    for(x=0; x<fi->width; x++)
+      setPixelRGB(f, fi, x, y, (uint8_t)(x*7), (uint8_t)(y*5), (uint8_t)(x^y));
+}
+
 /* Filled in by step 3.  Order: [interpolation 0..3][transform 0..4]. */
 static const uint32_t TB_GOLD_FIXED[4][TB_NUM_T] = {
   {0xEE415B68u,0xB1106B86u,0x3652C8D0u,0x6CF2793Au,0x5FB27C2Au,},
@@ -87,9 +99,28 @@ static const uint32_t TB_GOLD_FLOAT[4][TB_NUM_T] = {
   {0xEE415B68u,0x9CF29AC6u,0x318756E1u,0x1219068Fu,0x1EDBA420u,},
 };
 
+/* Same shape, but for a PF_RGB24 (packed) source, so transformPacked and
+   _FLT(transformPacked) are pinned too.  Note: _FLT(transformPacked) has a
+   pre-existing translation-only fast path for |alpha| <= 0.1 degrees that
+   ignores zoom entirely; transform 4 (small alpha + zoom) goes down that
+   path in the float case, and its golden below encodes that quirk. That is
+   intentional -- this guard pins current behaviour, not "correct" behaviour. */
+static const uint32_t TB_GOLD_PACKED_FIXED[4][TB_NUM_T] = {
+  {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
+  {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
+  {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
+  {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
+};
+static const uint32_t TB_GOLD_PACKED_FLOAT[4][TB_NUM_T] = {
+  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
+  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
+  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
+  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
+};
+
 void test_transform_baseline(void){
-  VSFrameInfo fi;
-  VSFrame src;
+  VSFrameInfo fi, fiPacked;
+  VSFrame src, srcPacked;
   uint32_t seed = 12345;
   int ip, i, mismatch = 0;
   vsFrameInfoInit(&fi, 320, 240, PF_YUV420P);
@@ -98,13 +129,22 @@ void test_transform_baseline(void){
   memset(src.data[1], 0x60, (size_t)src.linesize[1]*(fi.height/2));
   memset(src.data[2], 0xA0, (size_t)src.linesize[2]*(fi.height/2));
 
+  vsFrameInfoInit(&fiPacked, 320, 240, PF_RGB24);
+  vsFrameAllocate(&srcPacked, &fiPacked);
+  tbFillPackedTexture(&srcPacked, &fiPacked);
+
   for(ip=0; ip<4; ip++){
     for(i=0; i<TB_NUM_T; i++){
       uint32_t gf = tbRun(&src, &fi, (VSInterpolType)ip, 0, i);
       uint32_t gl = tbRun(&src, &fi, (VSInterpolType)ip, 1, i);
-      if(gf != TB_GOLD_FIXED[ip][i] || gl != TB_GOLD_FLOAT[ip][i]) mismatch = 1;
+      uint32_t pf = tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 0, i);
+      uint32_t pl = tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 1, i);
+      if(gf != TB_GOLD_FIXED[ip][i] || gl != TB_GOLD_FLOAT[ip][i]
+         || pf != TB_GOLD_PACKED_FIXED[ip][i] || pl != TB_GOLD_PACKED_FLOAT[ip][i]) mismatch = 1;
       test_bool(gf == TB_GOLD_FIXED[ip][i]);
       test_bool(gl == TB_GOLD_FLOAT[ip][i]);
+      test_bool(pf == TB_GOLD_PACKED_FIXED[ip][i]);
+      test_bool(pl == TB_GOLD_PACKED_FLOAT[ip][i]);
     }
   }
   if(mismatch){
@@ -121,7 +161,20 @@ void test_transform_baseline(void){
       for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&src, &fi, (VSInterpolType)ip, 1, i));
       fprintf(stderr, "},\n");
     }
+    fprintf(stderr, "};\nstatic const uint32_t TB_GOLD_PACKED_FIXED[4][TB_NUM_T] = {\n");
+    for(ip=0; ip<4; ip++){
+      fprintf(stderr, "  {");
+      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 0, i));
+      fprintf(stderr, "},\n");
+    }
+    fprintf(stderr, "};\nstatic const uint32_t TB_GOLD_PACKED_FLOAT[4][TB_NUM_T] = {\n");
+    for(ip=0; ip<4; ip++){
+      fprintf(stderr, "  {");
+      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 1, i));
+      fprintf(stderr, "},\n");
+    }
     fprintf(stderr, "};\n");
   }
+  vsFrameFree(&srcPacked);
   vsFrameFree(&src);
 }

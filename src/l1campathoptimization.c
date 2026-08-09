@@ -611,6 +611,13 @@ int cameraPathOptimalL1(VSTransformData* td, VSTransformations* trans){
     vs_free(F); vs_free(B);
     return VS_ERROR;
   }
+  /* The LP behind this can take a noticeable while on a long clip, and it runs
+     after detection has already finished, so without a word here the tool looks
+     hung.  Reported unconditionally for that reason. */
+  vs_log_info(td->conf.modName,
+              "Camera path optimization in progress (L1, %i frames, %s)...\n",
+              N, vs_lp_backend_name());
+
   double objective = 0.0;
   int status = vsCameraPathOptimalL1LS(F, N, B, &conf, &objective);
   if (status == VS_OK) {

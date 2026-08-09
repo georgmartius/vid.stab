@@ -68,12 +68,13 @@ int vsLocalmotions2Transforms(VSTransformData* td,
        user knows their lens better than a fit over one clip does. */
     if(fabs(td->conf.lensK) <= 0.01 && useLens)
       vsTransformSetLensK(td, le.k);
-    if(td->conf.verbose)
-      vs_log_info(td->conf.modName,
-                  "lens distortion: k=%.4f +- %.4f from %i motions (%i dropped), %s\n",
-                  le.k, le.uncertainty, le.used, le.rejected,
-                  useLens ? "correcting transforms"
-                          : (le.determined ? "too small to matter" : "not determined"));
+    /* Reported unconditionally: k is a single number for the whole clip and it
+       says something about the footage the user cannot get anywhere else. */
+    vs_log_info(td->conf.modName,
+                "Lens distortion: k=%.4f +- %.4f from %i motions (%i dropped), %s\n",
+                le.k, le.uncertainty, le.used, le.rejected,
+                useLens ? "correcting transforms"
+                        : (le.determined ? "too small to matter" : "not determined"));
   }
 
   if(td->conf.simpleMotionCalculation==0){

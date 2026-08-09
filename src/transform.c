@@ -43,6 +43,15 @@
 const char* interpol_type_names[5] = {"No (0)", "Linear (1)", "Bi-Linear (2)",
                                       "Bi-Cubic (3)"};
 
+static const char* getLensCorrectionModeName(VSLensCorrectMode mode){
+  switch(mode){
+   case VSLensCorrectOff:    return "off";
+   case VSLensCorrectWobble: return "wobble";
+   case VSLensCorrectFull:   return "full (undistort)";
+  }
+  return "unknown";
+}
+
 const char* getInterpolationTypeName(VSInterpolType type){
   if (type >= VS_Zero && type < VS_NBInterPolTypes)
     return interpol_type_names[(int) type];
@@ -195,6 +204,17 @@ void lensEnsureMaps(VSTransformData* td){
   }
   td->lensActive = td->lensMaps[0].active;
   td->lensMapK   = k;
+  /* Say what the picture is about to get.  This runs once per distinct k, not
+     per frame -- the guard above returns early on every later call.  Silent
+     when the user asked for no correction: they know, and a line saying so on
+     every run of undistorted footage is noise. */
+  if(td->lensActive)
+    vs_log_info(td->conf.modName, "Lens correction: %s, k=%.4f\n",
+                getLensCorrectionModeName(td->lensMode), k);
+  else if(td->lensMode != VSLensCorrectOff)
+    vs_log_info(td->conf.modName,
+                "Lens correction: %s requested, inactive (no usable distortion estimate)\n",
+                getLensCorrectionModeName(td->lensMode));
 }
 
 int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){

@@ -1275,11 +1275,14 @@ Inner loop:
           dy = (fp16)(((int64_t)dy * g) >> 16);
         }
         /* zcos_a and zsin_a are 16.16; multiplying by a 16.16 offset needs the
-           extra shift the integer form did not.  Keep the original expression
-           when the lens is off so that path is bit-identical. */
+           extra shift the integer form did not.  One expression serves both
+           paths: with the lens off, dx is exactly x_d1<<16, so
+           (zcos_a*(x_d1<<16))>>16 == zcos_a*x_d1 with no rounding at all --
+           the int64 intermediate only removes an overflow risk that the
+           wobble scaling introduces. */
+        x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
+        y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
         if (lensOn) {
-          x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
-          y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
           {
             int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
             int64_t lx = ex << lsx, ly = ey << lsy;
@@ -1291,9 +1294,6 @@ Inner loop:
               y_s = (fp16)(c_s_y + ((ey * g) >> 16));
             }
           }
-        } else {
-          x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-          y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
         }
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         td->interpolate(dest, x_s, y_s, dat_1,
@@ -1302,8 +1302,10 @@ Inner loop:
       }
 ```
 
-The two branches must produce identical results when `lensOn` is false — the `else` arm is the
-original code verbatim, which is why it is kept rather than unified. `--testBASE` enforces this.
+There is deliberately **no** duplicated affine `else` arm: the unified expression is bit-identical
+to the original when the lens is off, per the comment above. `--testBASE` must therefore still pass
+**unchanged** after this task. If it does not, something really did change — report it rather than
+regenerating the golden CRCs.
 
 - [ ] **Step 4: Run**
 
@@ -1788,26 +1790,39 @@ static void test_lensmap_config_override(void){
   vsTransformDataCleanup(&td);
 }
 
-/* The estimate reaches the renderer through the shared VSTransformData. */
+/* The estimate reaches the renderer through the shared VSTransformData:
+   after vsLocalmotions2Transforms, rendering through the same td must apply
+   the k it just fitted, with no further call from the consumer. */
 static void test_lensmap_estimate_reaches_render(void){
-  /* Reuse the end-to-end clip the estimator tests already build: render a
-     barrel-distorted synthetic clip, run detection, run
-     vsLocalmotions2Transforms on a td, and check td.lensK came out near the
-     true k and that lensEnsureMaps then activates.
-     Model this on test_lensdistortion_endtoend() in test_lensdistortion.c --
-     copy its clip construction rather than inventing a new one. */
-  /* IMPLEMENTER: build the clip exactly as test_lensdistortion_endtoend does,
-     then: */
-  /*   test_bool(fabs(td.lensK - trueK) < 0.05);                              */
-  /*   lensEnsureMaps(&td); test_bool(td.lensActive == 1);                    */
+  const double trueK = -0.25;
+  VSTransformData td;
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("e2e-render");
+  VSTransformations trans;
+  VSManyLocalMotions mlms;
+  VSFrameInfo fi;
+  /* IMPLEMENTER: build fi, the distorted clip, and mlms exactly as
+     test_lensdistortion_endtoend() does -- lift that setup, do not reinvent
+     it -- then run the assertions below.  This test must genuinely assert;
+     an empty body is not an acceptable deliverable. */
+  cfg.estimateLensDistortion = 1;
+  cfg.lensCorrection         = VSLensCorrectWobble;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+  vsTransformationsInit(&trans);
+  test_bool(vsLocalmotions2Transforms(&td, &mlms, &trans) == VS_OK);
+  test_bool(fabs(td.lensK - trueK) < 0.05);
+  lensEnsureMaps(&td);
+  test_bool(td.lensActive == 1);
+  test_bool(td.lensMaps[0].active == 1);
+  vsTransformationsCleanup(&trans);
+  vsTransformDataCleanup(&td);
 }
 ```
 
 For the second test, open `tests/test_lensdistortion.c:1099` (`test_lensdistortion_endtoend`) and
-lift its clip setup verbatim — it already renders distorted frames, runs `vsMotionDetection`, and
-collects `VSManyLocalMotions`. The new assertions are the two lines above, added after a
-`vsLocalmotions2Transforms(&td, &mlms, &trans)` call on a `td` built with
-`estimateLensDistortion = 1`.
+lift its clip setup verbatim — it already renders distorted frames at a known `k`, runs
+`vsMotionDetection`, and collects `VSManyLocalMotions`. Only the clip construction is missing above;
+every assertion is already written. The committed test must run and assert — a body that is still
+all comments fails this task.
 
 - [ ] **Step 2: Register and run, confirm failure**
 

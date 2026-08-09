@@ -4,9 +4,7 @@ What the library vectorizes today, how a kernel is chosen at run time, how to
 build and test the kernels, and what they measure on two very different x86
 parts.
 
-This is a description of the current state. The story of how it got here — the
-ARM shim that never dispatched, the AVX2 tail regression that only showed up on
-Zen 4 — is in `docs/superpowers/simd-optimization-report.md`.
+This is a description of the current state.
 
 ## What is vectorized
 

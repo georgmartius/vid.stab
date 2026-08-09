@@ -190,10 +190,20 @@ void _FLT(interpolateN)(uint8_t *rv, float x, float y,
     int x_c = x_f+1;
     int y_f = myfloor(y);
     int y_c = y_f+1;
-    short v1 = PIXELN(img, img_linesize, x_c, y_c, width, height, N, channel, def);
-    short v2 = PIXELN(img, img_linesize, x_c, y_f, width, height, N, channel, def);
-    short v3 = PIXELN(img, img_linesize, x_f, y_c, width, height, N, channel, def);
-    short v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
+    short v1, v2, v3, v4;
+    /* away from the frame border none of the four samples can be out of
+       range, so the per sample bound check is skipped there */
+    if (x_f >= 0 && y_f >= 0 && x_c < width && y_c < height) {
+      v1 = PIXN(img, img_linesize, x_c, y_c, N, channel);
+      v2 = PIXN(img, img_linesize, x_c, y_f, N, channel);
+      v3 = PIXN(img, img_linesize, x_f, y_c, N, channel);
+      v4 = PIXN(img, img_linesize, x_f, y_f, N, channel);
+    } else {
+      v1 = PIXELN(img, img_linesize, x_c, y_c, width, height, N, channel, def);
+      v2 = PIXELN(img, img_linesize, x_c, y_f, width, height, N, channel, def);
+      v3 = PIXELN(img, img_linesize, x_f, y_c, width, height, N, channel, def);
+      v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
+    }
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
     int32_t res = (int32_t)s;

@@ -406,13 +406,57 @@ static void test_lensmap_nonzero_k_builds_on_first_call(void){
    where chroma is a step function aligned with a luma step, warp it with the
    lens active, and check the two edges still coincide after correction.
    4:2:2 is the case that catches an anisotropic-radius bug. */
+/* Sub-pixel edge locate: row is a clean monotone step from ~40 to ~200 (see
+   lmCheckChromaAlignment), so the two samples straddling the midpoint value
+   can be linearly interpolated to get a fractional crossing position. This
+   is intentionally far finer than "first sample past a threshold": the
+   anisotropic-radius bug this test exists to catch moves the chroma edge by
+   roughly one luma pixel, so a whole-pixel-quantised measurement compared
+   against a whole-chroma-pixel tolerance cannot reliably separate "correct"
+   from "buggy" -- the signal and the measurement noise floor are the same
+   size. Returns -1.0 if no crossing is found in [1,n). */
+static double lmFindEdge(const uint8_t* row, int n, double mid){
+  int x;
+  for(x=1; x<n; x++)
+    if(row[x-1] <= mid && row[x] > mid)
+      return (x-1) + (mid - row[x-1])/(double)(row[x] - row[x-1]);
+  return -1.0;
+}
+
+/* A chroma sample at plane index cx was (conceptually) averaged from the
+   block of (1<<wsub) luma columns [cx*(1<<wsub), (cx+1)*(1<<wsub)), so under
+   bilinear reconstruction it represents the CENTRE of that block, not its
+   first column. Converting a chroma-plane coordinate to its luma-equivalent
+   by a bare "cx << wsub" ignores that half-block offset; for a hard step it
+   is a fixed, deterministic bias of half a chroma pixel (0.5*(1<<wsub) luma
+   px), identical for every correct or buggy implementation, that has nothing
+   to do with the lens map. It must be removed from the *measurement*, or it
+   swamps the sub-pixel signal this test exists to see (confirmed empirically:
+   without this correction a correct implementation already measures ~0.75
+   luma px "worst offset" on both YUV420P and YUV422P, from this bias alone
+   -- see task-4-report.md "Fix round 1"; with a plain translation and no lens
+   active at all, the biased measurement is exactly 0.5 luma px while this
+   corrected one is exactly 0.0, confirming which one is the artifact). */
+static double lmChromaToLuma(double cx, int sub){ return (cx + 0.5)*sub - 0.5; }
+
+/* Tolerance, in luma-equivalent px, set from measurement, not a guess (see
+   task-4-report.md "Fix round 1" for the measurement runs). A correct
+   implementation's own worst sub-pixel offset (after the siting correction
+   above) is ~0.27 luma px on YUV420P/YUV422P and 0.00 on YUV444P -- this is
+   real curvature error from averaging a nonlinear radial map over a chroma
+   sample's footprint, not a bug, and is nearly identical between 4:2:0 and
+   4:2:2 because it is driven by the horizontal subsampling factor, which is
+   the same (wsub=1) for both. The tolerance is set to roughly 2x that. */
+#define LM_CHROMA_TOL_LUMA_PX 0.6
+
 static void lmCheckChromaAlignment(VSPixelFormat pf, const char* name){
   const double k = -0.25;
   VSFrameInfo fi;
   VSFrame src, dest;
   VSTransformData td;
   VSTransform t = null_transform();
-  int wsub, hsub, x, y, worst = 0;
+  int wsub, hsub, x, y;
+  double worst = 0;
   vsFrameInfoInit(&fi, 480, 320, pf);
   vsFrameAllocate(&src, &fi);
   wsub = vsGetPlaneWidthSubS(&fi, 1);
@@ -435,22 +479,20 @@ static void lmCheckChromaAlignment(VSPixelFormat pf, const char* name){
   test_bool(_FLT(transformPlanar)(&td, t) == VS_OK);
   test_bool(vsTransformFinish(&td) == VS_OK);
 
-  /* For each chroma row, find the step in luma and in chroma; they must land
-     within one chroma pixel of each other. */
+  /* For each chroma row, sub-pixel-locate the step in luma and in chroma
+     (measured identically) and compare in luma-equivalent units. */
   for(y = 8; y < CHROMA_SIZE(fi.height,hsub) - 8; y++){
-    int ly = y << hsub, lx = -1, cx = -1;
-    for(x=1; x<fi.width; x++)
-      if(dest.data[0][ly*dest.linesize[0]+x] > 120 &&
-         dest.data[0][ly*dest.linesize[0]+x-1] <= 120){ lx = x; break; }
-    for(x=1; x<CHROMA_SIZE(fi.width,wsub); x++)
-      if(dest.data[1][y*dest.linesize[1]+x] > 120 &&
-         dest.data[1][y*dest.linesize[1]+x-1] <= 120){ cx = x; break; }
+    int ly = y << hsub;
+    double lx = lmFindEdge(dest.data[0] + ly*dest.linesize[0], fi.width, 120.0);
+    double cx = lmFindEdge(dest.data[1] + y*dest.linesize[1],
+                            CHROMA_SIZE(fi.width,wsub), 120.0);
+    double d;
     if(lx < 0 || cx < 0) continue;
-    { int d = abs((cx << wsub) - lx);
-      if(d > worst) worst = d; }
+    d = fabs(lmChromaToLuma(cx, 1 << wsub) - lx);
+    if(d > worst) worst = d;
   }
-  fprintf(stderr, "  %s: worst luma/chroma step offset = %i luma px\n", name, worst);
-  test_bool(worst <= (1 << wsub));
+  fprintf(stderr, "  %s: worst luma/chroma step offset = %.4f luma px\n", name, worst);
+  test_bool(worst <= LM_CHROMA_TOL_LUMA_PX);
   vsFrameFree(&dest); vsFrameFree(&src);
   vsTransformDataCleanup(&td);
 }

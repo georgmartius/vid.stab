@@ -137,7 +137,9 @@ therefore be either vacuous or false, so the comparison is split:
   inside a checkerboard cell the pattern is constant to the byte, and any
   antialiased edge pixel fails the test outright. (7x7, not smaller: the
   radial derivative of the distortion at the frame corner plus pose motion
-  compresses by up to ~1.76x source-to-destination, and source pixels are
+  maps a source-space kernel reach to a destination-space extent ~1.76x as
+  wide (equivalently, an output neighbourhood draws on a source neighbourhood
+  about 0.567x as wide), and source pixels are
   themselves box-averaged over the supersampling window, pushing the true
   support a bilinear tap can draw on out to about 2.6 px -- a half-width of
   3 covers that, a half-width of 2 does not.) Flat pixels must satisfy
@@ -153,8 +155,9 @@ tightest values that pass with a clear margin, and the margin actually
 measured is recorded in a comment next to each. A cap loose enough that the
 `Off` control would also pass it is a bug in the test.
 
-There is no single global cap; the tolerances split five ways because the
-render paths they check genuinely differ:
+There is no single global cap. Four scalar constants and three per-channel
+4:2:0 caps cover three groups of cases, because the render paths they check
+genuinely differ:
 
 - **Full and pincushion (PF_RGB24)**: `max |delta| <= 2` on every channel.
   Both measure a worst of 1; the extra count is margin confirmed by a

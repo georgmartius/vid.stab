@@ -303,8 +303,6 @@ ffmpeg -i input.mp4 -vf format=yuv420p,vidstabtransform out_stabilized.mp4
 
 Vidstab is an open source library - pull requests are very welcome. Some things you might like to help us out with:
 
- ** I am looking for a new maintainer/ developer for this project! ** Please reach out to me (Georg), if you are interested.
-
  * Specific video clips where vidstab is not up-to the mark.
  * Bugs/fixes.
  * New features and improvements.

@@ -275,7 +275,7 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
           float ex = x_s - c_s_x, ey = y_s - c_s_y;
           float lx = ex*sxf, ly = ey*syf;
           float tt = (lx*lx + ly*ly)*irho2;
-          if (tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
+          if (lm->tDomD >= 0.0 && tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
           else {
             float g = vsLensLutF(lm->gDf, lm->tMaxD, tt);
             x_s = c_s_x + ex*g; y_s = c_s_y + ey*g;
@@ -396,7 +396,7 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
           float ex = x_s - c_s_x, ey = y_s - c_s_y;
           float lx = ex*sxf, ly = ey*syf;
           float tt = (lx*lx + ly*ly)*irho2;
-          if (tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
+          if (lm->tDomD >= 0.0 && tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
           else {
             float g = vsLensLutF(lm->gDf, lm->tMaxD, tt);
             x_s = c_s_x + ex*g; y_s = c_s_y + ey*g;

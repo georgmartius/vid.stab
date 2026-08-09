@@ -83,7 +83,15 @@ typedef struct _vslensplanemap {
   double   cdx, cdy;    /* destination plane centre, plane units               */
   double   csx, csy;    /* source plane centre, plane units                    */
   double   tMaxU, tMaxD;/* LUT domains in t = r^2                              */
-  double   tDomD;       /* t beyond which D_k is undefined; INFINITY if k <= 0 */
+  /* t beyond which D_k is undefined; -1.0 (never a genuine t, which is a
+     squared radius and so always >= 0) if k <= 0, meaning "no bound".  Not
+     INFINITY: both CMakeLists build with -ffast-math, whose
+     -ffinite-math-only lets the compiler assume no operand is ever
+     infinite, which makes comparisons against INFINITY unreliable -- the
+     same hazard that ruled out NaN as the lensK "unset" sentinel.  Every
+     reader compares tDomD < 0.0 / >= 0.0 first, a plain finite comparison,
+     rather than testing equality against INFINITY. */
+  double   tDomD;
   double   invRho2;     /* 1/rho^2 in luma-equivalent pixels^2                 */
   int      sxShift;     /* wsub: plane x units -> luma units is << sxShift     */
   int      syShift;     /* hsub                                                */

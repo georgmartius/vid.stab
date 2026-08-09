@@ -46,7 +46,7 @@ int vsLensPlaneMapInit(VSLensPlaneMap* m, const VSFrameInfo* fiSrc,
   double rho, rhoDest, rho2;
   int i;
   memset(m, 0, sizeof(*m));
-  m->tDomD = INFINITY;
+  m->tDomD = -1.0;    /* no bound; see lensmap.h -- never compare with INFINITY */
   if(mode == VSLensCorrectOff || k == 0.0) return VS_OK;
 
   m->k       = k;
@@ -168,7 +168,7 @@ int vsLensMapBackward(const VSLensPlaneMap* m, const VSTransform* t,
   if(m->mode != VSLensCorrectOff){
     ex = xi - m->csx; ey = yi - m->csy;
     tt = tOf(m, ex, ey);
-    if(tt > m->tDomD){ *xs = *ys = VS_LENS_OUTSIDE_PX; return VS_ERROR; }
+    if(m->tDomD >= 0.0 && tt > m->tDomD){ *xs = *ys = VS_LENS_OUTSIDE_PX; return VS_ERROR; }
     { double g = vsLensScaleDDirectI(m->k, tt);
       xi = m->csx + ex*g; yi = m->csy + ey*g; }
   }

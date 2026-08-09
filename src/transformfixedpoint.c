@@ -324,8 +324,12 @@ int transformPacked(VSTransformData* td, VSTransform t)
   int lensOn = lm->active;
   int wobble = lensOn && td->lensMode == VSLensCorrectWobble;
   int lsx = lm->sxShift, lsy = lm->syShift;
+  /* lm->tDomD < 0.0 is the "no bound" sentinel (see lensmap.h) -- deliberately
+     not a comparison against INFINITY, which -ffast-math's -ffinite-math-only
+     (both CMakeLists enable it) makes unreliable. domR2d itself stays finite
+     either way, since tDomD is never actually infinite. */
   double domR2d = lm->tDomD / lm->invRho2 * 4294967296.0;
-  int64_t domR2 = (lm->tDomD == INFINITY || domR2d > (double)(INT64_MAX/2))
+  int64_t domR2 = (lm->tDomD < 0.0 || domR2d > (double)(INT64_MAX/2))
                   ? INT64_MAX : (int64_t)domR2d;
 
   /* All channels */
@@ -430,13 +434,16 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     /* luma-equivalent shifts: a plane-unit offset is << sub to become luma */
     int lsx = lm->sxShift, lsy = lm->syShift;
     /* tDomD as a squared-radius threshold in luma px^2 at scale 2^32, so the
-       per-pixel domain test is an integer compare.  INFINITY for barrel;
-       guard the double->int64 conversion against overflow for extreme k /
-       frame sizes -- if it would not comfortably fit, treat it as no bound
-       at all (pincushion's domain edge is then only enforced by the LUT
-       clamp, which already saturates at the border value there). */
+       per-pixel domain test is an integer compare.  lm->tDomD < 0.0 is the
+       "no bound" sentinel for barrel (see lensmap.h) -- deliberately not a
+       comparison against INFINITY, which -ffast-math's -ffinite-math-only
+       (both CMakeLists enable it) makes unreliable; also guard the
+       double->int64 conversion against overflow for extreme k / frame sizes
+       -- if it would not comfortably fit, treat it as no bound at all
+       (pincushion's domain edge is then only enforced by the LUT clamp,
+       which already saturates at the border value there). */
     double domR2d = lm->tDomD / lm->invRho2 * 4294967296.0;
-    int64_t domR2 = (lm->tDomD == INFINITY || domR2d > (double)(INT64_MAX/2))
+    int64_t domR2 = (lm->tDomD < 0.0 || domR2d > (double)(INT64_MAX/2))
                     ? INT64_MAX : (int64_t)domR2d;
 
     /* for each pixel in the destination image we calc the source

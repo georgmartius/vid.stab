@@ -116,9 +116,11 @@ static void test_lensmap_domain(void){
   test_bool(vsLensMapBackward(&m, &t, 0, 0, &xs, &ys) == VS_ERROR);
   test_bool(xs == VS_LENS_OUTSIDE_PX && ys == VS_LENS_OUTSIDE_PX);
   vsLensPlaneMapFree(&m);
-  /* barrel never leaves the domain inside the frame */
+  /* barrel never leaves the domain inside the frame: m.tDomD carries the
+     "no bound" sentinel, -1.0, not INFINITY -- see lensmap.h for why an
+     infinity comparison would be unsafe under -ffast-math. */
   test_bool(vsLensPlaneMapInit(&m, &fi, &fi, 0, -0.3, VSLensCorrectFull) == VS_OK);
-  test_bool(m.tDomD == INFINITY);
+  test_bool(m.tDomD < 0.0);
   vsLensPlaneMapFree(&m);
 }
 
@@ -372,14 +374,15 @@ static void test_lensmap_zero_k_stays_inactive(void){
      vsTransformDataInit's memset. td.lensMapK's "no map built yet" sentinel
      must not be 0.0 itself, or this call would silently short-circuit
      without ever reaching vsLensPlaneMapInit. vsLensPlaneMapInit sets
-     m->tDomD = INFINITY on every call, even its own early return for
-     k == 0.0 (see lensmap.c) -- and a bare memset leaves it 0.0 -- so
-     checking tDomD tells apart "the loop ran and (correctly) built an
-     inactive map" from "the loop never ran at all". See the mutation
-     evidence in the round-2 handover: asserting only lensActive == 0 here,
-     as a first draft of this test did, does NOT fail when lensMapK is
-     mis-initialised to 0.0 -- only this tDomD check does. */
-  test_bool(td.lensMaps[0].tDomD == INFINITY);
+     m->tDomD = -1.0 (the "no bound" sentinel -- not INFINITY, see lensmap.h)
+     on every call, even its own early return for k == 0.0 (see lensmap.c) --
+     and a bare memset leaves it 0.0 -- so checking tDomD tells apart "the
+     loop ran and (correctly) built an inactive map" from "the loop never ran
+     at all". See the mutation evidence in the round-2 handover: asserting
+     only lensActive == 0 here, as a first draft of this test did, does NOT
+     fail when lensMapK is mis-initialised to 0.0 -- only this tDomD check
+     does. */
+  test_bool(td.lensMaps[0].tDomD < 0.0);
   vsTransformDataCleanup(&td);
 }
 

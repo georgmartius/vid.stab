@@ -316,8 +316,16 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
     uint8_t black = plane==0 ? 0 : 0x80;
 
     float z = 1.0-t.zoom/100;
-    float zcos_a = z*cos(-t.alpha); // scaled cos
-    float zsin_a = z*sin(-t.alpha); // scaled sin
+    /* see the comment on the same computation in transformfixedpoint.c: a
+       chroma sample is (1<<wsub) luma wide and (1<<hsub) luma tall, so for
+       wsub!=hsub the rotation's cross terms have to be converted between the
+       two axis scales (issue #79). Identical to the plain rotation whenever
+       wsub==hsub, which includes the luma plane. */
+    float ax = (float)(1 << wsub), ay = (float)(1 << hsub);
+    float zcos_a = z*cos(-t.alpha);            // scaled cos
+    float zsin   = z*sin(-t.alpha);            // scaled sin
+    float zsin_xy = zsin * (ay/ax);            // y_d1 -> x_s
+    float zsin_yx = zsin * (ax/ay);            // x_d1 -> y_s
     float tx = t.x / (float)(1 << wsub);
     float ty = t.y / (float)(1 << hsub);
 
@@ -338,8 +346,8 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
         float x_d1 = (x - c_d_x);
         float y_d1 = (y - c_d_y);
         float x_s  =  zcos_a * x_d1
-          + zsin_a * y_d1 + c_s_x -tx;
-        float y_s  = -zsin_a * x_d1
+          + zsin_xy * y_d1 + c_s_x -tx;
+        float y_s  = -zsin_yx * x_d1
           + zcos_a * y_d1 + c_s_y -ty;
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         td->_FLT(interpolate)(dest, x_s, y_s, dat_1, td->src.linesize[plane],

@@ -47,6 +47,7 @@
 #include "test_gradientoptimizer.c"
 #include "test_localmotion2transform.c"
 #include "test_globalmotions.c"
+#include "test_chroma_geometry.c"
 #include "test_determinism.c"
 #include "test_packed.c"
 #include "test_draw.c"
@@ -153,6 +154,10 @@ int main(int argc, char** argv){
 
   if(all || contains(argv,argc,"--testGM", "global_motions.trf round trip")){
     UNIT(test_globalmotions_roundtrip());
+  }
+
+  if(all || contains(argv,argc,"--testCG", "chroma/luma geometry under rotation")){
+    UNIT(test_chroma_geometry());
   }
 
   if(all || contains(argv,argc,"--testSR", "store_restore")){

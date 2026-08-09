@@ -378,8 +378,22 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     int32_t c_d_y = dh / 2;
 
     float z     = 1.0-t.zoom/100.0;
+    /* A chroma sample spans (1<<wsub) luma columns and (1<<hsub) luma rows, so
+       for wsub!=hsub (4:2:2, 4:4:0, 4:1:1) the plane's two axes are not to the
+       same scale. The rotation mixes the axes, so its cross terms have to be
+       converted between them: rotate in luma units and come back, which turns
+       the sine into sin*(ay/ax) for the x row and sin*(ax/ay) for the y row.
+       Doing it in float here rather than by shifting the fp16 product per
+       pixel keeps the full fixed point precision and costs nothing in the
+       loop. The scaling (cosine) terms stay put: they are diagonal, so they
+       never leave their own axis. With wsub==hsub both factors are 1 and this
+       is bit-identical to the plain rotation -- which is why only the
+       asymmetric formats were ever wrong (issue #79). */
+    float ax = (float)(1 << wsub), ay = (float)(1 << hsub);
+    float zsin  = z*sin(-t.alpha);
     fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
-    fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
+    fp16 zsin_xy = fToFp16(zsin * (ay/ax)); // scaled sin, y_d1 -> x_s
+    fp16 zsin_yx = fToFp16(zsin * (ax/ay)); // scaled sin, x_d1 -> y_s
     fp16  c_tx    = c_s_x - (fToFp16(t.x) >> wsub);
     fp16  c_ty    = c_s_y - (fToFp16(t.y) >> hsub);
 
@@ -396,8 +410,8 @@ int transformPlanar(VSTransformData* td, VSTransform t)
       int32_t y_d1 = (y - c_d_y);
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
-        fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-        fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
+        fp16 x_s  =  zcos_a  * x_d1 + zsin_xy * y_d1 + c_tx;
+        fp16 y_s  = -zsin_yx * x_d1 + zcos_a  * y_d1 + c_ty;
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         // inlining the interpolation function would bring 10%
         //  (but then we cannot use the function pointer anymore...)

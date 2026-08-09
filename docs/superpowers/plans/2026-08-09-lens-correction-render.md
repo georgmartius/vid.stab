@@ -273,8 +273,14 @@ Pure geometry and lookup tables. Nothing in the render path changes yet.
   for `|k| < 0.83`); `gD` for `1 - 4*k*t < 0` (pincushion, `t > 1/(4k)`). Store `tDomD`
   (`INFINITY` when `k <= 0`). A sample with `t > tDomD` is written as the sentinel coordinate
   `VS_LENS_OUTSIDE_PX = -30000`, which every interpolator resolves to `def`.
-- `VS_LENS_LUT_N = 1024`. Linear interpolation. `g` is smooth and monotone, so the error is
-  `< 1e-6` in `g`, i.e. far under a thousandth of a pixel.
+- `VS_LENS_LUT_N = 1024`. Linear interpolation. The accuracy claim holds only on the **in-frame**
+  domain: a sample is inside the frame when `r_observed <= 1`, which for `gD` means
+  `t <= tIn = 1/(1+k)²`. There the error is under `1e-5` in `g`, i.e. well under a hundredth of a
+  pixel. Beyond `tIn` the division model's derivative diverges toward the domain edge and a
+  uniform-grid linear table cannot bound the error at any `N` — but those samples map outside the
+  frame and resolve to the border value, so the table only has to stay finite, positive and
+  monotone there. `gU` has no nearby pole (`t = -1/k >= 3.3` for barrel, `tMaxU = 1.2`) and meets
+  the tight bound across its whole table.
 - Float tables are built only under `TESTING` (the `_FLT` path is `TESTING`-only); the 16.16 tables
   are always built.
 
@@ -509,7 +515,13 @@ static void test_lensmap_chroma_consistency(void){
   VSLensPlaneMap luma, c422, c420;
   VSTransform t = null_transform();
   int x, y;
-  t.x = 9.0; t.y = -5.0; t.alpha = 0.01;
+  /* Translation only, deliberately.  The legacy affine step applies one shared
+     sin/cos in plane coordinates, which is inconsistent under anisotropic
+     subsampling; spec 2.3 declines to fix or replicate that, so a rotation here
+     would assert something this work does not deliver.  Translation is
+     subsampled per axis correctly and still exercises the radial map off
+     centre, which is what this test exists to check. */
+  t.x = 9.0; t.y = -5.0;
   vsFrameInfoInit(&fi422, 640, 360, PF_YUV422P);
   vsFrameInfoInit(&fi420, 640, 360, PF_YUV420P);
   test_bool(vsLensPlaneMapInit(&luma, &fi422, &fi422, 0, -0.25, VSLensCorrectWobble) == VS_OK);

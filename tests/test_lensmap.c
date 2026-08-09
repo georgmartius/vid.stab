@@ -401,3 +401,62 @@ static void test_lensmap_nonzero_k_builds_on_first_call(void){
   test_bool(td.lensActive == 1);
   vsTransformDataCleanup(&td);
 }
+
+/* Colour must not drift away from luma toward the frame edge.  Paint a frame
+   where chroma is a step function aligned with a luma step, warp it with the
+   lens active, and check the two edges still coincide after correction.
+   4:2:2 is the case that catches an anisotropic-radius bug. */
+static void lmCheckChromaAlignment(VSPixelFormat pf, const char* name){
+  const double k = -0.25;
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  VSTransformData td;
+  VSTransform t = null_transform();
+  int wsub, hsub, x, y, worst = 0;
+  vsFrameInfoInit(&fi, 480, 320, pf);
+  vsFrameAllocate(&src, &fi);
+  wsub = vsGetPlaneWidthSubS(&fi, 1);
+  hsub = vsGetPlaneHeightSubS(&fi, 1);
+  /* vertical step at luma x = 300, replicated into chroma at the same place */
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++)
+      src.data[0][y*src.linesize[0]+x] = x < 300 ? 40 : 200;
+  for(y=0; y<CHROMA_SIZE(fi.height,hsub); y++)
+    for(x=0; x<CHROMA_SIZE(fi.width,wsub); x++){
+      uint8_t v = (x << wsub) < 300 ? 40 : 200;
+      src.data[1][y*src.linesize[1]+x] = v;
+      src.data[2][y*src.linesize[2]+x] = v;
+    }
+
+  t.x = 12.0; t.y = -8.0;
+  lmInitTd(&td, &fi, VSLensCorrectWobble, k, VS_BiLinear);
+  vsFrameAllocate(&dest, &fi);
+  test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+  test_bool(_FLT(transformPlanar)(&td, t) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+
+  /* For each chroma row, find the step in luma and in chroma; they must land
+     within one chroma pixel of each other. */
+  for(y = 8; y < CHROMA_SIZE(fi.height,hsub) - 8; y++){
+    int ly = y << hsub, lx = -1, cx = -1;
+    for(x=1; x<fi.width; x++)
+      if(dest.data[0][ly*dest.linesize[0]+x] > 120 &&
+         dest.data[0][ly*dest.linesize[0]+x-1] <= 120){ lx = x; break; }
+    for(x=1; x<CHROMA_SIZE(fi.width,wsub); x++)
+      if(dest.data[1][y*dest.linesize[1]+x] > 120 &&
+         dest.data[1][y*dest.linesize[1]+x-1] <= 120){ cx = x; break; }
+    if(lx < 0 || cx < 0) continue;
+    { int d = abs((cx << wsub) - lx);
+      if(d > worst) worst = d; }
+  }
+  fprintf(stderr, "  %s: worst luma/chroma step offset = %i luma px\n", name, worst);
+  test_bool(worst <= (1 << wsub));
+  vsFrameFree(&dest); vsFrameFree(&src);
+  vsTransformDataCleanup(&td);
+}
+
+static void test_lensmap_chroma_render(void){
+  lmCheckChromaAlignment(PF_YUV420P, "YUV420P");
+  lmCheckChromaAlignment(PF_YUV422P, "YUV422P");
+  lmCheckChromaAlignment(PF_YUV444P, "YUV444P");
+}

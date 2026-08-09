@@ -213,7 +213,8 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_domain());
     UNIT(test_lensmap_inactive());
     UNIT(test_lensmap_chroma_consistency());
-    UNIT(test_lensmap_wobble_identity_is_exact());
+    UNIT(test_lensmap_wobble_identity_takes_fast_path());
+    UNIT(test_lensmap_wobble_cancellation_through_loop());
     UNIT(test_lensmap_removes_wobble());
   }
 

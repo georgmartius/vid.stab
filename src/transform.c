@@ -187,10 +187,16 @@ void lensEnsureMaps(VSTransformData* td){
   for(p=0; p<planes; p++){
     if(vsLensPlaneMapInit(&td->lensMaps[p], &td->fiSrc, &td->fiDest, p, k,
                           want ? td->lensMode : VSLensCorrectOff) != VS_OK){
+      int q;
       vs_log_error(td->conf.modName, "lens map allocation failed, correction off\n");
-      for(p=0; p<3; p++) vsLensPlaneMapFree(&td->lensMaps[p]);
+      for(q=0; q<3; q++) vsLensPlaneMapFree(&td->lensMaps[q]);
       td->lensActive = 0;
-      td->lensMapK = 0.0;
+      /* Latch off at this k, not at 0.0: k is the effective (nonzero, since
+         k==0.0 never reaches vsLensPlaneMapInit's allocation path) value that
+         just failed.  Recording 0.0 here would leave the guard above
+         permanently unable to match a nonzero k, so a persistent allocation
+         failure would retry -- and re-log -- on every single frame. */
+      td->lensMapK = k;
       return;
     }
   }

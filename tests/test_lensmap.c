@@ -197,8 +197,13 @@ static void lmInitTd(VSTransformData* td, const VSFrameInfo* fi,
   vsTransformSetLensK(td, k);
 }
 
-/* Wobble mode with an identity transform must not touch a single pixel. */
-static void test_lensmap_wobble_identity_is_exact(void){
+/* An identity transform (t.alpha==t.x==t.y==t.zoom==0) must take the fast
+   memcpy path even in Wobble mode -- it is what makes Wobble free of cost on
+   a locked-off shot.  This does NOT exercise the LUT, U_k or D_k: the early
+   return in _FLT(transformPlanar) fires before any of that code runs, for
+   any k.  See test_lensmap_wobble_cancellation_through_loop for a test that
+   actually walks the inner loop and checks the U_k/D_k cancellation itself. */
+static void test_lensmap_wobble_identity_takes_fast_path(void){
   VSFrameInfo fi;
   VSFrame src, dest;
   uint32_t seed = 999;
@@ -215,6 +220,74 @@ static void test_lensmap_wobble_identity_is_exact(void){
       test_bool(_FLT(transformPlanar)(&td, null_transform()) == VS_OK);
       test_bool(vsTransformFinish(&td) == VS_OK);
       test_bool(memcmp(src.data[0], dest.data[0], (size_t)fi.width*fi.height) == 0);
+      vsFrameFree(&dest);
+      vsTransformDataCleanup(&td);
+    }
+  }
+  vsFrameFree(&src);
+}
+
+/* The identity claim (D_k . U_k = id, so Wobble with an identity M is a
+   no-op) exercised through the *real* inner loop, not the fast-path memcpy.
+   A transform that is exactly the identity in every field the fast path
+   tests is intercepted before touching a pixel (see
+   test_lensmap_wobble_identity_takes_fast_path) -- by design, since that
+   fast path is what makes Wobble free on a locked-off shot.  To reach the
+   wobble/affine/distort sequence in the inner loop at all, t.x is nudged by
+   a sub-pixel amount, just enough to defeat the "t.x==0" check without
+   meaningfully moving anything.
+
+   There is no golden for "the LUT-based float code got U_k/M/D_k right", so
+   this checks it against an independent computation of the same quantity:
+   vsLensMapBackward(), which recomputes U_k, M and D_k in double precision
+   from the closed-form scale functions rather than from the float LUT the
+   inner loop actually uses.  Sampling the same interpolation function at
+   that reference position, and comparing pixel values, tests the LUT
+   implementation against ground truth rather than against itself. */
+static void test_lensmap_wobble_cancellation_through_loop(void){
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  uint32_t seed = 777;
+  int i, ip;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  vsFrameAllocate(&src, &fi);
+  ldFillTexture(&src, &fi, &seed);
+  for(ip=0; ip<4; ip++){
+    for(i=0; i<LM_NUM_KS; i++){
+      VSTransformData td;
+      VSLensPlaneMap ref;
+      VSTransform t = null_transform();
+      double sumDiff = 0; int n = 0, maxDiff = 0, x, y;
+      t.x = 0.01;  /* defeats "t.x==0" in the fast-path check; near-identity */
+      lmInitTd(&td, &fi, VSLensCorrectWobble, LM_KS[i], (VSInterpolType)ip);
+      vsFrameAllocate(&dest, &fi);
+      test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+      test_bool(_FLT(transformPlanar)(&td, t) == VS_OK);
+      test_bool(vsTransformFinish(&td) == VS_OK);
+      test_bool(vsLensPlaneMapInit(&ref, &fi, &fi, 0, LM_KS[i], VSLensCorrectWobble) == VS_OK);
+      for(y=0; y<fi.height; y+=3){
+        for(x=0; x<fi.width; x+=3){
+          double xs, ys;
+          uint8_t expected, actual;
+          int diff;
+          vsLensMapBackward(&ref, &t, x, y, &xs, &ys);
+          td._FLT(interpolate)(&expected, (float)xs, (float)ys, src.data[0],
+                                src.linesize[0], fi.width, fi.height, 0);
+          actual = dest.data[0][y*dest.linesize[0]+x];
+          diff = actual > expected ? actual - expected : expected - actual;
+          sumDiff += diff;
+          n++;
+          if(diff > maxDiff) maxDiff = diff;
+        }
+      }
+      /* The LUT is accurate to a small fraction of a pixel (see
+         test_lensmap_lut), so the two computations should agree almost
+         everywhere; a handful of samples that straddle a hard texture edge
+         (see ldFillTexture) can legitimately land on different sides of it
+         in float vs. double precision, so the bound is on the mean, not the
+         worst single pixel. */
+      test_bool(sumDiff/n < 0.5);
+      vsLensPlaneMapFree(&ref);
       vsFrameFree(&dest);
       vsTransformDataCleanup(&td);
     }

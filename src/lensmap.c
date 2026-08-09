@@ -103,16 +103,26 @@ int vsLensPlaneMapInit(VSLensPlaneMap* m, const VSFrameInfo* fiSrc,
   }
   /* idxScale = (N-1)/(tMax*rho^2) at scale 2^32, consumed by vsLensLutFp.
      idxScaleU/D are int32_t, so this overflows silently (wrapping into
-     garbage that then corrupts every pixel) once rho^2*tMax drops low enough
-     -- i.e. once fiDest is much smaller than fiSrc. Unreachable in vid.stab
-     today (the transform pass never resizes), but cheap to guard rather than
+     garbage that then corrupts every pixel) once it gets big enough. That is
+     not a source-vs-destination condition -- tMaxU = 1.2*(rhoDest/rho)^2 (see
+     above), so tMaxU*rho2 = 1.2*rhoDest^2 and idxScaleU depends only on the
+     DESTINATION half-diagonal: it overflows once rhoDest drops below roughly
+     41 px, whatever fiSrc is. idxScaleD's tMaxD is a fixed constant (<= 4.0,
+     tighter for pincushion as it approaches tDomD) with no destination
+     dependence at all, so idxScaleD*rho2 depends only on the SOURCE
+     half-diagonal: it overflows once rho drops below roughly 23 px, whatever
+     fiDest is. Both are unreachable in vid.stab today (the transform pass
+     never resizes to anything that small), but cheap to guard rather than
      leave as a silent trap: compute in double first and bail before the
-     narrowing cast. */
+     narrowing cast. Pleasant side effect: k = +-INFINITY (tMaxD -> 0 for
+     k = +INFINITY, making idxScaleD's division blow up to +INFINITY) routes
+     through this same check and disables the map safely, with no special
+     case needed. */
   { double idxScaleUd = (VS_LENS_LUT_N-1)/(m->tMaxU*rho2) * 4294967296.0;
     double idxScaleDd = (VS_LENS_LUT_N-1)/(m->tMaxD*rho2) * 4294967296.0;
     if(idxScaleUd > (double)INT32_MAX || idxScaleDd > (double)INT32_MAX){
-      vs_log_error("vid.stab", "lens map: destination too small relative to "
-                   "source for k=%g, disabling lens correction\n", k);
+      vs_log_error("vid.stab", "lens map: geometry too small for k=%g, "
+                   "disabling lens correction\n", k);
       vsLensPlaneMapFree(m);
       m->active = 0;
       return VS_OK;

@@ -260,13 +260,15 @@ void test_lenscorrect_generator(void){
 
 /* --- the round trip ------------------------------------------------------- */
 
-/* Measured worst case over the six frames at k = -0.25, after distinguishing
-   the two tones' blue channel (LC_TONE) so PSNR is no longer computed with a
-   dead third of its denominator: maxFlat = 1, PSNR = 32.39 dB.  The `off`
-   control scores 8.50 dB.
+/* Measured worst case over the six frames at k = -0.25: maxFlat = 1,
+   PSNR = 32.47 dB.  The `off` control scores 8.57 dB.  (PSNR here runs a
+   constant 1.76 dB above what a two-channel figure would read, because the
+   two tones share blue = 90 -- see the `psnr` field comment on LCCompare.
+   That offset is baked into this measurement and so into the floor below;
+   it costs nothing.)
 
    The margin here is deliberately tight, not generous: the per-frame spread
-   is only 0.06 dB (32.39 .. 32.46), so the six numbers are effectively
+   is only 0.06 dB (32.47 .. 32.53), so the six numbers are effectively
    deterministic and there is no flakiness risk to buy slack against. A
    genuine geometry bug -- a sign error in lcInverseTransform worth up to
    0.38 px, or a uniform 0.25 px pose error -- was measured to still clear a
@@ -280,7 +282,15 @@ typedef struct {
   int    n;        /* pixels inside the valid mask                          */
   int    nFlat;    /* of those, pixels whose ideal neighbourhood is uniform  */
   int    maxFlat;  /* largest per-channel |delta| over the flat pixels       */
-  double psnr;     /* over the whole valid mask, all three channels          */
+  double psnr;     /* over the whole valid mask, summed over all three
+                       channels; but the two tones share blue = 90 (LC_TONE),
+                       so the B channel contributes no squared error and this
+                       reads a constant 10*log10(3/2) = 1.76 dB above the
+                       two-channel figure.  That offset is immaterial: it is
+                       the same for every frame and every mode, and
+                       LC_MIN_PSNR below is set from measurement, not from
+                       theory, so it absorbs the offset rather than being
+                       fooled by it.                                       */
 } LCCompare;
 
 /* Runs one frame through the render path with the given mode, k and pose. */

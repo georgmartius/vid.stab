@@ -31,7 +31,7 @@
    here depends on that. */
 static const uint8_t LC_TONE[2][3] = {
   { 25,  35,  90},   /* dark blue  */
-  {240, 205,  55}    /* light amber */
+  {240, 205,  90}    /* light amber */
 };
 
 static void lcToneRGB(int tone, uint8_t* rgb){

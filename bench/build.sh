@@ -21,3 +21,9 @@ EXTRA_DEFS="-DVS_HAVE_AVX2 -DVS_HAVE_AVX512 -DVS_HAVE_NEON"
 mkdir -p bld
 gcc -O3 -std=gnu99 -DUSE_OMP -fopenmp -DUSE_IPM -DVS_HAVE_LPSOLVER \
     $EXTRA_DEFS -Isrc -Itests -o bld/bench bench/bench_motiondetect.c $SRCS $OBJS -lm "$@"
+
+# The transform benchmark. -DTESTING keeps the float implementation under its
+# own name, so both can be timed (and compared) in one binary.
+gcc -O3 -std=gnu99 -DUSE_OMP -fopenmp -DUSE_IPM -DVS_HAVE_LPSOLVER -DTESTING \
+    $EXTRA_DEFS -Isrc -Itests -o bld/bench_transform bench/bench_transform.c \
+    $SRCS src/transformfloat.c $OBJS -lm "$@"

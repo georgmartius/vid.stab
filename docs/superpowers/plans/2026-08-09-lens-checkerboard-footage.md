@@ -1360,10 +1360,16 @@ pnmtopng testout/lensclip/sheet.ppm > /tmp/lensclip-sheet.png 2>/dev/null \
 ```
 Read the PNG. Confirm by eye: the left panel's checkerboard lines are straight
 and the band rings evenly spaced; the middle panel's lines bow outward and the
-rings crowd toward the edge; the right panel looks like the left again, with a
-dark curved apron at the border where the source ran out. If the right panel
-does **not** match the left, stop and report it — that is a real failure that
-the numeric tests somehow missed, not a dump bug.
+rings crowd toward the edge; the right panel looks like the left again. If the
+right panel does **not** match the left, stop and report it — that is a real
+failure that the numeric tests somehow missed, not a dump bug.
+
+Expect **no** border fill on the right panel. Under barrel, `D_k` contracts,
+so every destination pixel samples strictly inward and the correction crops
+into the source rather than running off it — `lcValidMask` reports all 307200
+pixels valid on every frame of this clip. Pincushion is the case that leaves
+an apron (about 18.5% of the frame at k = +0.15), and it is not what gets
+dumped.
 
 - [ ] **Step 4: Confirm the normal test run still writes nothing**
 

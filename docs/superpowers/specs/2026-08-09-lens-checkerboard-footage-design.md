@@ -148,6 +148,13 @@ Into `testout/lensclip/`, via the existing `storePPMImage()`:
   side by side for frame 0. This is the illustration; it is the only artefact
   that exists for documentation rather than for the test.
 
+The corrected panel is full-bleed, with no border fill. That is a property of
+the sign, not an accident: under barrel `D_k` contracts, so every destination
+pixel samples strictly inward and the correction crops into the source rather
+than running off it — the validity mask reports the entire frame usable on
+every frame of this clip. Pincushion is the case that costs field of view,
+about 18.5% of the frame at k = +0.15.
+
 PPM because `storePPMImage()` already exists and a PNG encoder would mean a
 new zlib dependency. Convert for documents with `pnmtopng` or `convert`.
 

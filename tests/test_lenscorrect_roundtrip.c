@@ -261,31 +261,54 @@ void test_lenscorrect_generator(void){
 
 /* --- the round trip ------------------------------------------------------- */
 
-/* These two constants are shared by every case rendered through PF_RGB24:
-   Full recovering the base image (barrel, k = -0.25), Wobble holding the
-   lens (barrel), and pincushion (k = +0.15).  Measured worst across all
-   three, after LC_BAND was moved from 60 to 61 (see its definition in
-   generate_lensclip.c and wobble-diagnosis.md -- the old value put a band
-   circle tangent to a cell line, aliasing a sub-supersample-pitch sliver
-   that Wobble's leading U_k expansion dragged onto visible rows): maxFlat =
-   1 (all three cases), PSNR = 30.00 dB (Wobble, frame 1).  The `off` control
-   scores 8.65 dB.  (PSNR here runs a constant 1.76 dB above what a
-   two-channel figure would read, because the two tones share blue = 90 --
-   see the `psnr` field comment on LCCompare.  That offset is baked into
-   this measurement and so into the floor below; it costs nothing.)
+/* LC_MAX_FLAT_DELTA is shared by every case rendered through PF_RGB24: Full
+   recovering the base image (barrel, k = -0.25), Wobble holding the lens
+   (barrel), and pincushion (k = +0.15).  After LC_BAND was moved from 60 to
+   61 (see its definition in generate_lensclip.c and wobble-diagnosis.md --
+   the old value put a band circle tangent to a cell line, aliasing a
+   sub-supersample-pitch sliver that Wobble's leading U_k expansion dragged
+   onto visible rows) all three measure a worst maxFlat of 1, so one shared
+   constant is correct here -- confirmed by measurement, not assumed.
+   maxFlat = 2 keeps the one-count margin a previous measurement (a k*1.02
+   perturbation reading maxFlat = 3 on four of six Full frames) called for.
 
-   Full alone is even tighter -- worst PSNR 32.47 dB, per-frame spread only
-   0.13 dB -- and a genuine geometry bug injected there (a sign error in
-   lcInverseTransform worth up to 0.38 px, or a uniform 0.25 px pose error)
-   was measured to still clear a 28.0 dB floor, so that much slack hides
-   real defects rather than tolerating noise.  Wobble's own worst (30.00 dB)
-   is what sets the floor now: LC_MIN_PSNR = 28.5 keeps a 0.5 dB margin over
-   that known-defect floor without also re-absorbing Wobble's ordinary
-   double-lens-map noise.  maxFlat = 2 keeps the one-count margin the
-   previous measurement (a k*1.02 perturbation reading maxFlat = 3 on four
-   of six Full frames) called for. */
+   LC_MIN_PSNR, by contrast, is NOT shared with Wobble (see
+   LC_MIN_PSNR_WOBBLE below) -- Full and pincushion only.  Full's worst is
+   32.47 dB, pincushion's 36.75 dB (both PF_RGB24, `psnr` running a constant
+   1.76 dB above the two-channel figure because the tones share blue = 90;
+   see the `psnr` field comment on LCCompare).  The floor is set well below
+   that worst, but above a KNOWN failure point: a genuine geometry bug
+   injected into Full mode (a 0.38 px sign error in lcInverseTransform)
+   measured 28.73 dB.  LC_MIN_PSNR = 30.5 clears that with margin; anyone
+   tempted to lower this constant needs to still clear 28.73 dB, not some
+   smaller number -- a shared floor pulled down to Wobble's own budget
+   (measured as low as 28.5 in an earlier revision of this file) would let
+   that exact injected bug pass silently. */
 #define LC_MAX_FLAT_DELTA 2
-#define LC_MIN_PSNR       28.5
+#define LC_MIN_PSNR       30.5
+
+/* Wobble's own floor.  Its round trip resamples through a net-identity map
+   composed of two nonlinear lens evaluations (U_k then, after the affine,
+   D_k) where Full's single contraction low-passes the source and loses
+   less -- see wobble-diagnosis.md for the mechanism (a checkerboard feature
+   thinner than the generator's supersampling pitch, rasterised at different
+   sub-pixel phases by the reference and the clip).  That is a per-mode
+   property of Wobble, not generic slack, so it gets its own constant rather
+   than loosening LC_MIN_PSNR for every mode.
+
+   Measured worst over frames 1-5 (frame 0 is the memcpy fast path and reads
+   99.00 dB, excluded): 30.00, 30.08, 30.05, 30.00, 30.02 dB -- worst 30.00
+   dB, spread 0.08 dB, i.e. under 0.2 dB.  Per the standing rule for a tight
+   spread, the floor is worst - 1.0 dB rounded down to the nearest 0.5:
+   30.00 - 1.0 = 29.00, already on the grid.
+
+   This floor sits BELOW the 28.73 dB a genuine geometry defect produced in
+   Full mode above.  That is deliberate, not an oversight: Wobble's PSNR
+   check here is verifying mode SEMANTICS -- that the shake is removed and
+   the lens retained -- not sub-pixel geometry.  LC_MIN_PSNR (Full,
+   pincushion) is what guards sub-pixel geometry; do not assume Wobble
+   carries the same guarantee. */
+#define LC_MIN_PSNR_WOBBLE 29.0
 
 /* Measured worst case on 4:2:0 at k = -0.25 (Full mode): maxFlat = 25,
    PSNR = 25.82 dB.  Looser than the packed constants for a separate and
@@ -587,7 +610,7 @@ static void test_lenscorrect_wobble_holds_the_lens(void){
   c.mode        = VSLensCorrectWobble;
   c.ref         = LC_REF_FRAME0;
   c.maxFlat     = LC_MAX_FLAT_DELTA;
-  c.minPsnr     = LC_MIN_PSNR;
+  c.minPsnr     = LC_MIN_PSNR_WOBBLE;
   c.minValidDiv = 2;
   c.label       = "Wobble removes the shake, keeps the lens, k = -0.25";
   lcCheckRoundTrip(&c);

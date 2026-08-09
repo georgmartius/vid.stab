@@ -137,9 +137,9 @@ static void test_lenscorrect_pattern_tones(void){
   /* Cell parity, read off a 2x2 block of cells lying WHOLLY inside one radial
      band -- otherwise the band term flips underneath the comparison and the
      cell structure cannot be isolated.  A 2x2 block spans 32..45 px of radius
-     while a band is only 60 px wide, so the block has to be placed on purpose:
+     while a band is only 61 px wide, so the block has to be placed on purpose:
      (328, 425) and its +LC_CELL neighbours have radii 185.2 .. 220.7, all
-     inside band 3 = [180, 240).  It is also clear of every cell boundary
+     inside band 3 = [183, 244).  It is also clear of every cell boundary
      (328/32 = 10.25, 425/32 = 13.28) and of the frame edge (max 457 < 480).
 
      The single-band precondition is asserted rather than trusted, so retuning
@@ -195,7 +195,7 @@ static void test_lenscorrect_pattern_supersampling(void){
   /* x = 128 is a cell boundary (a multiple of LC_CELL), and the pixel there
      covers [127.5, 128.5) so it straddles.  x = 144, y = 144 sits in the
      interior of one cell in both axes, and its radius from the centre (200.5)
-     is 20 px clear of the nearest band boundary at 180, so neither term is
+     is 17.5 px clear of the nearest band boundary at 183, so neither term is
      near a transition.  lcRenderMapped treats integer index x as coordinate
      x, so the pixel centre IS 144.0 -- no half-pixel offset when asking the
      pattern what should be there. */
@@ -275,10 +275,11 @@ Create `tests/generate_lensclip.c`:
 #define LC_WIDTH   640
 #define LC_HEIGHT  480
 #define LC_CELL    32.0   /* checkerboard cell size in px: 20x15 cells       */
-#define LC_BAND    60.0   /* radial inversion period in px; half the frame
+#define LC_BAND    61.0   /* radial inversion period in px; half the frame
                              diagonal is 400, so ~6 boundaries cross the
-                             picture.  Not a divisor or multiple of LC_CELL,
-                             so band and cell edges stay distinguishable.    */
+                             picture.  Coprime with LC_CELL -- see the
+                             tangency argument in the design doc; 60 aliases
+                             and was a real bug.                            */
 #define LC_SS      4      /* supersamples per axis per pixel                 */
 
 /* Both tones are coloured, not grey: the PPM dumps double as the figure in

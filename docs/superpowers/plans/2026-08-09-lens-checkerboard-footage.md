@@ -118,6 +118,13 @@ Create `tests/test_lenscorrect_roundtrip.c` with exactly this content:
 
 /* --- the pattern ---------------------------------------------------------- */
 
+/* Radial band index at a point, used to state the preconditions the cell
+   assertions below depend on. */
+static int lcBandIndexAt(double x, double y){
+  double dx = x - LC_WIDTH/2.0, dy = y - LC_HEIGHT/2.0;
+  return (int)floor(sqrt(dx*dx + dy*dy)/LC_BAND);
+}
+
 /* Cell centres alternate tone with both indices, and the tone flips again in
    every other radial band.  Checked at hand-computed points so a sign error in
    either term cannot hide behind the other. */
@@ -127,14 +134,34 @@ static void test_lenscorrect_pattern_tones(void){
 
   fprintf(stderr, "--- lens clip pattern: cells and bands ---\n");
 
-  /* Cells, sampled at the centre of the frame's centre cell and its two
-     neighbours.  Adjacent cells must differ; diagonal neighbours must match. */
-  t00 = lcPatternTone(cx + 0.5*LC_CELL, cy + 0.5*LC_CELL);
-  t10 = lcPatternTone(cx + 1.5*LC_CELL, cy + 0.5*LC_CELL);
-  t01 = lcPatternTone(cx + 0.5*LC_CELL, cy + 1.5*LC_CELL);
-  test_bool(t10 != t00);
-  test_bool(t01 != t00);
-  test_bool(lcPatternTone(cx + 1.5*LC_CELL, cy + 1.5*LC_CELL) == t00);
+  /* Cell parity, read off a 2x2 block of cells lying WHOLLY inside one radial
+     band -- otherwise the band term flips underneath the comparison and the
+     cell structure cannot be isolated.  A 2x2 block spans 32..45 px of radius
+     while a band is only 60 px wide, so the block has to be placed on purpose:
+     (328, 425) and its +LC_CELL neighbours have radii 185.2 .. 220.7, all
+     inside band 3 = [180, 240).  It is also clear of every cell boundary
+     (328/32 = 10.25, 425/32 = 13.28) and of the frame edge (max 457 < 480).
+
+     The single-band precondition is asserted rather than trusted, so retuning
+     LC_CELL or LC_BAND fails loudly here instead of silently gutting the
+     test. */
+  {
+    double bx = 328.0, by = 425.0;
+    int b = lcBandIndexAt(bx, by);
+    test_bool(lcBandIndexAt(bx + LC_CELL, by)           == b);
+    test_bool(lcBandIndexAt(bx,           by + LC_CELL) == b);
+    test_bool(lcBandIndexAt(bx + LC_CELL, by + LC_CELL) == b);
+
+    t00 = lcPatternTone(bx,           by);
+    t10 = lcPatternTone(bx + LC_CELL, by);
+    t01 = lcPatternTone(bx,           by + LC_CELL);
+    test_bool(t10 != t00);
+    test_bool(t01 != t00);
+    test_bool(lcPatternTone(bx + LC_CELL, by + LC_CELL) == t00);
+
+    /* Deterministic and side-effect free. */
+    test_bool(lcPatternTone(bx, by) == t00);
+  }
 
   /* Bands.  Two points in the same cell column and row parity but either side
      of the first band boundary (r = LC_BAND) must differ, purely from the band
@@ -147,9 +174,6 @@ static void test_lenscorrect_pattern_tones(void){
     test_bool(lcPatternTone(cx + rIn, cy + 0.5) !=
               lcPatternTone(cx + rOut, cy + 0.5));
   }
-
-  /* Deterministic and side-effect free. */
-  test_bool(lcPatternTone(cx + 0.5*LC_CELL, cy + 0.5*LC_CELL) == t00);
 }
 
 /* A pixel wholly inside one cell must come out as that exact tone; a pixel
@@ -343,11 +367,15 @@ Run:
 ```bash
 cd build/tests-debug && make -j8 tests && ./tests --testLCR
 ```
-Expected: PASS, `Tests checks succeeded: 8/8`.
+Expected: PASS, with no `Test Failed` lines. Do not check the assertion count
+against a number quoted here; count what the code contains.
 
-If the band assertion's precondition fails (`floor((cx+rIn)/LC_CELL) ==
-floor((cx+rOut)/LC_CELL)`), the first band boundary happens to fall on a cell
-edge — nudge `LC_BAND` by 2 px and re-run rather than weakening the assertion.
+If one of the preconditions fails — the three `lcBandIndexAt` equalities, or
+`floor((cx+rIn)/LC_CELL) == floor((cx+rOut)/LC_CELL)` — a band boundary has
+landed where the test assumed it would not. Re-place the sample points so the
+precondition holds again, and update the comment's stated radii to the new
+ones. Do not weaken or delete the assertion, and do not retune `LC_CELL` or
+`LC_BAND`: later tasks depend on those values.
 
 - [ ] **Step 5: Commit**
 

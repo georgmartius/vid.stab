@@ -14,6 +14,8 @@
  *  See docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md
  */
 
+#include "lensdistortion.h"
+
 #define LC_WIDTH   640
 #define LC_HEIGHT  480
 #define LC_CELL    32.0   /* checkerboard cell size in px: 20x15 cells       */
@@ -99,5 +101,107 @@ static void lcRenderMapped(VSFrame* frame, const VSFrameInfo* fi,
                   (uint8_t)((acc[1] + LC_SS*LC_SS/2)/(LC_SS*LC_SS)),
                   (uint8_t)((acc[2] + LC_SS*LC_SS/2)/(LC_SS*LC_SS)));
     }
+  }
+}
+
+#define LC_NUM_FRAMES 6
+#define LC_K_BARREL (-0.25)   /* the clip that gets dumped as the figure */
+#define LC_K_PIN      0.15    /* assertion-only second pass             */
+
+/* The camera path.  Bounded and drift free -- |x| <= 12, |y| <= 9,
+   |alpha| <= 1.2 deg -- so the scene never leaves the canvas and the valid
+   region stays large.  Every term vanishes at i == 0, deliberately: frame 0 is
+   then the base scene seen through the lens and nothing else, which is what
+   makes it the frame worth putting in the figure and what lets the Wobble
+   assertion compare against it directly. */
+static VSTransform lcClipTransform(int i){
+  double s = (double)i;
+  VSTransform t = null_transform();
+  t.x     = 12.0 * sin(s * 0.7);
+  t.y     =  9.0 * sin(s * 0.9);
+  t.alpha =  1.2 * sin(s * 0.5) * M_PI / 180.0;
+  t.zoom  = 0;
+  return t;
+}
+
+/* The render path's own backward affine, transcribed from
+   transformfloat.c:352-387 for a plane at full luma resolution and equal
+   source and destination sizes:
+
+     z      = 1 - t.zoom/100
+     M_t(x) = z * A(alpha) * (x - c) + c - (t.x, t.y),  A the CCW rotation
+
+   The code spells the rotation as cos(-alpha)/sin(-alpha) with the signs of
+   the second row flipped, which is the same matrix.  Centre is w/2, NOT
+   (w-1)/2, matching c_d_x there. */
+static void lcBackwardAffine(const VSTransform* t, double xd, double yd,
+                             double* xs, double* ys){
+  double cx = LC_WIDTH/2.0, cy = LC_HEIGHT/2.0;
+  double z  = 1.0 - t->zoom/100.0;
+  double ca = cos(t->alpha), sa = sin(t->alpha);
+  double dx = xd - cx, dy = yd - cy;
+  *xs = z*(ca*dx - sa*dy) + cx - t->x;
+  *ys = z*(sa*dx + ca*dy) + cy - t->y;
+}
+
+/* The transform whose backward affine is the inverse of t's.
+
+   From M_t(x) = A(a)(x-c) + c - d  (with zoom 0, so z = 1),
+        M_t^-1(y) = A(-a)((y-c) + d) + c = A(-a)(y-c) + c + A(-a)d,
+   which is M_t' with alpha' = -a and d' = -A(-a)d.
+
+   Only the zoom-free case is implemented, because lcClipTransform never sets
+   zoom; the general case would additionally need z' = 1/z and
+   zoom' = 100(1 - 1/z).  Asserting rather than silently mis-inverting. */
+static VSTransform lcInverseTransform(VSTransform t){
+  VSTransform r = null_transform();
+  double ca = cos(-t.alpha), sa = sin(-t.alpha);
+  test_bool(t.zoom == 0);
+  r.alpha = -t.alpha;
+  r.x = -( ca*t.x - sa*t.y);
+  r.y = -( sa*t.x + ca*t.y);
+  r.zoom = 0;
+  return r;
+}
+
+/* Context for the clip's backward map: which pose, and which lens. */
+typedef struct {
+  VSLensDistortion ld;
+  VSTransform      t;
+  int              useLens;   /* 0 leaves U_k out, for the k == 0 case */
+} LCClipMapCtx;
+
+/* frame_i(x) = pattern( S_i( U_k(x) ) ): undistort the destination point to
+   where an ideal lens would have put it, then move it by the camera pose.
+
+   U_k comes from lensdistortion.c, which test_lensdistortion.c covers
+   independently.  vsLensPlaneMapInit and its lookup tables are deliberately
+   NOT used here -- building the footage with the same tables the round trip
+   then checks would only confirm that the tables agree with themselves.
+
+   Points outside the model's domain cannot occur for k <= 0, and for the
+   pincushion pass they would sit far outside the frame; the pattern is
+   defined everywhere, so the fallback simply leaves the point where it is. */
+static void lcClipMap(const void* ctx, double xd, double yd,
+                      double* xs, double* ys){
+  const LCClipMapCtx* c = (const LCClipMapCtx*)ctx;
+  double ux = xd, uy = yd;
+  if(c->useLens)
+    if(vsLensUndistortPoint(&c->ld, xd, yd, &ux, &uy) != VS_OK){ ux = xd; uy = yd; }
+  lcBackwardAffine(&c->t, ux, uy, xs, ys);
+}
+
+/* Allocates and fills numFrames frames of the clip.  Caller frees them. */
+static void lcGenerateClip(VSFrame* frames, VSFrameInfo* fi, VSPixelFormat pf,
+                           double k, int numFrames){
+  int i;
+  test_bool(vsFrameInfoInit(fi, LC_WIDTH, LC_HEIGHT, pf) != 0);
+  for(i=0; i<numFrames; i++){
+    LCClipMapCtx ctx;
+    ctx.ld      = vsLensDistortionInit(fi, k);
+    ctx.t       = lcClipTransform(i);
+    ctx.useLens = (k != 0.0);
+    vsFrameAllocate(&frames[i], fi);
+    lcRenderMapped(&frames[i], fi, lcClipMap, &ctx);
   }
 }

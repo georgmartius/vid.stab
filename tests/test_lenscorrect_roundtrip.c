@@ -109,3 +109,151 @@ void test_lenscorrect_pattern(void){
   test_lenscorrect_pattern_tones();
   test_lenscorrect_pattern_supersampling();
 }
+
+/* --- the clip generator --------------------------------------------------- */
+
+/* Which of the two tones the pixel is nearer.  The tones' red channels are 25
+   and 240, so 133 is the midpoint; an antialiased edge pixel crosses it within
+   about a pixel of the true boundary. */
+static int lcToneAt(const VSFrame* f, const VSFrameInfo* fi, int x, int y){
+  uint8_t r,g,b;
+  getPixelRGB(f, fi, x, y, &r,&g,&b);
+  return r < 133 ? 0 : 1;
+}
+
+/* First x > from, along the horizontal centre line, whose nearest tone differs
+   from the one at `from`.  The true boundary lies in [x-1, x]. */
+static int lcFirstEdgeRight(const VSFrame* f, const VSFrameInfo* fi, int from){
+  int x, t0 = lcToneAt(f, fi, from, fi->height/2);
+  for(x=from+1; x<fi->width-1; x++)
+    if(lcToneAt(f, fi, x, fi->height/2) != t0) return x;
+  return -1;
+}
+
+/* Every tone change of the IDEAL scene along +x from the frame centre, as an
+   offset in px, in increasing order.  cx = 320 is itself a multiple of
+   LC_CELL, so cell boundaries sit at 32, 64, 96, ...; band boundaries at 60,
+   120, 180, ...  The two sets are disjoint below lcm(32,60) = 480, so every
+   entry is a genuine single tone change -- no coincident pair that would flip
+   both terms and cancel.  Returns how many were written. */
+static int lcIdealEdges(double* out, int max, double uMax){
+  int n = 0;
+  double u;
+  for(u = LC_CELL; u <= uMax && n < max; u += LC_CELL) out[n++] = u;
+  for(u = LC_BAND; u <= uMax && n < max; u += LC_BAND) out[n++] = u;
+  /* insertion sort; the list is tiny and already two sorted runs */
+  { int i, j; for(i=1; i<n; i++){ double v = out[i];
+      for(j=i-1; j>=0 && out[j] > v; j--) out[j+1] = out[j];
+      out[j+1] = v; } }
+  return n;
+}
+
+/* With k == 0 and an identity camera pose, the generated frame must be the
+   base image bit for bit: the generator's map collapses to the identity and
+   nothing but the pattern function is left. */
+static void test_lenscorrect_generator_null(void){
+  VSFrameInfo fi;
+  VSFrame base, frames[LC_NUM_FRAMES];
+  int x, y, i, diff = 0;
+
+  fprintf(stderr, "--- lens clip generator: k=0, identity pose ---\n");
+
+  test_bool(vsFrameInfoInit(&fi, LC_WIDTH, LC_HEIGHT, PF_RGB24) != 0);
+  vsFrameAllocate(&base, &fi);
+  lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
+
+  lcGenerateClip(frames, &fi, PF_RGB24, 0.0, LC_NUM_FRAMES);
+
+  /* frame 0 only: lcClipTransform(0) is the identity by construction, so with
+     k == 0 the whole map is the identity. */
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++){
+      uint8_t a[3], b[3];
+      getPixelRGB(&base,      &fi, x, y, &a[0],&a[1],&a[2]);
+      getPixelRGB(&frames[0], &fi, x, y, &b[0],&b[1],&b[2]);
+      if(a[0]!=b[0] || a[1]!=b[1] || a[2]!=b[2]) diff++;
+    }
+  test_bool(diff == 0);
+
+  vsFrameFree(&base);
+  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+}
+
+/* Frame 0 of the clip is pattern(U_k(x)) -- lcClipTransform(0) is the identity
+   -- so a feature the ideal scene puts at radius r appears at radius D_k(r).
+   Checking every edge against that prediction measures one homogeneous thing,
+   unlike comparing successive gaps, where cell boundaries every 32 px and band
+   boundaries every 60 px interleave and the comparison silently comes to be
+   between features of different kinds.
+
+   `inward` states the physical signature separately from the numbers: barrel
+   pulls every feature toward the centre, pincushion pushes every one out. */
+static void lcCheckEdgePositions(double k, int inward, const char* label){
+  VSFrameInfo fi;
+  VSFrame frames[LC_NUM_FRAMES];
+  VSLensDistortion ld;
+  double ideal[64];
+  int n, i, from, checked = 0;
+
+  fprintf(stderr, "--- %s ---\n", label);
+
+  lcGenerateClip(frames, &fi, PF_RGB24, k, LC_NUM_FRAMES);
+  ld = vsLensDistortionInit(&fi, k);
+  n = lcIdealEdges(ideal, 64, 340.0);
+
+  from = fi.width/2 + 1;
+  for(i=0; i<n; i++){
+    double ox, oy, pred;
+    int actual;
+    test_bool(vsLensDistortPoint(&ld, fi.width/2.0 + ideal[i],
+                                 fi.height/2.0, &ox, &oy) == VS_OK);
+    pred = ox - fi.width/2.0;
+    if(pred > 300.0) break;            /* keeps clear of the frame edge */
+    if(inward) test_bool(pred < ideal[i]);
+    else       test_bool(pred > ideal[i]);
+    actual = lcFirstEdgeRight(&frames[0], &fi, from);
+    test_bool(actual > 0);
+    fprintf(stderr, "  ideal %6.1f -> predicted %6.1f, actual %i\n",
+            ideal[i], pred, actual - fi.width/2);
+    test_bool(fabs((double)(actual - fi.width/2) - pred) <= 2.0);
+    from = actual + 1;
+    checked++;
+  }
+  /* Enough edges to be a real check, not one lucky match. */
+  test_bool(checked >= 8);
+
+  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+}
+
+static void test_lenscorrect_generator_edge_positions(void){
+  lcCheckEdgePositions(LC_K_BARREL, 1, "barrel pulls every edge inward, k = -0.25");
+  lcCheckEdgePositions(LC_K_PIN,    0, "pincushion pushes every edge outward, k = +0.15");
+}
+
+/* lcInverseTransform must invert the render path's backward affine exactly.
+   Checked numerically by composing the two maps at a scatter of points, which
+   is independent of how the inverse is derived. */
+static void test_lenscorrect_inverse_transform(void){
+  int i, j;
+  double pts[5][2] = {{0,0},{639,479},{320,240},{10,470},{500,30}};
+
+  fprintf(stderr, "--- inverse of the render backward affine ---\n");
+
+  for(i=1; i<LC_NUM_FRAMES; i++){
+    VSTransform t  = lcClipTransform(i);
+    VSTransform ti = lcInverseTransform(t);
+    for(j=0; j<5; j++){
+      double ax, ay, bx, by;
+      lcBackwardAffine(&ti, pts[j][0], pts[j][1], &ax, &ay);
+      lcBackwardAffine(&t,  ax, ay, &bx, &by);
+      test_bool(fabs(bx - pts[j][0]) < 1e-9);
+      test_bool(fabs(by - pts[j][1]) < 1e-9);
+    }
+  }
+}
+
+void test_lenscorrect_generator(void){
+  test_lenscorrect_generator_null();
+  test_lenscorrect_generator_edge_positions();
+  test_lenscorrect_inverse_transform();
+}

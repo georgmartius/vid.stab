@@ -264,7 +264,8 @@ void test_lenscorrect_generator(void){
 /* LC_MAX_FLAT_DELTA is shared by every case rendered through PF_RGB24: Full
    recovering the base image (barrel, k = -0.25), Wobble holding the lens
    (barrel), and pincushion (k = +0.15).  After LC_BAND was moved from 60 to
-   61 (see its definition in generate_lensclip.c and wobble-diagnosis.md --
+   61 (see its definition in generate_lensclip.c and "The pattern" in
+   docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md --
    the old value put a band circle tangent to a cell line, aliasing a
    sub-supersample-pitch sliver that Wobble's leading U_k expansion dragged
    onto visible rows) all three measure a worst maxFlat of 1, so one shared
@@ -290,9 +291,11 @@ void test_lenscorrect_generator(void){
 /* Wobble's own floor.  Wobble measures about 2.5 dB below Full
    (30.0 dB vs 32.5 dB) even with the LC_BAND = 61 retune above in place --
    that retune eliminated the supersampling-aliasing artefact that used to
-   explain a much larger gap (maxFlat 51 at the old LC_BAND = 60; see
-   wobble-diagnosis.md for THAT mechanism, which is no longer why Wobble
-   reads 30.0 dB).  The cause of the remaining ~2.5 dB gap is not
+   explain a much larger gap (maxFlat 51 at the old LC_BAND = 60; see "The
+   pattern" in
+   docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md for
+   THAT mechanism, which is no longer why Wobble reads 30.0 dB).  The cause
+   of the remaining ~2.5 dB gap is not
    established.  Leading hypothesis, offered as a hypothesis and not fact:
    Wobble's reference is frame 0 of the clip, which is pattern(U_k(x)) --
    already barrel-compressed at the edges, and so carrying more near-Nyquist
@@ -410,8 +413,11 @@ static void lcValidMask(unsigned char* valid, const VSFrameInfo* fi,
    corner) but the RADIAL derivative of the distortion,
    f'(r) = [2(1+s) - 2r^2/s] / (1+s)^2, s = sqrt(1-4kr^2): at k = -0.25 and
    r ~ 1.04 (frame corner plus the ~12 px of pose motion) f' = 0.567, so
-   1/f' = 1.76 -- an output neighbourhood there draws on a source
-   neighbourhood 1.76x as wide.  Source pixels are themselves box-averaged
+   1/f' = 1.76: a kernel reach fixed in SOURCE space maps to a
+   DESTINATION-space extent 1.76x as wide -- not the reverse; an output
+   neighbourhood there draws on a source neighbourhood only 0.567x (= f')
+   as wide as the destination-space extent it has to cover.  Source pixels
+   are themselves box-averaged
    over +-0.5 px (LC_SS supersampling), which pushes the true support out to
    about 2.6 px, and a half-width of 2 (5x5) does not cover that; a
    half-width of 3 (7x7) does.

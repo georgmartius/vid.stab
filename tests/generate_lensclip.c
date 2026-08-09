@@ -34,7 +34,9 @@
                              tangency -- an aliasing artefact that only
                              Wobble's leading U_k expansion pulled onto
                              visible rows (18.41 and 461.59), producing
-                             maxFlat = 51 there.  See wobble-diagnosis.md.
+                             maxFlat = 51 there.  See "The pattern" in
+                             docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md
+                             for the full diagnosis.
 
                              Note 240 is NOT a multiple of LC_CELL (240 =
                              7.5*32); the coincidence was with the distance

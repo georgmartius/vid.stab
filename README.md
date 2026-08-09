@@ -103,6 +103,44 @@ The vidstabdetect filter (in first pass) will generate a file with relative-tran
 
 Make sure that you use [unsharp](http://www.ffmpeg.org/ffmpeg-filters.html#unsharp-1) filter provided by ffmpeg for best results (only in second pass).
 
+### Both passes must see the same frames
+
+The transform file holds **one entry per frame, in order**, and the second pass
+consumes them in that order. It has no way to tell which frame it is looking
+at, so if the two passes are fed different frames the transforms silently stop
+lining up with the picture.
+
+In practice this means: do not put any filter that **changes the number, order
+or rate of frames** before `vidstabtransform` unless the exact same filter also
+ran before `vidstabdetect`. The usual culprits are `fps`, `minterpolate`,
+`select`, `mpdecimate`, `trim` and `-r`.
+
+```shell
+# WRONG: detect sees 30 fps, transform sees 48 -- transforms run out early
+ffmpeg -i in.mp4 -vf vidstabdetect -f null -
+ffmpeg -i in.mp4 -vf minterpolate=fps=48,vidstabtransform out.mp4
+
+# RIGHT: change the rate first, in both passes
+ffmpeg -i in.mp4 -vf minterpolate=fps=48,vidstabdetect -f null -
+ffmpeg -i in.mp4 -vf minterpolate=fps=48,vidstabtransform out.mp4
+```
+
+If it happens you get this warning, and everything after that point is
+unstabilized:
+
+```
+[vidstabtransform] not enough transforms found, use last transformation!
+```
+
+Two related traps:
+
+* **Duplicated frames** in the source (a 25 fps recording stored as 30 fps, for
+  example) are detected as exactly zero motion, which shows up as a regular
+  jerk in the stabilized result. Drop them with `mpdecimate` — in *both* passes
+  — or work at the true frame rate.
+* Concatenated input (`-f concat`) can present irregular timestamps; check that
+  both passes report the same frame count before blaming the stabilization.
+
 NOTE: 10-bit 4:2:2 video must be downsampled to 8-bit 4:2:0 to avoid distortions like chroma shift or color bleed/smearing (see `format=yuv420p` example below).
 
 *See [the list of ffmpeg filters](http://www.ffmpeg.org/ffmpeg-filters.html) to know more about vidstabdetect, vidstabtransform and all other filters available with ffmpeg.*

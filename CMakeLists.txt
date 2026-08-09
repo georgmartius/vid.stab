@@ -9,7 +9,9 @@ include (GNUInstallDirs)
 find_package(OpenMP)
 
 set(MAJOR_VERSION 1)
-set(MINOR_VERSION 3)
+# SOVERSION is MAJOR.MINOR: bump the minor whenever a public struct changes
+# size, or consumers that embed one by value corrupt their heap.
+set(MINOR_VERSION 4)
 set(PATCH_VERSION 0)
 # note the separator between minor and patch: without it this produced "1.20"
 # for 1.2.0 (and "1.10" for 1.1.0), which is what ends up in the Version field

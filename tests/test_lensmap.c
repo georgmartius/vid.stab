@@ -930,6 +930,214 @@ static void test_lensmap_required_zoom(void){
   }
 }
 
+/* --- full-mode evidence --------------------------------------------------- */
+
+/* Fits a line to the detected edge positions of one painted grid column and
+   returns the maximum deviation from it, in pixels. */
+static double lmColumnBend(const VSFrame* f, const VSFrameInfo* fi, int approxX){
+  double sy = 0, sx = 0, syy = 0, sxy = 0, a, b, worst = 0;
+  int n = 0, y, x;
+  int xs[1024], ys[1024];
+  for(y=20; y<fi->height-20; y+=4){
+    int best = -1, bestv = 200;
+    for(x=approxX-40; x<=approxX+40; x++){
+      int v;
+      if(x < 0 || x >= fi->width) continue;
+      v = f->data[0][y*f->linesize[0]+x];
+      if(v < bestv){ bestv = v; best = x; }
+    }
+    if(best < 0 || bestv > 120) continue;
+    if(n >= 1024) break;
+    xs[n] = best; ys[n] = y; n++;
+  }
+  if(n < 10) return 1e9;
+  for(y=0; y<n; y++){ sy += ys[y]; sx += xs[y]; syy += (double)ys[y]*ys[y]; sxy += (double)ys[y]*xs[y]; }
+  b = (n*sxy - sy*sx) / (n*syy - sy*sy);
+  a = (sx - b*sy)/n;
+  for(y=0; y<n; y++){
+    double d = fabs(xs[y] - (a + b*ys[y]));
+    if(d > worst) worst = d;
+  }
+  return worst;
+}
+
+/* Sanity-check lmColumnBend itself before trusting its verdict on the real
+   test below: feed it a perfectly straight synthetic column (bend must be
+   near zero) and a column with a known sinusoidal curvature baked in (bend
+   must come back close to the amplitude that was put in). A metric that
+   always reports a small number would make the straightness claim below
+   meaningless. */
+static void test_lensmap_column_bend_metric(void){
+  VSFrameInfo fi;
+  VSFrame straight, curved;
+  double bend;
+  int x, y;
+  const double amp = 6.0;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  vsFrameAllocate(&straight, &fi);
+  vsFrameAllocate(&curved, &fi);
+  memset(straight.data[0], 220, (size_t)straight.linesize[0]*fi.height);
+  memset(curved.data[0], 220, (size_t)curved.linesize[0]*fi.height);
+  for(y=0; y<fi.height; y++){
+    int sxp = 160;
+    int cxp = 160 + (int)lrint(amp*sin(y*0.05));
+    for(x=sxp-1; x<=sxp+1 && x>=0 && x<fi.width; x++)
+      straight.data[0][y*straight.linesize[0]+x] = 20;
+    for(x=cxp-1; x<=cxp+1 && x>=0 && x<fi.width; x++)
+      curved.data[0][y*curved.linesize[0]+x] = 20;
+  }
+  bend = lmColumnBend(&straight, &fi, 160);
+  fprintf(stderr, "  bend metric sanity: straight column -> %.3f px (expect near 0)\n", bend);
+  test_bool(bend < 1.0);
+  bend = lmColumnBend(&curved, &fi, 160);
+  fprintf(stderr, "  bend metric sanity: sinusoid amplitude %.1f px -> measured %.3f px\n",
+          amp, bend);
+  test_bool(bend > 0.5*amp && bend < 1.5*amp);
+  vsFrameFree(&straight); vsFrameFree(&curved);
+}
+
+/* Renders how a straight-line scene appears through a lens of strength k:
+   destination (observed, distorted) pixel (x,y) shows the scene point whose
+   undistorted coordinate is U_k(x,y), i.e. obs(x,y) = scene(U_k(x,y)).
+
+   This is deliberately NOT ldRenderWarped(src, dst, fi, ld, id) with an
+   identity camera motion: that helper computes D_k(M^-1(U_k(.))), which for
+   M = identity collapses to the plain identity by the very round-trip
+   guarantee vsLensUndistortPoint/vsLensDistortPoint carry (see
+   test_lensdistortion_roundtrip) -- confirmed empirically here too: with
+   cum = null_transform(), ldRenderWarped's output was byte-identical to its
+   input on every row, i.e. it applied no distortion at all. That helper
+   exists to render frame i *relative to frame 0* under real inter-frame
+   camera motion (see test_lensmap_removes_wobble), not to distort an ideal
+   scene from a standing start, so it is the wrong tool for "render one
+   frame of a straight-edged scene as a lens would bend it". */
+static void lmRenderDistortedScene(const VSFrame* scene, VSFrame* obs,
+                                   const VSFrameInfo* fi, const VSLensDistortion* ld){
+  int x, y;
+  for(y=0; y<fi->height; y++){
+    for(x=0; x<fi->width; x++){
+      double ux, uy;
+      uint8_t v;
+      if(vsLensUndistortPoint(ld, x, y, &ux, &uy) == VS_OK)
+        v = ldSampleBilinear(scene->data[0], fi->width, fi->height,
+                             scene->linesize[0], ux, uy);
+      else
+        v = 220;  /* outside U_k's domain: background colour, not garbage */
+      obs->data[0][y*obs->linesize[0]+x] = v;
+    }
+  }
+}
+
+/* Full mode makes straight lines straight; wobble mode leaves them curved. */
+static void test_lensmap_straightness(void){
+  const double k = -0.25;
+  VSFrameInfo fi;
+  VSFrame grid, obs, outFull, outWob;
+  VSLensDistortion ld;
+  VSTransform id = null_transform();
+  VSTransformData td;
+  int x, y;
+  double bendObs, bendFull, bendWob;
+  vsFrameInfoInit(&fi, 640, 480, PF_GRAY8);
+  vsFrameAllocate(&grid, &fi);
+  vsFrameAllocate(&obs, &fi);
+  memset(grid.data[0], 220, (size_t)grid.linesize[0]*fi.height);
+  /* Vertical lines only: lmColumnBend tracks the darkest pixel in a window
+     around one column, row by row. A horizontal line was found to break
+     this: on any row a horizontal line fully occupies, every pixel in the
+     search window ties at the minimum value, and the scan (which keeps the
+     first minimum seen, scanning left to right) reports the window's left
+     edge instead of the real vertical line -- a ~40px measurement artifact
+     an order of magnitude bigger than any real lens bend, confirmed
+     empirically (see the task-8 report). Dropping the horizontal lines
+     removes the confound entirely; the claim under test only needs one
+     clean vertical edge. */
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++)
+      if(x % 80 == 0)
+        grid.data[0][y*grid.linesize[0]+x] = 20;
+  ld = vsLensDistortionInit(&fi, k);
+  lmRenderDistortedScene(&grid, &obs, &fi, &ld);
+  bendObs = lmColumnBend(&obs, &fi, 560);
+
+  vsFrameAllocate(&outFull, &fi);
+  lmInitTd(&td, &fi, VSLensCorrectFull, k, VS_BiCubic);
+  test_bool(vsTransformPrepare(&td, &obs, &outFull) == VS_OK);
+  test_bool(vsDoTransform(&td, id) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  vsTransformDataCleanup(&td);
+  bendFull = lmColumnBend(&outFull, &fi, 560);
+
+  vsFrameAllocate(&outWob, &fi);
+  lmInitTd(&td, &fi, VSLensCorrectWobble, k, VS_BiCubic);
+  test_bool(vsTransformPrepare(&td, &obs, &outWob) == VS_OK);
+  test_bool(vsDoTransform(&td, id) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  vsTransformDataCleanup(&td);
+  bendWob = lmColumnBend(&outWob, &fi, 560);
+
+  fprintf(stderr, "  grid bend px: distorted %.2f, full %.2f, wobble %.2f\n",
+          bendObs, bendFull, bendWob);
+  test_bool(bendObs > 3.0);            /* the input really is curved */
+  test_bool(bendFull < 1.5);           /* full mode straightens it */
+  test_bool(fabs(bendWob - bendObs) < 1.0);  /* wobble leaves it exactly as-is */
+  vsFrameFree(&grid); vsFrameFree(&obs); vsFrameFree(&outFull); vsFrameFree(&outWob);
+}
+
+/* Pincushion under full mode reads outside the source at the corners: the
+   result must be the border colour, not garbage. */
+static void test_lensmap_pincushion_border(void){
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  VSTransformData td;
+  VSTransform id = null_transform();
+  int x, y;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  vsFrameAllocate(&src, &fi);
+  memset(src.data[0], 200, (size_t)src.linesize[0]*fi.height);
+  lmInitTd(&td, &fi, VSLensCorrectFull, 0.15, VS_BiLinear);
+  vsFrameAllocate(&dest, &fi);
+  test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+  test_bool(vsDoTransform(&td, id) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  /* the very corner reads well outside the source */
+  test_bool(dest.data[0][0] < 60);
+  test_bool(dest.data[0][fi.width-1] < 60);
+  /* A mid-edge pixel should still sample inside the source -- but which edge
+     depends on the frame's aspect ratio, not just "not a corner". rho is
+     normalised by the half-diagonal (here sqrt(160^2+120^2) = 200), so the
+     horizontal mid-edges sit at r/rho = 160/200 = 0.8 while the vertical
+     mid-edges sit at r/rho = 120/200 = 0.6. Measured directly: at k=0.15 the
+     horizontal mid-edges (dest[0][0] row-120 and dest[0][319] row-120) are
+     already partly or fully in the border-blend zone (0 and 40 respectively
+     -- confirmed empirically, see the task-8 report), i.e. r=0.8*rho is
+     already close enough to this k's domain edge that "still inside" does
+     not hold there for this frame size. The vertical mid-edges (r=0.6*rho)
+     are the ones that stay cleanly inside (measured 200, the untouched
+     background), so those are the pair checked here. */
+  test_bool(dest.data[0][fi.width/2] > 190);
+  test_bool(dest.data[0][(fi.height-1)*dest.linesize[0] + fi.width/2] > 190);
+  /* the centre is untouched */
+  test_bool(dest.data[0][(fi.height/2)*dest.linesize[0] + fi.width/2] > 190);
+  /* Nothing anywhere is a wild value. The bound is 201, not 200: the
+     fixed-point bilinear border blend (interpolateBiLinBorder in
+     transformfixedpoint.c) carries a deliberate "+1" rounding-bias
+     correction -- the same one documented at length in
+     test_lensmap_fixed_float_equivalence above -- which on a perfectly flat
+     200-valued source can round a genuine in-bounds sample up to 201.
+     Measured on this exact test: worst value 201, affecting 580/76800
+     pixels (0.8%), nowhere near a source value of 0 (the background) or a
+     clamped 255, so this is the known rounding artifact, not sampled
+     garbage. A bound of 200 exactly would fail on a correct implementation. */
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++){
+      uint8_t v = dest.data[0][y*dest.linesize[0]+x];
+      test_bool(v <= 201);
+    }
+  vsFrameFree(&src); vsFrameFree(&dest);
+  vsTransformDataCleanup(&td);
+}
+
 /* Inactive lens: identical to the old closed form, to the last bit. */
 static void test_lensmap_required_zoom_off(void){
   VSFrameInfo fi;

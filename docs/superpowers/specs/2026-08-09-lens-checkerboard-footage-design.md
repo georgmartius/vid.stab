@@ -28,8 +28,27 @@ coordinates. Not a bitmap.
   contrast stays high: dark blue `(25, 35, 90)` and light amber
   `(240, 205, 90)`.
 - **Radial inversion bands.** The two tones swap inside every other annulus
-  centred on the frame centre, with a band period of 60 px in radius. Half the
-  frame diagonal is 400 px, so roughly six band boundaries cross the picture.
+  centred on the frame centre, with a band period of **61 px** in radius. Half
+  the frame diagonal is 400 px, so roughly six band boundaries cross the
+  picture.
+
+  61 rather than a round 60, and the choice is load-bearing. Where a band
+  circle runs tangent to a cell line, both terms of the `cell XOR band` flip
+  along nearly the same curve and leave a lune of opposite tone whose
+  thickness falls as `u^2/2R` — arbitrarily thin, and below the supersampler's
+  pitch it renders at a different sub-pixel phase in each frame. At a 60 px
+  period the circle `r = 240` is exactly tangent to the cell lines `y = 0` and
+  `y = 480` (both multiples of the 32 px cell) at `x = 320`, producing a sliver
+  under 0.25 px thick. That is a defect of the pattern, not of anything it is
+  used to test: it cost a full diagnosis pass, having first presented as a
+  Wobble-mode accuracy failure at exactly the two destination rows
+  `y = 18.41` and `y = 461.59` those scene points map to.
+
+  61 is coprime with the 32 px cell, so no multiple of the band period
+  coincides with a distance from the frame centre to a cell line anywhere in
+  the picture — the first coincidence sits at `r = 976`, far outside it. The
+  thinnest in-frame lune becomes about 3 px, twelve times the subsample pitch.
+  Any future retune of `LC_CELL` or `LC_BAND` must preserve that property.
 
 The bands are what make the pattern worth more than a plain checkerboard.
 A cell boundary is a straight line, and distortion bends it — that reads well

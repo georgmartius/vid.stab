@@ -1155,6 +1155,108 @@ static void test_lensmap_required_zoom_off(void){
   vsTransformDataCleanup(&td);
 }
 
+/* optZoom == 1 is the default zoom path (VSTransformConfig.optZoom defaults
+   to 1, not 2), so the lens-aware budget must reach it too, not just the
+   optZoom == 2 path that vsTransformRequiredZoom was originally wired into.
+
+   Builds a batch of transforms with known x/y extremes and a known largest
+   rotation, runs it through vsPreprocessTransforms with optZoom == 1, and
+   checks:
+     - lens inactive: the result is exactly the old closed form (== , not a
+       tolerance -- modelled on test_lensmap_required_zoom_off above).
+     - lens active: the result is at least the lens-aware requirement for the
+       four corner combinations of those same extremes (never less -- this is
+       a budget, and under-budgeting shows as black slivers), and at least
+       the old closed form too (the lens-aware term can only add zoom here,
+       never subtract it). */
+static void test_lensmap_optzoom1_lens_budget(void){
+  VSFrameInfo fi;
+  const int n = 10;
+  VSTransform ts[10];
+  VSTransformations trans;
+  int i;
+  vsFrameInfoInit(&fi, 640, 360, PF_GRAY8);
+  for(i=0; i<n; i++){
+    ts[i] = null_transform();
+    ts[i].x     = -30.0 + 8.0*i;      /* spans -30 .. +42 */
+    ts[i].y     =  20.0 - 5.0*i;      /* spans  20 .. -25 */
+    ts[i].alpha =  0.01*(i - 3);      /* spans -0.03 .. +0.06, |.| worst at i=9 */
+  }
+
+  /* --- lens inactive: bit-identical to the closed form --- */
+  {
+    VSTransformData td;
+    VSTransformConfig cfg = vsTransformGetDefaultConfig("optzoom1-off");
+    VSTransform min_t, max_t;
+    double zx, zy, expect;
+    cfg.relative          = 0;
+    cfg.smoothing         = 0;
+    cfg.optZoom           = 1;
+    cfg.lensCorrection    = VSLensCorrectOff;
+    cfg.estimateLensDistortion = 0;
+    test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+    vsTransformSetLensK(&td, -0.25);       /* would want correction, but mode is Off */
+    trans.ts = ts; trans.len = n; trans.current = 0; trans.warned_end = 0;
+    cleanmaxmin_xy_transform(ts, n, 1, &min_t, &max_t);
+    zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/fi.width;
+    zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/fi.height;
+    expect = VS_CLAMP(100 * VS_MAX(zx,zy), -60, 60);
+    test_bool(vsPreprocessTransforms(&td, &trans) == VS_OK);
+    test_bool(td.conf.zoom == expect);
+    test_bool(td.lensActive == 0);
+    vsTransformDataCleanup(&td);
+  }
+
+  /* --- lens active: at least the lens-aware requirement --- */
+  {
+    VSTransformData td;
+    VSTransformConfig cfg = vsTransformGetDefaultConfig("optzoom1-on");
+    VSTransform min_t, max_t;
+    double zx, zy, closedZoom, floorZoom, maxAlpha;
+    int ix, iy;
+    cfg.relative          = 0;
+    cfg.smoothing         = 0;
+    cfg.optZoom           = 1;
+    cfg.lensCorrection    = VSLensCorrectWobble;
+    cfg.estimateLensDistortion = 0;
+    test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+    vsTransformSetLensK(&td, -0.25);
+    trans.ts = ts; trans.len = n; trans.current = 0; trans.warned_end = 0;
+
+    cleanmaxmin_xy_transform(ts, n, 1, &min_t, &max_t);
+    zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/fi.width;
+    zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/fi.height;
+    closedZoom = 100 * VS_MAX(zx,zy);
+
+    maxAlpha = 0.0;
+    for(i=0; i<n; i++)
+      if(fabs(ts[i].alpha) > fabs(maxAlpha)) maxAlpha = ts[i].alpha;
+
+    lensEnsureMaps(&td);
+    test_bool(td.lensActive == 1);
+    floorZoom = closedZoom;
+    {
+      double cx[2] = { min_t.x, max_t.x };
+      double cy[2] = { min_t.y, max_t.y };
+      for(ix=0; ix<2; ix++){
+        for(iy=0; iy<2; iy++){
+          VSTransform corner = null_transform();
+          corner.x = cx[ix]; corner.y = cy[iy]; corner.alpha = maxAlpha;
+          floorZoom = VS_MAX(floorZoom, vsTransformRequiredZoom(&td, &corner));
+        }
+      }
+    }
+    floorZoom = VS_CLAMP(floorZoom, -60, 60);
+
+    test_bool(vsPreprocessTransforms(&td, &trans) == VS_OK);
+    fprintf(stderr, "  optZoom==1 lens budget: closed form %.3f, lens-aware floor %.3f,"
+                    " actual %.3f\n", closedZoom, floorZoom, td.conf.zoom);
+    test_bool(td.conf.zoom >= floorZoom - 1e-9);
+    test_bool(td.conf.zoom >= closedZoom - 1e-9);
+    vsTransformDataCleanup(&td);
+  }
+}
+
 /* --- estimate-to-render plumbing ------------------------------------------ */
 
 /* An explicit conf.lensK must win over anything estimated, and must survive

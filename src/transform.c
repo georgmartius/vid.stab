@@ -595,7 +595,36 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     double zx = 2*VS_MAX(max_t.x,fabs(min_t.x))/td->fiSrc.width;
     // the zoom value only for y
     double zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
-    td->conf.zoom += 100 * VS_MAX(zx,zy); // use maximum
+    double zoom = 100 * VS_MAX(zx,zy); // use maximum
+
+    /* The closed form above reasons about corner translation under a pure
+       similarity; it knows nothing about the lens. lensEnsureMaps() must run
+       before td->lensActive is read (see the other call sites). When the
+       lens is active, additionally budget from the real backward map at the
+       four corner combinations of the same 99th-percentile x/y extremes
+       already computed above, plus the largest-magnitude rotation seen in
+       this batch of transforms (cheap: one more pass over ts). This can
+       only ever raise the budget, never lower it: under-budgeting shows up
+       as black slivers at the border, so the closed-form value is always a
+       floor. */
+    lensEnsureMaps(td);
+    if(td->lensActive){
+      double cx[2] = { min_t.x, max_t.x };
+      double cy[2] = { min_t.y, max_t.y };
+      double maxAlpha = 0.0;
+      int ix, iy;
+      for(int i = 0; i < trans->len; i++)
+        if(fabs(ts[i].alpha) > fabs(maxAlpha)) maxAlpha = ts[i].alpha;
+      for(ix = 0; ix < 2; ix++){
+        for(iy = 0; iy < 2; iy++){
+          VSTransform corner = null_transform();
+          corner.x = cx[ix]; corner.y = cy[iy]; corner.alpha = maxAlpha;
+          zoom = VS_MAX(zoom, vsTransformRequiredZoom(td, &corner));
+        }
+      }
+    }
+
+    td->conf.zoom += zoom; // use maximum
     td->conf.zoom = VS_CLAMP(td->conf.zoom,-60,60);
     vs_log_info(td->conf.modName, "Final zoom: %lf\n", td->conf.zoom);
   }

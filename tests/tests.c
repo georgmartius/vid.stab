@@ -237,6 +237,7 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testLCR", "checkerboard lens clip round trip")){
     UNIT(test_lenscorrect_pattern());
     UNIT(test_lenscorrect_generator());
+    UNIT(test_lenscorrect_roundtrip_full());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

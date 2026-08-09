@@ -433,10 +433,12 @@ finite, positive and monotone, not accurate, since nothing depends on their prec
 The production, fixed-point warp loop that ships agrees with an independent double-precision
 reference through the same interpolator to a mean of 0.081 pixel levels in the worst case, for
 `VS_Zero`/`VS_Linear`; `VS_BiLinear`/`VS_BiCubic` do slightly better, at 0.077
-(`test_lensmap_fixed_reference`, `tests/test_lensmap.c:665-666`). A companion test
-(`test_lensmap_fixed_float_equivalence`) is sensitive enough to detect a systematic 0.02% error
-deliberately injected into the distortion lookup — the accuracy bar is set from measurement, not
-chosen to make a test pass.
+(`test_lensmap_fixed_reference`, `tests/test_lensmap.c:665-666`). The same test is sensitive enough
+to detect a systematic 0.02% error deliberately injected into the distortion lookup — the accuracy
+bar is set from measurement, not chosen to make a test pass. (A separate, coarser test,
+`test_lensmap_fixed_float_equivalence`, cross-checks the fixed-point loop against its own float
+sibling with a wide margin (`MEAN_MARGIN = 16.0`); its own comment calls it blunt, and its
+detection floor is only 1-1.5%, so it is not the source of the 0.02% figure above.)
 
 ### Zoom budget: it cuts both ways
 

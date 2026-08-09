@@ -694,9 +694,12 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   `VSLensCorrectOff/Wobble/Full` (`src/lensmap.h`).
 - Produces:
   - `typedef struct { int n, nFlat, maxFlat; double psnr; } LCCompare;`
+  - `typedef enum { LC_REF_BASE, LC_REF_FRAME0 } LCReference;`
+  - `typedef struct { VSPixelFormat pf; double k; VSLensCorrectMode mode; LCReference ref; int maxFlat; double minPsnr; int minValidDiv; const char* label; } LCCase;`
   - `void lcValidMask(unsigned char* valid, const VSFrameInfo* fi, const VSLensDistortion* ld, const VSTransform* t, VSLensCorrectMode mode)`
   - `LCCompare lcCompare(const VSFrame* got, const VSFrame* ideal, const VSFrameInfo* fi, const unsigned char* valid)`
   - `void lcCorrect(VSFrame* out, const VSFrame* in, const VSFrameInfo* fi, VSLensCorrectMode mode, double k, VSTransform t)`
+  - `void lcCheckRoundTrip(const LCCase* c)` — the shared driver Task 4 reuses
   - `void test_lenscorrect_roundtrip_full(void)`
 
 - [ ] **Step 1: Write the failing test**
@@ -719,46 +722,25 @@ Append to `tests/test_lenscorrect_roundtrip.c`:
    a PSNR floor over the whole valid region to catch gross geometric error in
    the textured parts. */
 static void test_lenscorrect_full_recovers_base(void){
-  VSFrameInfo fi;
-  VSFrame base, out, frames[LC_NUM_FRAMES];
-  unsigned char* valid;
-  VSLensDistortion ld;
-  int i;
-
-  fprintf(stderr, "--- Full correction recovers the base image ---\n");
-
-  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_BARREL, LC_NUM_FRAMES);
-  ld = vsLensDistortionInit(&fi, LC_K_BARREL);
-  vsFrameAllocate(&base, &fi);
-  vsFrameAllocate(&out,  &fi);
-  lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
-  valid = (unsigned char*)malloc(fi.width*fi.height);
-  test_bool(valid != NULL);
-
-  for(i=0; i<LC_NUM_FRAMES; i++){
-    VSTransform ti = lcInverseTransform(lcClipTransform(i));
-    LCCompare c;
-    lcCorrect(&out, &frames[i], &fi, VSLensCorrectFull, LC_K_BARREL, ti);
-    lcValidMask(valid, &fi, &ld, &ti, VSLensCorrectFull);
-    c = lcCompare(&out, &base, &fi, valid);
-    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
-            i, c.n, c.nFlat, c.maxFlat, c.psnr);
-    /* A mask that had collapsed to almost nothing would make the rest of the
-       assertions vacuous, so pin its size first. */
-    test_bool(c.n    > fi.width*fi.height/2);
-    test_bool(c.nFlat > c.n/4);
-    test_bool(c.maxFlat <= LC_MAX_FLAT_DELTA);
-    test_bool(c.psnr    >= LC_MIN_PSNR);
-  }
-
-  free(valid);
-  vsFrameFree(&base); vsFrameFree(&out);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  LCCase c;
+  c.pf          = PF_RGB24;
+  c.k           = LC_K_BARREL;
+  c.mode        = VSLensCorrectFull;
+  c.ref         = LC_REF_BASE;
+  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.minPsnr     = LC_MIN_PSNR;
+  c.minValidDiv = 2;
+  c.label       = "Full correction recovers the base image, k = -0.25";
+  lcCheckRoundTrip(&c);
 }
 
 /* The control that stops all of the above from passing with the lens map
    stubbed out to a no-op: the same clip, same inverse pose, correction OFF.
-   The distortion is then still in the picture and the score must collapse. */
+   The distortion is then still in the picture and the score must collapse.
+
+   Written out rather than routed through lcCheckRoundTrip because it is a
+   different shape of assertion -- two runs compared against each other over
+   one shared mask, not one run against a tolerance. */
 static void test_lenscorrect_off_is_much_worse(void){
   VSFrameInfo fi;
   VSFrame base, outOn, outOff, frames[LC_NUM_FRAMES];
@@ -815,8 +797,9 @@ Run:
 ```bash
 cd build/tests-debug && make -j8 tests
 ```
-Expected: FAIL to compile — `LCCompare`, `lcCompare`, `lcValidMask`,
-`lcCorrect`, `LC_MAX_FLAT_DELTA`, `LC_MIN_PSNR` undeclared.
+Expected: FAIL to compile — `LCCase`, `LCCompare`, `lcCheckRoundTrip`,
+`lcCompare`, `lcValidMask`, `lcCorrect`, `LC_MAX_FLAT_DELTA`, `LC_MIN_PSNR`
+undeclared.
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -941,7 +924,74 @@ static LCCompare lcCompare(const VSFrame* got, const VSFrame* ideal,
   }
   return c;
 }
+
+/* What a corrected frame is compared against.
+
+   LC_REF_BASE is the undistorted, unshaken scene -- what Full mode must
+   produce.  LC_REF_FRAME0 is frame 0 of the clip itself, which is what Wobble
+   must produce: its output is pattern(U_k(x)), and that IS frame 0, because
+   lcClipTransform(0) is the identity. */
+typedef enum { LC_REF_BASE, LC_REF_FRAME0 } LCReference;
+
+/* One round-trip case.  minValidDiv bounds how much of the frame the mask has
+   to keep: the assertion is n > width*height/minValidDiv, which stops the
+   tolerance checks below it from passing vacuously on a mask that collapsed
+   to a handful of pixels. */
+typedef struct {
+  VSPixelFormat     pf;
+  double            k;
+  VSLensCorrectMode mode;
+  LCReference       ref;
+  int               maxFlat;
+  double            minPsnr;
+  int               minValidDiv;
+  const char*       label;
+} LCCase;
+
+/* Generates the clip, corrects every frame with the exact inverse of its own
+   pose, and holds the result against the case's reference. */
+static void lcCheckRoundTrip(const LCCase* c){
+  VSFrameInfo fi;
+  VSFrame ref, out, frames[LC_NUM_FRAMES];
+  unsigned char* valid;
+  VSLensDistortion ld;
+  int i;
+
+  fprintf(stderr, "--- %s ---\n", c->label);
+
+  lcGenerateClip(frames, &fi, c->pf, c->k, LC_NUM_FRAMES);
+  ld = vsLensDistortionInit(&fi, c->k);
+  vsFrameAllocate(&out, &fi);
+  vsFrameAllocate(&ref, &fi);
+  if(c->ref == LC_REF_BASE)
+    lcRenderMapped(&ref, &fi, lcIdentityMap, NULL);
+  else
+    vsFrameCopy(&ref, &frames[0], &fi);
+  valid = (unsigned char*)malloc(fi.width*fi.height);
+  test_bool(valid != NULL);
+
+  for(i=0; i<LC_NUM_FRAMES; i++){
+    VSTransform ti = lcInverseTransform(lcClipTransform(i));
+    LCCompare cmp;
+    lcCorrect(&out, &frames[i], &fi, c->mode, c->k, ti);
+    lcValidMask(valid, &fi, &ld, &ti, c->mode);
+    cmp = lcCompare(&out, &ref, &fi, valid);
+    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
+            i, cmp.n, cmp.nFlat, cmp.maxFlat, cmp.psnr);
+    test_bool(cmp.n     > fi.width*fi.height/c->minValidDiv);
+    test_bool(cmp.nFlat > cmp.n/4);
+    test_bool(cmp.maxFlat <= c->maxFlat);
+    test_bool(cmp.psnr    >= c->minPsnr);
+  }
+
+  free(valid);
+  vsFrameFree(&ref); vsFrameFree(&out);
+  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+}
 ```
+
+`vsFrameCopy(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi)` is
+declared at `src/frameinfo.h:111`.
 
 - [ ] **Step 4: Run and read off the real numbers**
 
@@ -997,12 +1047,16 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 4: Wobble mode, 4:2:0 chroma, and pincushion
 
+Three more cases through `lcCheckRoundTrip`. The driver already exists — this
+task adds only the case descriptions and the 4:2:0 tolerances.
+
 **Files:**
 - Modify: `tests/test_lenscorrect_roundtrip.c`
 - Modify: `tests/tests.c:~236`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-3.
+- Consumes: everything from Tasks 1-3, in particular `lcCheckRoundTrip`,
+  `LCCase`, `LCReference`, `LC_MAX_FLAT_DELTA`, `LC_MIN_PSNR`.
 - Produces: `void test_lenscorrect_roundtrip_modes(void)`
 
 - [ ] **Step 1: Write the failing test**
@@ -1014,131 +1068,67 @@ Append to `tests/test_lenscorrect_roundtrip.c`:
 
      out(x) = frame_i( D_k( M_t'( U_k(x) ) ) ) = pattern( U_k(x) )
 
-   and pattern(U_k(x)) is exactly frame 0, because lcClipTransform(0) is the
-   identity.  So every corrected frame must match frame 0 of the clip -- the
-   assertion the mode's whole promise rests on, that a lens-corrected shot of a
-   still camera is unchanged.
+   and pattern(U_k(x)) is exactly frame 0 of the clip, because
+   lcClipTransform(0) is the identity -- hence LC_REF_FRAME0.  That is the
+   mode's whole promise stated as an assertion: a lens-corrected shot of a
+   still camera comes back unchanged.
 
-   Note frame 0 of this loop is trivially exact: an identity transform in
+   Note frame 0 of the loop is trivially exact: an identity transform in
    Wobble mode takes the memcpy fast path (transformfloat.c:331), so nothing
-   is resampled.  Frames 1..5 are the real test.  The Full-mode loop in Task 3
-   has no such hole -- that same line excludes Full from the fast path
-   explicitly, so its i == 0 case walks the inner loop like the rest. */
+   is resampled.  Frames 1..5 are the real test.  The Full-mode cases have no
+   such hole -- that same line excludes Full from the fast path explicitly, so
+   their i == 0 walks the inner loop like the rest. */
 static void test_lenscorrect_wobble_holds_the_lens(void){
-  VSFrameInfo fi;
-  VSFrame out, frames[LC_NUM_FRAMES];
-  unsigned char* valid;
-  VSLensDistortion ld;
-  int i;
-
-  fprintf(stderr, "--- Wobble removes the shake, keeps the lens ---\n");
-
-  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_BARREL, LC_NUM_FRAMES);
-  ld = vsLensDistortionInit(&fi, LC_K_BARREL);
-  vsFrameAllocate(&out, &fi);
-  valid = (unsigned char*)malloc(fi.width*fi.height);
-  test_bool(valid != NULL);
-
-  for(i=0; i<LC_NUM_FRAMES; i++){
-    VSTransform ti = lcInverseTransform(lcClipTransform(i));
-    LCCompare c;
-    lcCorrect(&out, &frames[i], &fi, VSLensCorrectWobble, LC_K_BARREL, ti);
-    lcValidMask(valid, &fi, &ld, &ti, VSLensCorrectWobble);
-    /* compared against frame 0 of the clip, not against the base */
-    c = lcCompare(&out, &frames[0], &fi, valid);
-    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
-            i, c.n, c.nFlat, c.maxFlat, c.psnr);
-    test_bool(c.n     > fi.width*fi.height/2);
-    test_bool(c.nFlat > c.n/4);
-    test_bool(c.maxFlat <= LC_MAX_FLAT_DELTA);
-    test_bool(c.psnr    >= LC_MIN_PSNR);
-  }
-
-  free(valid);
-  vsFrameFree(&out);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  LCCase c;
+  c.pf          = PF_RGB24;
+  c.k           = LC_K_BARREL;
+  c.mode        = VSLensCorrectWobble;
+  c.ref         = LC_REF_FRAME0;
+  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.minPsnr     = LC_MIN_PSNR;
+  c.minValidDiv = 2;
+  c.label       = "Wobble removes the shake, keeps the lens, k = -0.25";
+  lcCheckRoundTrip(&c);
 }
 
 /* Pincushion through the same Full round trip.  A map that only ever handled
-   the barrel sign would pass everything above. */
+   the barrel sign would pass everything above.
+
+   minValidDiv is 3 rather than 2 because for k > 0 the distort map pushes
+   source points outward, so more of the destination frame maps off the source
+   and the valid mask is genuinely smaller. */
 static void test_lenscorrect_pincushion_roundtrip(void){
-  VSFrameInfo fi;
-  VSFrame base, out, frames[LC_NUM_FRAMES];
-  unsigned char* valid;
-  VSLensDistortion ld;
-  int i;
-
-  fprintf(stderr, "--- Full correction, pincushion k = +0.15 ---\n");
-
-  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_PIN, LC_NUM_FRAMES);
-  ld = vsLensDistortionInit(&fi, LC_K_PIN);
-  vsFrameAllocate(&base, &fi);
-  vsFrameAllocate(&out,  &fi);
-  lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
-  valid = (unsigned char*)malloc(fi.width*fi.height);
-  test_bool(valid != NULL);
-
-  for(i=0; i<LC_NUM_FRAMES; i++){
-    VSTransform ti = lcInverseTransform(lcClipTransform(i));
-    LCCompare c;
-    lcCorrect(&out, &frames[i], &fi, VSLensCorrectFull, LC_K_PIN, ti);
-    lcValidMask(valid, &fi, &ld, &ti, VSLensCorrectFull);
-    c = lcCompare(&out, &base, &fi, valid);
-    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
-            i, c.n, c.nFlat, c.maxFlat, c.psnr);
-    test_bool(c.n     > fi.width*fi.height/3);
-    test_bool(c.nFlat > c.n/4);
-    test_bool(c.maxFlat <= LC_MAX_FLAT_DELTA);
-    test_bool(c.psnr    >= LC_MIN_PSNR);
-  }
-
-  free(valid);
-  vsFrameFree(&base); vsFrameFree(&out);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  LCCase c;
+  c.pf          = PF_RGB24;
+  c.k           = LC_K_PIN;
+  c.mode        = VSLensCorrectFull;
+  c.ref         = LC_REF_BASE;
+  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.minPsnr     = LC_MIN_PSNR;
+  c.minValidDiv = 3;
+  c.label       = "Full correction, pincushion k = +0.15";
+  lcCheckRoundTrip(&c);
 }
 
 /* The same Full round trip on 4:2:0, where the chroma planes get their own
    half-resolution lens map.  That per-plane map is the part of lensmap.c most
-   likely to be wrong, and no RGB test can reach it.
+   likely to be wrong, and no packed-RGB test can reach it.
 
    Its own tolerances: the frames are built with setPixelRGB, which writes one
    pixel's chroma per 2x2 block, and getPixelRGB reads it back nearest
    neighbour, so chroma is quantised on both sides of the comparison in a way
    the packed path never is.  Luma is unaffected. */
 static void test_lenscorrect_full_yuv420(void){
-  VSFrameInfo fi;
-  VSFrame base, out, frames[LC_NUM_FRAMES];
-  unsigned char* valid;
-  VSLensDistortion ld;
-  int i;
-
-  fprintf(stderr, "--- Full correction on PF_YUV420P ---\n");
-
-  lcGenerateClip(frames, &fi, PF_YUV420P, LC_K_BARREL, LC_NUM_FRAMES);
-  ld = vsLensDistortionInit(&fi, LC_K_BARREL);
-  vsFrameAllocate(&base, &fi);
-  vsFrameAllocate(&out,  &fi);
-  lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
-  valid = (unsigned char*)malloc(fi.width*fi.height);
-  test_bool(valid != NULL);
-
-  for(i=0; i<LC_NUM_FRAMES; i++){
-    VSTransform ti = lcInverseTransform(lcClipTransform(i));
-    LCCompare c;
-    lcCorrect(&out, &frames[i], &fi, VSLensCorrectFull, LC_K_BARREL, ti);
-    lcValidMask(valid, &fi, &ld, &ti, VSLensCorrectFull);
-    c = lcCompare(&out, &base, &fi, valid);
-    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
-            i, c.n, c.nFlat, c.maxFlat, c.psnr);
-    test_bool(c.n     > fi.width*fi.height/2);
-    test_bool(c.nFlat > c.n/4);
-    test_bool(c.maxFlat <= LC_MAX_FLAT_DELTA_420);
-    test_bool(c.psnr    >= LC_MIN_PSNR_420);
-  }
-
-  free(valid);
-  vsFrameFree(&base); vsFrameFree(&out);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  LCCase c;
+  c.pf          = PF_YUV420P;
+  c.k           = LC_K_BARREL;
+  c.mode        = VSLensCorrectFull;
+  c.ref         = LC_REF_BASE;
+  c.maxFlat     = LC_MAX_FLAT_DELTA_420;
+  c.minPsnr     = LC_MIN_PSNR_420;
+  c.minValidDiv = 2;
+  c.label       = "Full correction on PF_YUV420P, k = -0.25";
+  lcCheckRoundTrip(&c);
 }
 
 void test_lenscorrect_roundtrip_modes(void){
@@ -1180,9 +1170,9 @@ Run:
 cd build/tests-debug && make -j8 tests && ./tests --testLCR 2>&1 | grep -A8 "PF_YUV420P"
 ```
 Record the worst `maxFlat` and worst `PSNR` of the 4:2:0 block. Also check
-whether the pincushion and Wobble blocks pass on the Task 3 constants — they
+whether the pincushion and Wobble cases pass on the Task 3 constants — they
 should; if pincushion does not, note the numbers and raise it in review rather
-than silently loosening `LC_MIN_PSNR`, which the barrel test also uses.
+than silently loosening `LC_MIN_PSNR`, which the barrel case also uses.
 
 - [ ] **Step 5: Set the 4:2:0 tolerances from the measurement**
 

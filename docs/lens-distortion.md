@@ -406,9 +406,10 @@ number across.
 
 ### Full mode softens the periphery
 
-For barrel distortion, `D_k`'s derivative falls below 1 away from the centre — `dD/dr ≈ 0.71` at
-`r = 1`, `k = -0.25` — so the outer region of the frame is magnified: a small patch of source
-pixels is stretched to cover a larger patch of output pixels. That shows up as softening toward the
+For barrel distortion, `D_k`'s derivative falls below 1 away from the centre — `dD/dr ≈ 0.586` at
+`r = 1`, `k = -0.25` — meaning a small patch of source pixels is stretched to cover a larger patch
+of output pixels: the outer region of the frame is magnified, and magnified means softer. That
+shows up as softening toward the
 edges under `Full` correction, worst at the corners. Bicubic interpolation (`VS_BiCubic`) reduces
 the visible effect noticeably compared to bilinear, but **the interpolation type is not changed
 automatically** when `lensCorrection` is set to `Full` — a caller who wants the sharper result
@@ -430,10 +431,12 @@ past a pincushion lens's genuine mathematical domain edge — the tables are onl
 finite, positive and monotone, not accurate, since nothing depends on their precision there.
 
 The production, fixed-point warp loop that ships agrees with an independent double-precision
-reference through the same interpolator to a mean of 0.081 pixel levels (`test_lensmap_fixed_
-reference`), and a companion test (`test_lensmap_fixed_float_equivalence`) is sensitive enough to
-detect a systematic 0.02% error deliberately injected into the distortion lookup — the accuracy
-bar is set from measurement, not chosen to make a test pass.
+reference through the same interpolator to a mean of 0.081 pixel levels in the worst case, for
+`VS_Zero`/`VS_Linear`; `VS_BiLinear`/`VS_BiCubic` do slightly better, at 0.077
+(`test_lensmap_fixed_reference`, `tests/test_lensmap.c:665-666`). A companion test
+(`test_lensmap_fixed_float_equivalence`) is sensitive enough to detect a systematic 0.02% error
+deliberately injected into the distortion lookup — the accuracy bar is set from measurement, not
+chosen to make a test pass.
 
 ### Zoom budget: it cuts both ways
 

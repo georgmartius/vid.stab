@@ -2,9 +2,10 @@
 
 Written 2026-08-09. Branch `feature/lens-distortion-estimation`.
 
-Successor to `docs/lens-correction-handover.md`, which described the render-side work as a single
-"undistort the output" feature. This design keeps that mode but makes it the opt-in one, and
-introduces a second, cheaper mode as the default.
+Design for applying the estimated lens distortion to the rendered picture, not merely to the
+reported camera motion. An earlier proposal described this as a single "undistort the output"
+feature; this design keeps that mode but makes it the opt-in one, and introduces a second, cheaper
+mode as the default.
 
 Read `docs/lens-distortion.md` first for the model, the sign convention (barrel is `k < 0`) and the
 `rho` normalisation (half-diagonal, `r = 1` at the corner).
@@ -386,7 +387,7 @@ a similarity — the forward direction needed to *create* distorted input), `ldF
 
 ## 7. Known limits, carried forward
 
-- **Peripheral softness in full mode.** `dD/dr < 1` at the periphery (≈0.71 at `r = 1`, `k = -0.25`),
+- **Peripheral softness in full mode.** `dD/dr < 1` at the periphery (≈0.586 at `r = 1`, `k = -0.25`),
   so the outer region is magnified and softens. Bicubic helps. Documented, not forced — an automatic
   interpolation change would be a surprising side effect of a mode flag. Wobble mode is largely
   spared, since its net warp is small wherever the stabiliser moved little.

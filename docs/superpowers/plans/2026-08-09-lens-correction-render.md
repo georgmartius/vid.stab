@@ -1874,7 +1874,7 @@ In `docs/lens-distortion.md`, add a section "Applying the correction to the outp
 - the config surface: `lensCorrection`, `lensK`, and their defaults;
 - that the transforms-file path (`src/serialize.c`) carries no `k`, so correction is off there
   unless `lensK` is set — the file format was deliberately not extended;
-- that `full` mode softens the periphery (`dD/dr ≈ 0.71` at `r = 1`, `k = -0.25`) and bicubic helps,
+- that `full` mode softens the periphery (`dD/dr ≈ 0.586` at `r = 1`, `k = -0.25`) and bicubic helps,
   but the interpolation type is not changed automatically;
 - that `k` is one value per clip, so zoom lenses are out of scope;
 - the measured numbers from Tasks 3, 5 and 8 (wobble residual reduction, fixed/float agreement, grid

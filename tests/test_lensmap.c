@@ -787,3 +787,96 @@ static void test_lensmap_packed(void){
   vsTransformDataCleanup(&td);
   vsFrameFree(&src);
 }
+
+/* Direct-reference check for the FIXED-POINT packed warp -- the loop
+   vsDoTransform actually dispatches to for every packed (RGB/BGR/RGBA)
+   frame. Ported directly from test_lensmap_fixed_reference above: render
+   through the real loop (transformPacked), independently compute the
+   expected source coordinate per destination pixel with the closed-form,
+   double-precision vsLensMapBackward, then sample the source through the
+   SAME fixed-point interpolator the loop used (interpolateN) and compare.
+   Using the same interpolator on both sides cancels interpolator behaviour
+   out of the comparison entirely, so what is left is a direct measurement
+   of the packed loop's geometry -- test_lensmap_packed above only checks
+   that the lens is engaged at all, not that it lands in the right place.
+
+   interpolateN (unlike td->interpolate for the planar loop) does not
+   depend on cfg.interpolType -- transformPacked always calls it directly,
+   see src/transformfixedpoint.c -- so there is no need to sweep
+   interpolation types here, unlike the planar version of this test.
+
+   A real translation plus a small rotation is used (not the identity) so
+   transformPacked's fast path is not taken and the lens map is genuinely
+   exercised; td->conf.crop is VSCropBorder (see lmInitTd), so the packed
+   loop's border def is the fixed value 16 (src/transformfixedpoint.c:
+   "td->conf.crop ? 16 : *dest"), passed to interpolateN below to match. */
+static void test_lensmap_fixed_reference_packed(void){
+  const double ks[] = {-0.3, -0.25, -0.1, 0.12};
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  int im, ik, x, y, z;
+
+  /* Measured across 2 modes x 4 k's with the implementation in this commit
+     (fixed-point transformPacked vs. double-precision vsLensMapBackward,
+     same interpolator, PF_RGB24, 320x240, t.x=6.25 t.y=-3.5 t.alpha=0.008):
+       max observed mean = 0.0387   max observed max = 219
+     TIGHT_MEAN is ~2x the observed mean and carries the real guarantee (see
+     the mutation-detection sweep in the task-6 report). MAX is bounded only
+     loosely, for the same floor()-boundary reason documented in
+     test_lensmap_fixed_reference above: fixed vs. double coordinates that
+     agree to a few thousandths of a pixel can still straddle an integer
+     boundary and pick a different interpolation neighbour, which on this
+     hard-edged (x*7, y*5, x^y) texture is a large single-channel
+     difference. LOOSE_MAX is ~2x the observed max; it still catches a
+     systematic regression, just not this specific coincidence. */
+  const double TIGHT_MEAN = 0.08;
+  const int    LOOSE_MAX  = 440;
+
+  vsFrameInfoInit(&fi, 320, 240, PF_RGB24);
+  vsFrameAllocate(&src, &fi);
+  for(y=0; y<fi.height; y++)
+    for(x=0; x<fi.width; x++)
+      setPixelRGB(&src, &fi, x, y, (uint8_t)(x*7), (uint8_t)(y*5), (uint8_t)(x^y));
+
+  for(im=1; im<=2; im++){
+    VSLensCorrectMode cm = im == 1 ? VSLensCorrectWobble : VSLensCorrectFull;
+    for(ik=0; ik<4; ik++){
+      VSTransformData td;
+      VSLensPlaneMap ref;
+      VSTransform t = null_transform();
+      double sumDiff = 0; int n = 0, maxDiff = 0;
+      t.x = 6.25; t.y = -3.5; t.alpha = 0.008;
+      lmInitTd(&td, &fi, cm, ks[ik], VS_BiLinear);
+      vsFrameAllocate(&dest, &fi);
+      test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+      test_bool(transformPacked(&td, t) == VS_OK);
+      test_bool(vsTransformFinish(&td) == VS_OK);
+      test_bool(vsLensPlaneMapInit(&ref, &fi, &fi, 0, ks[ik], cm) == VS_OK);
+      for(y=0; y<fi.height; y++){
+        for(x=0; x<fi.width; x++){
+          double xs, ys;
+          vsLensMapBackward(&ref, &t, x, y, &xs, &ys);
+          for(z=0; z<fi.bytesPerPixel; z++){
+            uint8_t expected, actual;
+            int diff;
+            interpolateN(&expected, lmDToFp16(xs), lmDToFp16(ys), src.data[0],
+                         src.linesize[0], fi.width, fi.height,
+                         fi.bytesPerPixel, (uint8_t)z, 16);
+            actual = dest.data[0][y*dest.linesize[0] + x*fi.bytesPerPixel + z];
+            diff = actual > expected ? actual - expected : expected - actual;
+            sumDiff += diff; n++;
+            if(diff > maxDiff) maxDiff = diff;
+          }
+        }
+      }
+      fprintf(stderr, "  fixed-reference-packed mode=%d k=%.2f: mean=%.4f max=%d\n",
+              im, ks[ik], sumDiff/n, maxDiff);
+      test_bool(sumDiff/n <= TIGHT_MEAN);
+      test_bool(maxDiff   <= LOOSE_MAX);
+      vsLensPlaneMapFree(&ref);
+      vsFrameFree(&dest);
+      vsTransformDataCleanup(&td);
+    }
+  }
+  vsFrameFree(&src);
+}

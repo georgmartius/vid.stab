@@ -577,23 +577,21 @@ static void test_lensmap_fixed_float_equivalence(void){
   VSTransform t0 = null_transform();
   t0.x = 6.25; t0.y = -3.5; t0.alpha = 0.008;
 
-  /* Margins on the lens's *additional* fixed-vs-float disagreement, on top
-     of each interpolation type's own lens-off baseline. Measured across all
+  /* Margin on the lens's *additional* fixed-vs-float disagreement, on top of
+     each interpolation type's own lens-off baseline. Measured across all
      2 modes x 4 k's x 4 interpolation types with the implementation in this
      commit:
        max observed mean(Dlens)  - mean(Dbase)  = 7.73  (Full,  k=0.12, BiLinear/BiCubic)
        max observed worst(Dlens) - worst(Dbase) = 205   (Full,  k=-0.30, VS_Linear)
      MEAN_MARGIN is set to ~2x the mean excess and does the real work below
-     (see the mutation-detection evidence in the task-5 report). WORST_MARGIN
-     is set to ~2x the worst excess for the same reason as every other
-     number here being measured rather than guessed, but at that size it
-     exceeds the 0..255 dynamic range of a single channel sample: no
-     configuration can ever fail it, by construction, once worst(Dbase) >= 0.
-     It is kept only so the number is printed and a future reader can see
-     honestly that it does not bind, rather than silently dropping the
-     check and losing the printout. */
+     (see the mutation-detection evidence in the task-5 report). The worst
+     excess has no corresponding assertion: at 2x it would need to be 410,
+     which exceeds the 0..255 dynamic range of a single channel sample, so
+     no configuration could ever fail it -- a dead check. worst(Dlens) is
+     still printed below (it is a genuine, if blunt, signal), just not
+     gated on. test_lensmap_fixed_reference below is the test that actually
+     carries the guarantee this one was originally meant to. */
   const double MEAN_MARGIN  = 16.0;
-  const double WORST_MARGIN = 410.0;
 
   vsFrameInfoInit(&fi, 320, 240, PF_YUV420P);
   vsFrameAllocate(&src, &fi);
@@ -623,7 +621,122 @@ static void test_lensmap_fixed_float_equivalence(void){
                 im, ks[ik], ip, baseMean[ip], meanLens, meanLens - baseMean[ip],
                 baseWorst[ip], worstLens, worstLens - baseWorst[ip]);
         test_bool(meanLens  <= baseMean[ip]  + MEAN_MARGIN);
-        test_bool(worstLens <= baseWorst[ip] + WORST_MARGIN);
+      }
+    }
+  }
+  vsFrameFree(&src);
+}
+
+/* fp16 conversion for a double-precision plane coordinate (not necessarily
+   integral, unlike test_interpolate.c's iToFp16_t). Clamped the same way
+   lensmap.c's toFp16d() is, since vsLensMapBackward can return values well
+   outside the frame (e.g. VS_LENS_OUTSIDE_PX = -30000) that would otherwise
+   overflow the *65536 multiply before the cast. */
+static fp16 lmDToFp16(double v){
+  double s = v * 65536.0;
+  if(s >  2147483647.0) s =  2147483647.0;
+  if(s < -2147483648.0) s = -2147483648.0;
+  return (fp16)(int64_t)(s + (s >= 0 ? 0.5 : -0.5));
+}
+
+/* Direct-reference check for the FIXED-POINT planar warp -- the path that
+   actually ships. test_lensmap_wobble_cancellation_through_loop above
+   established the right pattern for the float path: compare a warp loop
+   against vsLensMapBackward (an independent, closed-form, double-precision
+   computation of U_k/M/D_k), sampled through the SAME interpolator, rather
+   than against a warp loop written in a different language. That cancels
+   the interpolator-family divergence documented above completely, instead
+   of trying to bound it away -- so this is the test that actually carries
+   the fixed-point loop's correctness guarantee. test_lensmap_fixed_float_
+   equivalence is kept as a coarse, independent cross-check (it is not
+   wrong, just blunt: see its own comment on why an absolute or float-
+   relative bound doesn't work well on this texture). */
+static void test_lensmap_fixed_reference(void){
+  const double ks[] = {-0.3, -0.25, -0.1, 0.12};
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  uint32_t seed = 7;
+  int im, ik, ip, x, y;
+
+  /* Measured across 2 modes x 4 k's x 4 interpolation types with the
+     implementation in this commit (fixed-point loop vs. double-precision
+     vsLensMapBackward, same interpolator; see the task-5 report for the
+     full table):
+       VS_BiLinear/VS_BiCubic: max observed mean = 0.077, max observed max = 73
+       VS_Zero/VS_Linear:      max observed mean = 0.081, max observed max = 236
+     TIGHT_MEAN/LOOSE_MEAN are ~2x those mean figures and carry the real
+     guarantee (see the mutation-detection evidence in the task-5 report).
+
+     A pixel-exact MAX bound is not achievable for *any* interpolation type
+     on this texture, not just VS_Zero/VS_Linear: every one of them has a
+     coordinate value where the interpolator's behaviour is discontinuous in
+     the true (real-valued) source position, and the fixed vs. double
+     computations, agreeing everywhere to a few thousandths of a pixel, can
+     still land on opposite sides of that discontinuity by pure chance.
+     VS_Zero (round-to-nearest) and VS_Linear's y-rounding (myround) are
+     discontinuous at every half-integer coordinate, which is common enough
+     that most configs hit it several times. VS_BiLinear/VS_BiCubic blend
+     continuously in the interior, so they only have this discontinuity
+     where interpolateBiLinBorder/interpolateBiCub's interior/border regimes
+     switch -- at the source frame's four edges (x=0, x=width-1, y=0,
+     y=height-1) -- which is why their max is smaller and only fires when a
+     sample happens to map within about 0.01px of one of those edges. This
+     was confirmed directly for one such case (mode=Wobble, k=-0.30,
+     VS_BiLinear, destination (3,29)): fixed x_s=0.000946 vs. reference
+     xs=-0.002560 -- a 0.0035px disagreement straddling x=0 exactly, which
+     is enough to route one call through the interior blend and the other
+     through interpolateBiLinBorder. TIGHT_MAX/LOOSE_MAX are still bounded,
+     at ~2x the worst observed max, because they still catch a systematic
+     regression that isn't confined to this coincidence (see the mutation
+     evidence in the task-5 report), just not this specific artifact. */
+  const double TIGHT_MEAN = 0.15;
+  const int    TIGHT_MAX  = 150;
+  const double LOOSE_MEAN = 0.2;
+
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  vsFrameAllocate(&src, &fi);
+  ldFillTexture(&src, &fi, &seed);
+
+  for(im=1; im<=2; im++){
+    VSLensCorrectMode cm = im == 1 ? VSLensCorrectWobble : VSLensCorrectFull;
+    for(ik=0; ik<4; ik++){
+      for(ip=0; ip<4; ip++){
+        VSTransformData td;
+        VSLensPlaneMap ref;
+        VSTransform t = null_transform();
+        double sumDiff = 0; int n = 0, maxDiff = 0;
+        t.x = 6.25; t.y = -3.5; t.alpha = 0.008;
+        lmInitTd(&td, &fi, cm, ks[ik], (VSInterpolType)ip);
+        vsFrameAllocate(&dest, &fi);
+        test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+        test_bool(transformPlanar(&td, t) == VS_OK);
+        test_bool(vsTransformFinish(&td) == VS_OK);
+        test_bool(vsLensPlaneMapInit(&ref, &fi, &fi, 0, ks[ik], cm) == VS_OK);
+        for(y=0; y<fi.height; y++){
+          for(x=0; x<fi.width; x++){
+            double xs, ys;
+            uint8_t expected, actual;
+            int diff;
+            vsLensMapBackward(&ref, &t, x, y, &xs, &ys);
+            td.interpolate(&expected, lmDToFp16(xs), lmDToFp16(ys), src.data[0],
+                          src.linesize[0], fi.width, fi.height, 0);
+            actual = dest.data[0][y*dest.linesize[0]+x];
+            diff = actual > expected ? actual - expected : expected - actual;
+            sumDiff += diff; n++;
+            if(diff > maxDiff) maxDiff = diff;
+          }
+        }
+        fprintf(stderr, "  fixed-reference mode=%d k=%.2f ip=%d: mean=%.4f max=%d\n",
+                im, ks[ik], ip, sumDiff/n, maxDiff);
+        if(ip == VS_BiLinear || ip == VS_BiCubic){
+          test_bool(sumDiff/n <= TIGHT_MEAN);
+          test_bool(maxDiff   <= TIGHT_MAX);
+        }else{
+          test_bool(sumDiff/n <= LOOSE_MEAN);
+        }
+        vsLensPlaneMapFree(&ref);
+        vsFrameFree(&dest);
+        vsTransformDataCleanup(&td);
       }
     }
   }

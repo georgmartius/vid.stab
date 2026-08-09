@@ -420,7 +420,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
         fp16 x_s, y_s;
         if (wobble) {
-          int64_t lx = (int64_t)dx << lsx, ly = (int64_t)dy << lsy;
+          int64_t lx = (int64_t)dx * (1 << lsx), ly = (int64_t)dy * (1 << lsy);
           int32_t g  = vsLensLutFp(lm->gU, lx*lx + ly*ly, lm->idxScaleU);
           dx = (fp16)(((int64_t)dx * g) >> 16);
           dy = (fp16)(((int64_t)dy * g) >> 16);
@@ -435,7 +435,7 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
         if (lensOn) {
           int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
-          int64_t lx = ex << lsx, ly = ey << lsy;
+          int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
           int64_t r2 = lx*lx + ly*ly;
           if (r2 > domR2) { x_s = iToFp16(VS_LENS_OUTSIDE_PX); y_s = iToFp16(VS_LENS_OUTSIDE_PX); }
           else {

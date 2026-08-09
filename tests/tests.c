@@ -220,6 +220,7 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_nonzero_k_builds_on_first_call());
     UNIT(test_lensmap_chroma_render());
     UNIT(test_lensmap_fixed_float_equivalence());
+    UNIT(test_lensmap_fixed_reference());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

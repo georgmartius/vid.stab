@@ -238,6 +238,7 @@ int main(int argc, char** argv){
     UNIT(test_lenscorrect_pattern());
     UNIT(test_lenscorrect_generator());
     UNIT(test_lenscorrect_roundtrip_full());
+    UNIT(test_lenscorrect_roundtrip_modes());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

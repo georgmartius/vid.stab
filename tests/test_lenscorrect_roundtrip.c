@@ -29,9 +29,9 @@ static void test_lenscorrect_pattern_tones(void){
   /* Cell parity, read off a 2x2 block of cells lying WHOLLY inside one radial
      band -- otherwise the band term flips underneath the comparison and the
      cell structure cannot be isolated.  A 2x2 block spans 32..45 px of radius
-     while a band is only 60 px wide, so the block has to be placed on purpose:
+     while a band is only 61 px wide, so the block has to be placed on purpose:
      (328, 425) and its +LC_CELL neighbours have radii 185.2 .. 220.7, all
-     inside band 3 = [180, 240).  It is also clear of every cell boundary
+     inside band 3 = [183, 244).  It is also clear of every cell boundary
      (328/32 = 10.25, 425/32 = 13.28) and of the frame edge (max 457 < 480).
 
      The single-band precondition is asserted rather than trusted, so retuning
@@ -87,10 +87,10 @@ static void test_lenscorrect_pattern_supersampling(void){
   /* x = 128 is a cell boundary (a multiple of LC_CELL), and the pixel there
      covers [127.5, 128.5) so it straddles.  x = 144, y = 144 sits in the
      interior of one cell in both axes, and its radius from the centre (200.5)
-     is 20 px clear of the nearest band boundary at 180, so neither term is
-     near a transition.  lcRenderMapped treats integer index x as coordinate
-     x, so the pixel centre IS 144.0 -- no half-pixel offset when asking the
-     pattern what should be there. */
+     is about 17.5 px clear of the nearest band boundary at 183 (= 3*LC_BAND),
+     so neither term is near a transition.  lcRenderMapped treats integer index x
+     as coordinate x, so the pixel centre IS 144.0 -- no half-pixel offset when
+     asking the pattern what should be there. */
   xEdge = (int)(4*LC_CELL);            /* 128, a cell boundary column */
   yFlat = (int)(4*LC_CELL + LC_CELL/2);/* 144, mid-cell                */
   getPixelRGB(&f, &fi, xEdge + (int)(LC_CELL/2), yFlat, &rgb[0], &rgb[1], &rgb[2]);
@@ -132,10 +132,11 @@ static int lcFirstEdgeRight(const VSFrame* f, const VSFrameInfo* fi, int from){
 
 /* Every tone change of the IDEAL scene along +x from the frame centre, as an
    offset in px, in increasing order.  cx = 320 is itself a multiple of
-   LC_CELL, so cell boundaries sit at 32, 64, 96, ...; band boundaries at 60,
-   120, 180, ...  The two sets are disjoint below lcm(32,60) = 480, so every
-   entry is a genuine single tone change -- no coincident pair that would flip
-   both terms and cancel.  Returns how many were written. */
+   LC_CELL, so cell boundaries sit at 32, 64, 96, ...; band boundaries at 61,
+   122, 183, ...  The two sets are disjoint below lcm(32,61) = 1952 -- far
+   beyond the 320 px this ray can reach inside the frame -- so every entry is
+   a genuine single tone change -- no coincident pair that would flip both
+   terms and cancel.  Returns how many were written. */
 static int lcIdealEdges(double* out, int max, double uMax){
   int n = 0;
   double u;
@@ -183,7 +184,7 @@ static void test_lenscorrect_generator_null(void){
    -- so a feature the ideal scene puts at radius r appears at radius D_k(r).
    Checking every edge against that prediction measures one homogeneous thing,
    unlike comparing successive gaps, where cell boundaries every 32 px and band
-   boundaries every 60 px interleave and the comparison silently comes to be
+   boundaries every 61 px interleave and the comparison silently comes to be
    between features of different kinds.
 
    `inward` states the physical signature separately from the numbers: barrel
@@ -260,23 +261,44 @@ void test_lenscorrect_generator(void){
 
 /* --- the round trip ------------------------------------------------------- */
 
-/* Measured worst case over the six frames at k = -0.25: maxFlat = 1,
-   PSNR = 32.47 dB.  The `off` control scores 8.57 dB.  (PSNR here runs a
-   constant 1.76 dB above what a two-channel figure would read, because the
-   two tones share blue = 90 -- see the `psnr` field comment on LCCompare.
-   That offset is baked into this measurement and so into the floor below;
-   it costs nothing.)
+/* These two constants are shared by every case rendered through PF_RGB24:
+   Full recovering the base image (barrel, k = -0.25), Wobble holding the
+   lens (barrel), and pincushion (k = +0.15).  Measured worst across all
+   three, after LC_BAND was moved from 60 to 61 (see its definition in
+   generate_lensclip.c and wobble-diagnosis.md -- the old value put a band
+   circle tangent to a cell line, aliasing a sub-supersample-pitch sliver
+   that Wobble's leading U_k expansion dragged onto visible rows): maxFlat =
+   1 (all three cases), PSNR = 30.00 dB (Wobble, frame 1).  The `off` control
+   scores 8.65 dB.  (PSNR here runs a constant 1.76 dB above what a
+   two-channel figure would read, because the two tones share blue = 90 --
+   see the `psnr` field comment on LCCompare.  That offset is baked into
+   this measurement and so into the floor below; it costs nothing.)
 
-   The margin here is deliberately tight, not generous: the per-frame spread
-   is only 0.06 dB (32.47 .. 32.53), so the six numbers are effectively
-   deterministic and there is no flakiness risk to buy slack against. A
-   genuine geometry bug -- a sign error in lcInverseTransform worth up to
-   0.38 px, or a uniform 0.25 px pose error -- was measured to still clear a
-   28.0 dB floor, so that much slack hides real defects rather than
-   tolerating noise.  maxFlat = 2 similarly reflects that a k*1.02
-   perturbation was measured to read maxFlat = 3 on four of six frames. */
+   Full alone is even tighter -- worst PSNR 32.47 dB, per-frame spread only
+   0.13 dB -- and a genuine geometry bug injected there (a sign error in
+   lcInverseTransform worth up to 0.38 px, or a uniform 0.25 px pose error)
+   was measured to still clear a 28.0 dB floor, so that much slack hides
+   real defects rather than tolerating noise.  Wobble's own worst (30.00 dB)
+   is what sets the floor now: LC_MIN_PSNR = 28.5 keeps a 0.5 dB margin over
+   that known-defect floor without also re-absorbing Wobble's ordinary
+   double-lens-map noise.  maxFlat = 2 keeps the one-count margin the
+   previous measurement (a k*1.02 perturbation reading maxFlat = 3 on four
+   of six Full frames) called for. */
 #define LC_MAX_FLAT_DELTA 2
-#define LC_MIN_PSNR       30.5
+#define LC_MIN_PSNR       28.5
+
+/* Measured worst case on 4:2:0 at k = -0.25 (Full mode): maxFlat = 25,
+   PSNR = 25.82 dB.  Looser than the packed constants for a separate and
+   already-understood reason, unrelated to the LC_BAND retune above: both
+   tones share blue = 90 (LC_TONE), and setPixelRGB writes one pixel's
+   chroma per 2x2 block while getPixelRGB reads it back nearest neighbour,
+   so blue is reconstructed almost entirely from block-quantised chroma
+   while luma is per-pixel -- every edge in the picture produces a
+   blue-channel discrepancy on both sides of the comparison.  Measured
+   directly: 1577 of 1700 offending channel-samples across the six frames
+   are channel 2 (blue). */
+#define LC_MAX_FLAT_DELTA_420 26
+#define LC_MIN_PSNR_420       24.0
 
 typedef struct {
   int    n;        /* pixels inside the valid mask                          */
@@ -542,4 +564,77 @@ static void test_lenscorrect_off_is_much_worse(void){
 void test_lenscorrect_roundtrip_full(void){
   test_lenscorrect_full_recovers_base();
   test_lenscorrect_off_is_much_worse();
+}
+
+/* Wobble removes the shake but leaves the lens in place:
+
+     out(x) = frame_i( D_k( M_t'( U_k(x) ) ) ) = pattern( U_k(x) )
+
+   and pattern(U_k(x)) is exactly frame 0 of the clip, because
+   lcClipTransform(0) is the identity -- hence LC_REF_FRAME0.  That is the
+   mode's whole promise stated as an assertion: a lens-corrected shot of a
+   still camera comes back unchanged.
+
+   Note frame 0 of the loop is trivially exact: an identity transform in
+   Wobble mode takes the memcpy fast path (transformfloat.c:331), so nothing
+   is resampled.  Frames 1..5 are the real test.  The Full-mode cases have no
+   such hole -- that same line excludes Full from the fast path explicitly, so
+   their i == 0 walks the inner loop like the rest. */
+static void test_lenscorrect_wobble_holds_the_lens(void){
+  LCCase c;
+  c.pf          = PF_RGB24;
+  c.k           = LC_K_BARREL;
+  c.mode        = VSLensCorrectWobble;
+  c.ref         = LC_REF_FRAME0;
+  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.minPsnr     = LC_MIN_PSNR;
+  c.minValidDiv = 2;
+  c.label       = "Wobble removes the shake, keeps the lens, k = -0.25";
+  lcCheckRoundTrip(&c);
+}
+
+/* Pincushion through the same Full round trip.  A map that only ever handled
+   the barrel sign would pass everything above.
+
+   minValidDiv is 3 rather than 2 because for k > 0 the distort map pushes
+   source points outward, so more of the destination frame maps off the source
+   and the valid mask is genuinely smaller. */
+static void test_lenscorrect_pincushion_roundtrip(void){
+  LCCase c;
+  c.pf          = PF_RGB24;
+  c.k           = LC_K_PIN;
+  c.mode        = VSLensCorrectFull;
+  c.ref         = LC_REF_BASE;
+  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.minPsnr     = LC_MIN_PSNR;
+  c.minValidDiv = 3;
+  c.label       = "Full correction, pincushion k = +0.15";
+  lcCheckRoundTrip(&c);
+}
+
+/* The same Full round trip on 4:2:0, where the chroma planes get their own
+   half-resolution lens map.  That per-plane map is the part of lensmap.c most
+   likely to be wrong, and no packed-RGB test can reach it.
+
+   Its own tolerances: the frames are built with setPixelRGB, which writes one
+   pixel's chroma per 2x2 block, and getPixelRGB reads it back nearest
+   neighbour, so chroma is quantised on both sides of the comparison in a way
+   the packed path never is.  Luma is unaffected. */
+static void test_lenscorrect_full_yuv420(void){
+  LCCase c;
+  c.pf          = PF_YUV420P;
+  c.k           = LC_K_BARREL;
+  c.mode        = VSLensCorrectFull;
+  c.ref         = LC_REF_BASE;
+  c.maxFlat     = LC_MAX_FLAT_DELTA_420;
+  c.minPsnr     = LC_MIN_PSNR_420;
+  c.minValidDiv = 2;
+  c.label       = "Full correction on PF_YUV420P, k = -0.25";
+  lcCheckRoundTrip(&c);
+}
+
+void test_lenscorrect_roundtrip_modes(void){
+  test_lenscorrect_wobble_holds_the_lens();
+  test_lenscorrect_pincushion_roundtrip();
+  test_lenscorrect_full_yuv420();
 }

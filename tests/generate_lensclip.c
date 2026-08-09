@@ -19,10 +19,31 @@
 #define LC_WIDTH   640
 #define LC_HEIGHT  480
 #define LC_CELL    32.0   /* checkerboard cell size in px: 20x15 cells       */
-#define LC_BAND    60.0   /* radial inversion period in px; half the frame
+#define LC_BAND    61.0   /* radial inversion period in px; half the frame
                              diagonal is 400, so ~6 boundaries cross the
-                             picture.  Not a divisor or multiple of LC_CELL,
-                             so band and cell edges stay distinguishable.    */
+                             picture.
+
+                             Coprime with LC_CELL = 32 (gcd(61,32) = 1,
+                             lcm = 1952), not merely "not a divisor or
+                             multiple" -- that weaker property still let a
+                             band circle be TANGENT to a cell line: at the
+                             old LC_BAND = 60, the circle r = 240 (= 4*60)
+                             was tangent to y = 0 and y = 480 (both multiples
+                             of 32) at x = 320, leaving a lune of opposite
+                             tone thinner than a subsample pixel near the
+                             tangency -- an aliasing artefact that only
+                             Wobble's leading U_k expansion pulled onto
+                             visible rows (18.41 and 461.59), producing
+                             maxFlat = 51 there.  See
+                             wobble-diagnosis.md.  With gcd(LC_BAND,LC_CELL)
+                             = 1, no band-circle radius (a multiple of 61)
+                             can coincide with a distance from the centre to
+                             a cell line (a multiple of 32) anywhere before
+                             r = lcm(61,32) = 1952, far outside the 640x480
+                             frame (max radius 400), so no such tangency is
+                             reachable at all.  A future retune of either
+                             constant MUST preserve gcd(LC_BAND,LC_CELL) = 1,
+                             not just avoid exact divisibility.             */
 #define LC_SS      4      /* supersamples per axis per pixel                 */
 
 /* Both tones are coloured, not grey: the PPM dumps double as the figure in

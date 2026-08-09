@@ -73,6 +73,9 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   /* On by default: it costs one extra pass over the local motions and reverts
      to the previous behaviour whenever the estimate is not trustworthy. */
   conf.estimateLensDistortion = 1;
+  /* Wobble is safe to default on: identity in, identity out. */
+  conf.lensCorrection = VSLensCorrectWobble;
+  conf.lensK          = NAN;
   return conf;
 }
 
@@ -127,16 +130,72 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
   }
 
 #endif
+  td->lensMode   = td->conf.lensCorrection;
+  td->lensActive = 0;
+  td->lensK      = td->conf.lensK;      /* NaN unless the caller overrode it */
+  td->lensMapK   = NAN;
+  memset(td->lensMaps, 0, sizeof(td->lensMaps));
   return VS_OK;
 }
 
 void vsTransformDataCleanup(VSTransformData* td){
+  int p;
+  for(p=0; p<3; p++) vsLensPlaneMapFree(&td->lensMaps[p]);
   if (td->srcMalloced && !vsFrameIsNull(&td->src)) {
     vsFrameFree(&td->src);
   }
   if (td->conf.crop == VSKeepBorder && !vsFrameIsNull(&td->destbuf)) {
     vsFrameFree(&td->destbuf);
   }
+}
+
+void vsTransformSetLensK(VSTransformData* td, double k){
+  td->lensK = k;
+}
+
+/* isnan() and `==` on a value that might be NaN are not trustworthy here:
+   this project builds with -ffast-math (see CMakeLists.txt), which licenses
+   the compiler to assume no NaN ever occurs. Verified on this toolchain:
+   isnan(NAN) folds to 0 at -O2/-O3, and NaN == 3.0 folds to 1 at -O0 -- both
+   the wrong answer, in different ways at different optimization levels. But
+   lensK's "no override" sentinel is a real, intentional NaN (see
+   VSTransformConfig.lensK), so it must be recognized correctly in every
+   build type. Testing the bit pattern sidesteps the FP unit entirely. */
+static int lensIsNaN(double v){
+  uint64_t bits;
+  memcpy(&bits, &v, sizeof(bits));
+  return ((bits >> 52) & 0x7FFULL) == 0x7FFULL && (bits & 0xFFFFFFFFFFFFFULL) != 0ULL;
+}
+
+/* Builds (or rebuilds) the per-plane maps.  k arrives after
+   vsTransformDataInit, so this cannot live there.  Cheap when nothing
+   changed: one double compare. */
+void lensEnsureMaps(VSTransformData* td){
+  double k = td->lensK;
+  int planes, p;
+  /* |k| below this moves a corner pixel by well under a pixel; acting on it
+     would only add noise.  Same guard the estimator uses. */
+  int want = td->lensMode != VSLensCorrectOff && !lensIsNaN(k) && fabs(k) > 0.01;
+  if(!want) k = 0.0;
+  /* td->lensMapK starts out NaN (no maps built yet); once built it is always
+     a plain finite number, so this only ever compares a possible NaN on the
+     very first call, which lensIsNaN() short-circuits safely. */
+  if(!lensIsNaN(td->lensMapK) && td->lensMapK == k) return;
+  planes = td->fiSrc.pFormat < PF_PACKED ? td->fiSrc.planes : 1;
+  for(p=0; p<3; p++) vsLensPlaneMapFree(&td->lensMaps[p]);
+  td->lensActive = 0;
+  for(p=0; p<planes; p++){
+    if(vsLensPlaneMapInit(&td->lensMaps[p], &td->fiSrc, &td->fiDest, p, k,
+                          want ? td->lensMode : VSLensCorrectOff) != VS_OK){
+      vs_log_error(td->conf.modName, "lens map allocation failed, correction off\n");
+      for(p=0; p<3; p++) vsLensPlaneMapFree(&td->lensMaps[p]);
+      td->lensActive = 0;
+      td->lensMapK = 0.0;
+      return;
+    }
+  }
+  td->lensActive = td->lensMaps[0].active;
+  td->lensMapK   = k;
 }
 
 int vsTransformPrepare(VSTransformData* td, const VSFrame* src, VSFrame* dest){

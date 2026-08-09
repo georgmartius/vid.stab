@@ -35,6 +35,7 @@
 #include "frameinfo.h"
 #include "vidstabdefines.h"
 #include "vidstab_api.h"
+#include "lensmap.h"
 #ifdef TESTING
 #include "transformfloat.h"
 #endif
@@ -115,6 +116,18 @@ typedef struct _VSTransformConfig {
      * determined and large enough to matter, so undistorted footage is
      * unaffected. */
     int            estimateLensDistortion;
+    /* Applying the estimated distortion to the picture, as opposed to merely
+       using it to interpret the motions.  Wobble is the default: it collapses
+       to the identity whenever the stabilising transform does, so it costs no
+       field of view and leaves a locked-off shot untouched, while removing the
+       frame-to-frame distortion variation the stabiliser cannot.  Full
+       undistorts the picture outright and stays opt-in.  See
+       docs/superpowers/specs/2026-08-09-lens-correction-render-design.md */
+    VSLensCorrectMode lensCorrection;
+    /* Manual override for k; NaN means "use whatever was estimated".  Needed
+       for the transforms-file path, which carries no k, and for users who know
+       their lens. */
+    double            lensK;
     /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
      * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,
      * see vsL1ConfigFromTransformConfig(). */
@@ -138,6 +151,14 @@ typedef struct _VSTransformData {
 
     /* Options */
     VSTransformConfig conf;
+
+    /* Lens correction state.  k only becomes known after vsTransformDataInit
+       runs, so the per-plane maps are built lazily by lensEnsureMaps(). */
+    VSLensCorrectMode lensMode;
+    int               lensActive;
+    double            lensK;      /* NaN until set */
+    double            lensMapK;   /* k the maps were built for, NaN if none */
+    VSLensPlaneMap    lensMaps[3];
 
     int initialized; // 1 if initialized and 2 if configured
 } VSTransformData;
@@ -192,6 +213,12 @@ VS_API void vsTransformDataCleanup(VSTransformData* td);
 
 /// returns the current config
 VS_API void vsTransformGetConfig(VSTransformConfig* conf, const VSTransformData* td);
+
+/** Sets the lens distortion parameter k after the fact.  For consumers that
+    do not share one VSTransformData between the estimation and the render
+    pass (e.g. the transforms-file path); when the two passes do share one,
+    conf.lensK already arrived via vsTransformDataInit. */
+VS_API void vsTransformSetLensK(VSTransformData* td, double k);
 
 /// returns the frame info for the src
 VS_API const VSFrameInfo* vsTransformGetSrcFrameInfo(const VSTransformData* td);

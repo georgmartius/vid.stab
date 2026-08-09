@@ -101,9 +101,25 @@ int vsLensPlaneMapInit(VSLensPlaneMap* m, const VSFrameInfo* fiSrc,
     m->gDf[i] = (float)gd;
 #endif
   }
-  /* idxScale = (N-1)/(tMax*rho^2) at scale 2^32, consumed by vsLensLutFp. */
-  m->idxScaleU = (int32_t)((VS_LENS_LUT_N-1)/(m->tMaxU*rho2) * 4294967296.0);
-  m->idxScaleD = (int32_t)((VS_LENS_LUT_N-1)/(m->tMaxD*rho2) * 4294967296.0);
+  /* idxScale = (N-1)/(tMax*rho^2) at scale 2^32, consumed by vsLensLutFp.
+     idxScaleU/D are int32_t, so this overflows silently (wrapping into
+     garbage that then corrupts every pixel) once rho^2*tMax drops low enough
+     -- i.e. once fiDest is much smaller than fiSrc. Unreachable in vid.stab
+     today (the transform pass never resizes), but cheap to guard rather than
+     leave as a silent trap: compute in double first and bail before the
+     narrowing cast. */
+  { double idxScaleUd = (VS_LENS_LUT_N-1)/(m->tMaxU*rho2) * 4294967296.0;
+    double idxScaleDd = (VS_LENS_LUT_N-1)/(m->tMaxD*rho2) * 4294967296.0;
+    if(idxScaleUd > (double)INT32_MAX || idxScaleDd > (double)INT32_MAX){
+      vs_log_error("vid.stab", "lens map: destination too small relative to "
+                   "source for k=%g, disabling lens correction\n", k);
+      vsLensPlaneMapFree(m);
+      m->active = 0;
+      return VS_OK;
+    }
+    m->idxScaleU = (int32_t)idxScaleUd;
+    m->idxScaleD = (int32_t)idxScaleDd;
+  }
   m->active = 1;
   return VS_OK;
 }

@@ -27,6 +27,7 @@
  */
 #include "transformfloat.h"
 #include "transform.h"
+#include "transform_internal.h"
 #include "transformtype_operations.h"
 
 
@@ -294,7 +295,12 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
   uint8_t *dat_1, *dat_2;
   char crop = td->conf.crop;
 
-  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
+  lensEnsureMaps(td);
+
+  /* Wobble mode maps identity to identity (D_k . U_k = id), so the fast path
+     stays correct and stays reachable.  Full mode must still undistort. */
+  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0 &&
+      !(td->lensActive && td->lensMode == VSLensCorrectFull)){
     if(vsFramesEqual(&td->src,&td->destbuf))
       return VS_OK; // noop
     else {
@@ -321,6 +327,12 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
     float tx = t.x / (float)(1 << wsub);
     float ty = t.y / (float)(1 << hsub);
 
+    const VSLensPlaneMap* lm = &td->lensMaps[plane];
+    int lensOn = lm->active;
+    int wobble = lensOn && td->lensMode == VSLensCorrectWobble;
+    float sxf = (float)(1 << wsub), syf = (float)(1 << hsub);
+    float irho2 = (float)lm->invRho2;
+
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
      *      p_d = c_d + M(p_s - c_s) + t
@@ -337,10 +349,24 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
       for (y = 0; y < h; y++) {
         float x_d1 = (x - c_d_x);
         float y_d1 = (y - c_d_y);
-        float x_s  =  zcos_a * x_d1
-          + zsin_a * y_d1 + c_s_x -tx;
-        float y_s  = -zsin_a * x_d1
-          + zcos_a * y_d1 + c_s_y -ty;
+        float x_s, y_s;
+        if (wobble) {
+          float lx = x_d1*sxf, ly = y_d1*syf;
+          float g  = vsLensLutF(lm->gUf, lm->tMaxU, (lx*lx + ly*ly)*irho2);
+          x_d1 *= g; y_d1 *= g;
+        }
+        x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_s_x - tx;
+        y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_s_y - ty;
+        if (lensOn) {
+          float ex = x_s - c_s_x, ey = y_s - c_s_y;
+          float lx = ex*sxf, ly = ey*syf;
+          float tt = (lx*lx + ly*ly)*irho2;
+          if (tt > lm->tDomD) { x_s = y_s = VS_LENS_OUTSIDE_PX; }
+          else {
+            float g = vsLensLutF(lm->gDf, lm->tMaxD, tt);
+            x_s = c_s_x + ex*g; y_s = c_s_y + ey*g;
+          }
+        }
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         td->_FLT(interpolate)(dest, x_s, y_s, dat_1, td->src.linesize[plane],
                               sw, sh, crop ? black : *dest);

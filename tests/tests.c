@@ -213,6 +213,8 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_domain());
     UNIT(test_lensmap_inactive());
     UNIT(test_lensmap_chroma_consistency());
+    UNIT(test_lensmap_wobble_identity_is_exact());
+    UNIT(test_lensmap_removes_wobble());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

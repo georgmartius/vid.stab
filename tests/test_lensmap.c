@@ -182,3 +182,102 @@ static void test_lensmap_chroma_consistency(void){
   }
   vsLensPlaneMapFree(&luma); vsLensPlaneMapFree(&c422); vsLensPlaneMapFree(&c420);
 }
+
+/* --- render-path tests ---------------------------------------------------- */
+
+/* Builds a td for a luma-only frame with a known k. */
+static void lmInitTd(VSTransformData* td, const VSFrameInfo* fi,
+                     VSLensCorrectMode mode, double k, VSInterpolType ip){
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("lensmap-test");
+  cfg.interpolType    = ip;
+  cfg.crop            = VSCropBorder;
+  cfg.optZoom         = 0;
+  cfg.lensCorrection  = mode;
+  test_bool(vsTransformDataInit(td, &cfg, fi, fi) == VS_OK);
+  vsTransformSetLensK(td, k);
+}
+
+/* Wobble mode with an identity transform must not touch a single pixel. */
+static void test_lensmap_wobble_identity_is_exact(void){
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  uint32_t seed = 999;
+  int i, ip;
+  vsFrameInfoInit(&fi, 320, 240, PF_GRAY8);
+  vsFrameAllocate(&src, &fi);
+  ldFillTexture(&src, &fi, &seed);
+  for(ip=0; ip<4; ip++){
+    for(i=0; i<LM_NUM_KS; i++){
+      VSTransformData td;
+      lmInitTd(&td, &fi, VSLensCorrectWobble, LM_KS[i], (VSInterpolType)ip);
+      vsFrameAllocate(&dest, &fi);
+      test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+      test_bool(_FLT(transformPlanar)(&td, null_transform()) == VS_OK);
+      test_bool(vsTransformFinish(&td) == VS_OK);
+      test_bool(memcmp(src.data[0], dest.data[0], (size_t)fi.width*fi.height) == 0);
+      vsFrameFree(&dest);
+      vsTransformDataCleanup(&td);
+    }
+  }
+  vsFrameFree(&src);
+}
+
+/* The claim.  Synthesise a still scene filmed by a moving camera through a
+   barrel lens, correct with the exact inverse transforms, and check that the
+   result stops wobbling.  Compare frames to each other, not to a golden. */
+static void test_lensmap_removes_wobble(void){
+  const double k = -0.25;
+  const int NF = 6;
+  VSFrameInfo fi;
+  VSFrame base, obs[6], out[6];
+  VSLensDistortion ld;
+  uint32_t seed = 4242;
+  double worstOff = 0, worstWob = 0;
+  int i, mode;
+  vsFrameInfoInit(&fi, 480, 320, PF_GRAY8);
+  vsFrameAllocate(&base, &fi);
+  ldFillTexture(&base, &fi, &seed);
+  ld = vsLensDistortionInit(&fi, k);
+
+  for(mode=0; mode<2; mode++){
+    VSLensCorrectMode cm = mode ? VSLensCorrectWobble : VSLensCorrectOff;
+    double worst = 0;
+    for(i=0; i<NF; i++){
+      VSTransformData td;
+      VSTransform cum = null_transform(), inv;
+      cum.x = 6.0*i - 15.0; cum.y = -4.0*i + 10.0;
+      vsFrameAllocate(&obs[i], &fi);
+      vsFrameAllocate(&out[i], &fi);
+      ldRenderWarped(&base, &obs[i], &fi, &ld, &cum);
+      /* ldRenderWarped subtracts cum.x/cum.y from the undistorted point before
+         distorting back (obs = base . D_k(U_k(.) - cum.t)); the warp loop
+         here also subtracts its transform's translation after its own U_k, so
+         undoing cum means passing -cum, not +cum -- confirmed empirically:
+         passing +cum left the corrected residual unchanged from uncorrected. */
+      inv = mult_transform(&cum, -1);
+      lmInitTd(&td, &fi, cm, k, VS_BiLinear);
+      test_bool(vsTransformPrepare(&td, &obs[i], &out[i]) == VS_OK);
+      test_bool(_FLT(transformPlanar)(&td, inv) == VS_OK);
+      test_bool(vsTransformFinish(&td) == VS_OK);
+      vsTransformDataCleanup(&td);
+    }
+    /* residual instability: mean |out[i] - out[0]| over the region that is
+       inside the source for every frame (a 40 px inset is ample here) */
+    for(i=1; i<NF; i++){
+      double sum = 0; int n = 0, x, y;
+      for(y=40; y<fi.height-40; y++)
+        for(x=40; x<fi.width-40; x++){
+          sum += fabs((double)out[i].data[0][y*out[i].linesize[0]+x] -
+                      (double)out[0].data[0][y*out[0].linesize[0]+x]);
+          n++;
+        }
+      if(sum/n > worst) worst = sum/n;
+    }
+    for(i=0; i<NF; i++){ vsFrameFree(&obs[i]); vsFrameFree(&out[i]); }
+    if(mode) worstWob = worst; else worstOff = worst;
+  }
+  fprintf(stderr, "  wobble: mean|dI| uncorrected = %.2f, corrected = %.2f\n",
+          worstOff, worstWob);
+  test_bool(worstWob < worstOff * 0.5);
+  vsFrameFree(&base);
+}

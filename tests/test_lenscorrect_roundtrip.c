@@ -155,7 +155,7 @@ static int lcIdealEdges(double* out, int max, double uMax){
 static void test_lenscorrect_generator_null(void){
   VSFrameInfo fi;
   VSFrame base, frames[LC_NUM_FRAMES];
-  int x, y, i, diff = 0;
+  int x, y, diff = 0;
 
   fprintf(stderr, "--- lens clip generator: k=0, identity pose ---\n");
 
@@ -163,7 +163,8 @@ static void test_lenscorrect_generator_null(void){
   vsFrameAllocate(&base, &fi);
   lcRenderMapped(&base, &fi, lcIdentityMap, NULL);
 
-  lcGenerateClip(frames, &fi, PF_RGB24, 0.0, LC_NUM_FRAMES);
+  /* Only frame 0 is checked (see below), so only frame 0 need be generated. */
+  lcGenerateClip(frames, &fi, PF_RGB24, 0.0, 1);
 
   /* frame 0 only: lcClipTransform(0) is the identity by construction, so with
      k == 0 the whole map is the identity. */
@@ -177,7 +178,7 @@ static void test_lenscorrect_generator_null(void){
   test_bool(diff == 0);
 
   vsFrameFree(&base);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  vsFrameFree(&frames[0]);
 }
 
 /* Frame 0 of the clip is pattern(U_k(x)) -- lcClipTransform(0) is the identity
@@ -198,7 +199,8 @@ static void lcCheckEdgePositions(double k, int inward, const char* label){
 
   fprintf(stderr, "--- %s ---\n", label);
 
-  lcGenerateClip(frames, &fi, PF_RGB24, k, LC_NUM_FRAMES);
+  /* Only frame 0 is walked below, so only frame 0 need be generated. */
+  lcGenerateClip(frames, &fi, PF_RGB24, k, 1);
   ld = vsLensDistortionInit(&fi, k);
   n = lcIdealEdges(ideal, 64, 340.0);
 
@@ -223,7 +225,7 @@ static void lcCheckEdgePositions(double k, int inward, const char* label){
   /* Enough edges to be a real check, not one lucky match. */
   test_bool(checked >= 8);
 
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  vsFrameFree(&frames[0]);
 }
 
 static void test_lenscorrect_generator_edge_positions(void){
@@ -325,23 +327,47 @@ void test_lenscorrect_generator(void){
    figure above.  Do not assume Wobble carries that stronger guarantee. */
 #define LC_MIN_PSNR_WOBBLE 29.0
 
-/* Measured worst case on 4:2:0 at k = -0.25 (Full mode): maxFlat = 25,
-   PSNR = 25.82 dB.  Looser than the packed constants for a separate and
-   already-understood reason, unrelated to the LC_BAND retune above: both
-   tones share blue = 90 (LC_TONE), and setPixelRGB writes one pixel's
-   chroma per 2x2 block while getPixelRGB reads it back nearest neighbour,
-   so blue is reconstructed almost entirely from block-quantised chroma
-   while luma is per-pixel -- every edge in the picture produces a
-   blue-channel discrepancy on both sides of the comparison.  Measured
-   directly: 1577 of 1700 offending channel-samples across the six frames
-   are channel 2 (blue). */
-#define LC_MAX_FLAT_DELTA_420 26
-#define LC_MIN_PSNR_420       24.0
+/* 4:2:0's flat tolerance is per channel, not one shared cap, because the
+   channels genuinely do not behave alike here -- a single ceiling loose
+   enough for the worst of the three (blue) would leave the other two almost
+   unchecked.  setPixelRGB writes one pixel's chroma per 2x2 block while
+   getPixelRGB reads it back nearest neighbour, so every edge in the picture
+   produces a chroma-quantisation discrepancy on both sides of the
+   comparison; luma (and so the part of each channel that comes from Y) is
+   unaffected.  The RGB reconstruction weights that quantised chroma
+   differently per channel -- B carries the largest coefficient, G the
+   smallest -- so a fixed chroma quantisation error shows up as a large
+   delta in B, a small one in G, and something in between in R.  This is
+   NOT a proxy for packed-mode sensitivity to a luma-plane map bug: maxFlat
+   is blind to pure sub-pixel geometry error (it read 1 on every channel
+   under the 0.38 px injected defect discussed at LC_MIN_PSNR above). What
+   the per-channel split actually buys is a tight margin on the channels
+   that hold tight (R, G) plus proper headroom on the one that does not
+   (B), so a bug that pushes 3-26 count deviations into otherwise-flat
+   interiors -- a different failure mode from geometry drift -- still gets
+   caught on R and G instead of hiding under a cap sized for B.
+
+   Measured worst per channel over the six frames, Full mode, k = -0.25:
+   R = 7, G = 1, B = 25 (individual frames: 21, 25, 23, 25, 20, 21 -- a
+   5-count spread).  R and G get worst + 1.  B gets worst plus at least 5
+   counts of headroom over that spread, i.e. comfortably clear of the
+   frame-to-frame swing rather than sitting 1 above it.
+
+   PSNR floor: worst measured 25.82 dB, spread 0.12 dB (tight, individual
+   frames 25.94, 25.85, 25.84, 25.85, 25.82, 25.82). Per the standing rule
+   for a tight spread (see the Wobble floor above): worst - 1.0 dB rounded
+   down to the nearest 0.5 = 24.82 -> 24.5. */
+#define LC_MAX_FLAT_DELTA_420_R 8
+#define LC_MAX_FLAT_DELTA_420_G 2
+#define LC_MAX_FLAT_DELTA_420_B 30
+#define LC_MIN_PSNR_420       24.5
 
 typedef struct {
-  int    n;        /* pixels inside the valid mask                          */
-  int    nFlat;    /* of those, pixels whose ideal neighbourhood is uniform  */
-  int    maxFlat;  /* largest per-channel |delta| over the flat pixels       */
+  int    n;             /* pixels inside the valid mask                     */
+  int    nFlat;         /* of those, pixels whose ideal neighbourhood is
+                            uniform                                         */
+  int    maxFlat;       /* largest |delta| over the flat pixels, any channel */
+  int    maxFlatCh[3];  /* the same, split by channel (R,G,B)                */
   double psnr;     /* over the whole valid mask, summed over all three
                        channels; but the two tones share blue = 90 (LC_TONE),
                        so the B channel contributes no squared error and this
@@ -444,6 +470,7 @@ static LCCompare lcCompare(const VSFrame* got, const VSFrame* ideal,
   double se = 0;
   int x, y;
   c.n = c.nFlat = c.maxFlat = 0;
+  c.maxFlatCh[0] = c.maxFlatCh[1] = c.maxFlatCh[2] = 0;
   c.psnr = 0;
   for(y=0; y<fi->height; y++)
     for(x=0; x<fi->width; x++){
@@ -459,6 +486,7 @@ static LCCompare lcCompare(const VSFrame* got, const VSFrame* ideal,
         int d = (int)a[ch] - (int)b[ch];
         se += (double)d*d;
         if(flat && abs(d) > c.maxFlat) c.maxFlat = abs(d);
+        if(flat && abs(d) > c.maxFlatCh[ch]) c.maxFlatCh[ch] = abs(d);
       }
     }
   if(c.n > 0){
@@ -485,7 +513,7 @@ typedef struct {
   double            k;
   VSLensCorrectMode mode;
   LCReference       ref;
-  int               maxFlat;
+  int               maxFlat[3];  /* per-channel cap (R,G,B)                  */
   double            minPsnr;
   int               minValidDiv;
   const char*       label;
@@ -519,11 +547,15 @@ static void lcCheckRoundTrip(const LCCase* c){
     lcCorrect(&out, &frames[i], &fi, c->mode, c->k, ti);
     lcValidMask(valid, &fi, &ld, &ti, c->mode);
     cmp = lcCompare(&out, &ref, &fi, valid);
-    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i, PSNR %.2f dB\n",
-            i, cmp.n, cmp.nFlat, cmp.maxFlat, cmp.psnr);
+    fprintf(stderr, "  frame %i: valid %i, flat %i, maxFlat %i "
+            "(R %i, G %i, B %i), PSNR %.2f dB\n",
+            i, cmp.n, cmp.nFlat, cmp.maxFlat,
+            cmp.maxFlatCh[0], cmp.maxFlatCh[1], cmp.maxFlatCh[2], cmp.psnr);
     test_bool(cmp.n     > fi.width*fi.height/c->minValidDiv);
     test_bool(cmp.nFlat > cmp.n/4);
-    test_bool(cmp.maxFlat <= c->maxFlat);
+    test_bool(cmp.maxFlatCh[0] <= c->maxFlat[0]);
+    test_bool(cmp.maxFlatCh[1] <= c->maxFlat[1]);
+    test_bool(cmp.maxFlatCh[2] <= c->maxFlat[2]);
     test_bool(cmp.psnr    >= c->minPsnr);
   }
 
@@ -550,7 +582,7 @@ static void test_lenscorrect_full_recovers_base(void){
   c.k           = LC_K_BARREL;
   c.mode        = VSLensCorrectFull;
   c.ref         = LC_REF_BASE;
-  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.maxFlat[0]  = c.maxFlat[1] = c.maxFlat[2] = LC_MAX_FLAT_DELTA;
   c.minPsnr     = LC_MIN_PSNR;
   c.minValidDiv = 2;
   c.label       = "Full correction recovers the base image, k = -0.25";
@@ -571,11 +603,11 @@ static void test_lenscorrect_off_is_much_worse(void){
   VSLensDistortion ld;
   VSTransform ti;
   LCCompare on, off;
-  int i;
 
   fprintf(stderr, "--- control: correction off scores far worse ---\n");
 
-  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_BARREL, LC_NUM_FRAMES);
+  /* Only frame 0 is corrected below, so only frame 0 need be generated. */
+  lcGenerateClip(frames, &fi, PF_RGB24, LC_K_BARREL, 1);
   ld = vsLensDistortionInit(&fi, LC_K_BARREL);
   vsFrameAllocate(&base, &fi);
   vsFrameAllocate(&outOn, &fi);
@@ -599,7 +631,7 @@ static void test_lenscorrect_off_is_much_worse(void){
 
   free(valid);
   vsFrameFree(&base); vsFrameFree(&outOn); vsFrameFree(&outOff);
-  for(i=0; i<LC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  vsFrameFree(&frames[0]);
 }
 
 void test_lenscorrect_roundtrip_full(void){
@@ -633,7 +665,7 @@ static void test_lenscorrect_wobble_holds_the_lens(void){
   c.k           = LC_K_BARREL;
   c.mode        = VSLensCorrectWobble;
   c.ref         = LC_REF_FRAME0;
-  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.maxFlat[0]  = c.maxFlat[1] = c.maxFlat[2] = LC_MAX_FLAT_DELTA;
   c.minPsnr     = LC_MIN_PSNR_WOBBLE;
   c.minValidDiv = 2;
   c.label       = "Wobble removes the shake, keeps the lens, k = -0.25";
@@ -652,7 +684,7 @@ static void test_lenscorrect_pincushion_roundtrip(void){
   c.k           = LC_K_PIN;
   c.mode        = VSLensCorrectFull;
   c.ref         = LC_REF_BASE;
-  c.maxFlat     = LC_MAX_FLAT_DELTA;
+  c.maxFlat[0]  = c.maxFlat[1] = c.maxFlat[2] = LC_MAX_FLAT_DELTA;
   c.minPsnr     = LC_MIN_PSNR;
   c.minValidDiv = 3;
   c.label       = "Full correction, pincushion k = +0.15";
@@ -673,7 +705,9 @@ static void test_lenscorrect_full_yuv420(void){
   c.k           = LC_K_BARREL;
   c.mode        = VSLensCorrectFull;
   c.ref         = LC_REF_BASE;
-  c.maxFlat     = LC_MAX_FLAT_DELTA_420;
+  c.maxFlat[0]  = LC_MAX_FLAT_DELTA_420_R;
+  c.maxFlat[1]  = LC_MAX_FLAT_DELTA_420_G;
+  c.maxFlat[2]  = LC_MAX_FLAT_DELTA_420_B;
   c.minPsnr     = LC_MIN_PSNR_420;
   c.minValidDiv = 2;
   c.label       = "Full correction on PF_YUV420P, k = -0.25";

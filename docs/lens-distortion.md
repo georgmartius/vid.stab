@@ -457,6 +457,37 @@ never needed to lose, and under-budgeting silently leaves border pixels in the o
 acceptable, which is why the budget calculation was changed rather than patched with a fixed
 margin in one direction.
 
+### Seeing it: the checkerboard round trip
+
+`tests/generate_lensclip.c` builds a synthetic clip that makes the whole round trip visible, and
+`tests/test_lenscorrect_roundtrip.c` (`tests --testLCR`) asserts it numerically. The scene is an
+analytic checkerboard whose two tones swap inside every other radial band, so cell lines show the
+bending and the band circles show the radial compression that bending hides near the centre.
+Frame `i` is `pattern(S_i(U_k(x)))` — the scene through a known lens, moved by a known pose —
+evaluated directly at its final coordinates, so the footage carries no resampling blur and the
+ground truth is exact. Correcting it with the same `k` and the exact inverse pose must return the
+original scene. Design: `docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md`.
+
+To regenerate the figure:
+
+```
+tests --dumpLensClip                        # writes testout/lensclip/
+pnmtopng testout/lensclip/sheet.ppm > sheet.png
+```
+
+`sheet.ppm` is a 1936x480 triptych of frame 0 — base | barrel-distorted at `k = -0.25` |
+`Full`-corrected — and the directory also holds every frame of the clip as `distorted_NNN.ppm`,
+`full_NNN.ppm` and `wobble_NNN.ppm`. A plain `tests --all` writes none of it.
+
+Two things worth knowing when reading the figure. The corrected panel is full-bleed, with no
+border fill: under barrel `D_k` contracts, so every destination pixel samples strictly inward and
+the correction crops into the source rather than running off it. Pincushion is the sign that costs
+field of view — about 18.5% of the frame at `k = +0.15`. And the band period is 61 px, not a round
+60, because at 60 the circle `r = 240` runs exactly tangent to the cell lines at `y = 0` and
+`y = 480`, where both terms of the pattern flip along the same curve and leave a sliver thinner
+than the supersampler can resolve. Any retune of the cell size or band period has to keep the two
+coprime.
+
 ### Out of scope: zoom lenses
 
 `k` is one value for the whole clip, fit once by the estimator in section 4 and carried unchanged

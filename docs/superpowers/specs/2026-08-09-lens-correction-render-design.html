@@ -1,0 +1,481 @@
+<h1
+id="design-applying-the-lens-distortion-to-the-output-frames">Design:
+applying the lens distortion to the output frames</h1>
+<p>Written 2026-08-09. Branch
+<code>feature/lens-distortion-estimation</code>.</p>
+<p>Successor to <code>docs/lens-correction-handover.md</code>, which
+described the render-side work as a single “undistort the output”
+feature. This design keeps that mode but makes it the opt-in one, and
+introduces a second, cheaper mode as the default.</p>
+<p>Read <code>docs/lens-distortion.md</code> first for the model, the
+sign convention (barrel is <code>k &lt; 0</code>) and the
+<code>rho</code> normalisation (half-diagonal, <code>r = 1</code> at the
+corner).</p>
+<h2 id="the-two-modes">1. The two modes</h2>
+<p>The render path applies a backward map: for each destination pixel it
+computes a source coordinate and interpolates. Today that map is the
+stabilising similarity <code>M</code> (rotation, zoom, translation)
+alone. This design defines three settings.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Backward map</th>
+<th>Output looks like</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Off</code></td>
+<td><code>M</code></td>
+<td>today’s behaviour, bit for bit</td>
+</tr>
+<tr>
+<td><code>Wobble</code> (default)</td>
+<td><code>D_k ∘ M ∘ U_k</code></td>
+<td>the same lens, on a camera held still</td>
+</tr>
+<tr>
+<td><code>Full</code></td>
+<td><code>D_k ∘ M</code></td>
+<td>an ideal lens; straight lines straight</td>
+</tr>
+</tbody>
+</table>
+<p><code>U_k</code> maps observed → ideal, <code>D_k</code> maps ideal →
+observed. <code>D_k</code> is the correct direction for the final step
+of a backward map because it takes the ideal coordinate we have computed
+to the sensor coordinate we must sample.</p>
+<h3 id="why-wobble-is-the-right-default">1.1 Why <code>Wobble</code> is
+the right default</h3>
+<p>Lens distortion is anchored to the sensor, not to the scene. A scene
+point near the frame centre in one frame and near the edge in the next
+carries a different distortion displacement in each. A global similarity
+cannot remove that difference, so it survives stabilisation as a
+residual warp that grows toward the frame periphery — the wobble. This
+is the same residual that motivated estimating <code>k</code> in the
+first place.</p>
+<p><code>Wobble</code> removes exactly that and nothing else. Formally,
+the observed frame is <code>D_k(S_t(scene))</code> for camera motion
+<code>S_t</code> in ideal coordinates, and the desired output is
+<code>D_k(scene)</code> — the same lens with the camera still.
+Undistorting the output coordinate, applying the stabilising similarity
+in ideal space and redistorting into the source sensor gives
+<code>D_k ∘ M ∘ U_k</code>.</p>
+<p>Three properties follow, and together they are the argument for
+enabling it by default:</p>
+<ul>
+<li>**<code>M = identity ⇒ the map is exactly identity**, since</code>D_k
+∘ U_k = id`. A locked-off shot is unchanged: no FOV loss, no peripheral
+softening, no resampling at all.</li>
+<li>The warp magnitude is proportional to how far the stabiliser
+actually moved the frame. It only touches pixels the stabiliser was
+already going to move.</li>
+<li>The picture keeps the lens’s own character. Straight lines stay
+curved, as the lens drew them.</li>
+</ul>
+<p><code>Full</code> by contrast rewarps every pixel of every frame,
+costs field of view, and softens the periphery. The handover’s decision
+that it stays opt-in is preserved.</p>
+<h3 id="what-is-not-in-scope">1.2 What is not in scope</h3>
+<p>Distortion centre estimation, a second radial coefficient, tangential
+distortion, rolling shutter, per-window <code>k</code> for zoom
+lenses.</p>
+<h2 id="architecture">2. Architecture</h2>
+<h3 id="a-new-unit-srclensmap.ch">2.1 A new unit:
+<code>src/lensmap.{c,h}</code></h3>
+<p>The render-path radial algebra lives in one new file.
+<code>src/lensdistortion.{c,h}</code> keeps the estimator and the
+double-precision point maps and is not modified.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">enum</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  VSLensCorrectOff <span class="op">=</span> <span class="dv">0</span><span class="op">,</span>   <span class="co">/* x_src = M(x_out)           */</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  VSLensCorrectWobble<span class="op">,</span>    <span class="co">/* x_src = D_k(M(U_k(x_out))) */</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  VSLensCorrectFull<span class="op">,</span>      <span class="co">/* x_src = D_k(M(x_out))      */</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> VSLensCorrectMode<span class="op">;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">/* Everything one plane&#39;s inner loop needs. Built once per (mode, k, geometry). */</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> _vslensplanemap <span class="op">{</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int</span>      active<span class="op">;</span>    <span class="co">/* 0 -&gt; the caller takes the existing affine-only path        */</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span>    invRho2<span class="op">;</span>   <span class="co">/* 1/rho^2 in luma-equivalent units; rho from the SOURCE frame */</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span>    sx<span class="op">,</span> sy<span class="op">;</span>    <span class="co">/* luma-equivalent axis scales, (1&lt;&lt;wsub) and (1&lt;&lt;hsub)        */</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span>    tMax<span class="op">;</span>      <span class="co">/* LUT domain in t = r^2                                        */</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int</span>      n<span class="op">;</span>         <span class="co">/* LUT entries, 2048                                            */</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int32_t</span><span class="op">*</span> gU<span class="op">;</span>        <span class="co">/* U_k radial scale, 16.16 fixed point                          */</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int32_t</span><span class="op">*</span> gD<span class="op">;</span>        <span class="co">/* D_k radial scale, 16.16 fixed point                          */</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span><span class="op">*</span>   gUf<span class="op">;</span>       <span class="co">/* same tables in float for the _FLT path                       */</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span><span class="op">*</span>   gDf<span class="op">;</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> VSLensPlaneMap<span class="op">;</span></span></code></pre></div>
+<p>The two scale functions are the whole model:</p>
+<pre><code>gU(t) = 1 / (1 + k*t)
+gD(t) = 2 / (1 + sqrt(1 - 4*k*t))        t = r^2, r in units of rho</code></pre>
+<p>Both are 1-D functions of <code>t</code>, which is what makes a LUT
+possible at all. Both are scalars, which is what makes the chroma
+handling in 2.3 cheap.</p>
+<p>Public surface of the unit:</p>
+<ul>
+<li><code>VSLensPlaneMap vsLensPlaneMapInit(const VSFrameInfo* fiSrc, const VSFrameInfo* fiDest, int plane, double k, VSLensCorrectMode mode, double zoomHeadroom)</code></li>
+<li><code>void vsLensPlaneMapFree(VSLensPlaneMap*)</code></li>
+<li>inline <code>lensScaleU(const VSLensPlaneMap*, float t)</code> /
+<code>lensScaleD(...)</code> and fixed-point twins, each with a
+direct-computation fallback outside <code>[0, tMax]</code></li>
+<li><code>int vsLensMapBackward(const VSLensPlaneMap*, const VSTransform*, double xd, double yd, double* xs, double* ys)</code>
+— a double-precision reference implementation of the whole composite
+map, used by the zoom budget in 2.4 and by the tests. The inner loops do
+not call it; they inline the same arithmetic.</li>
+</ul>
+<h3 id="anchoring">2.2 Anchoring</h3>
+<p><code>U_k</code> is anchored at the <strong>destination</strong>
+plane centre, <code>D_k</code> at the <strong>source</strong> plane
+centre. Both use the same <code>k</code> and the same <code>rho</code>,
+taken from the <strong>source</strong> frame geometry.</p>
+<p>That is the literal statement of “the same lens on a camera held
+still”, and it is what makes <code>D_k ∘ U_k</code> collapse to the
+identity when <code>M</code> does. Using a destination-derived
+<code>rho</code> would break that collapse whenever <code>fiSrc</code>
+and <code>fiDest</code> differ in size.</p>
+<h3 id="chroma-planes-including-422">2.3 Chroma planes, including
+4:2:2</h3>
+<p>Handover §4.3 applies unchanged, and now to both radial steps. For
+4:2:0 (<code>wsub == hsub</code>) the plane is an isotropic scaling of
+luma and needs no special care. For 4:2:2 the plane is anisotropically
+scaled, so a circle in luma is an ellipse in plane coordinates and the
+naive radial formula produces colour fringing that grows toward the
+frame edge.</p>
+<p>Because <code>g</code> is a scalar it commutes with the per-axis
+stretch. Compute <code>t</code> in luma-equivalent units, apply
+<code>g</code> in plane units:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> lx <span class="op">=</span> dx <span class="op">*</span> m<span class="op">-&gt;</span>sx<span class="op">,</span> ly <span class="op">=</span> dy <span class="op">*</span> m<span class="op">-&gt;</span>sy<span class="op">;</span>      <span class="co">/* luma-equivalent */</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> t  <span class="op">=</span> <span class="op">(</span>lx<span class="op">*</span>lx <span class="op">+</span> ly<span class="op">*</span>ly<span class="op">)</span> <span class="op">*</span> m<span class="op">-&gt;</span>invRho2<span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> g  <span class="op">=</span> lensScaleU<span class="op">(</span>m<span class="op">,</span> t<span class="op">);</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>dx <span class="op">*=</span> g<span class="op">;</span> dy <span class="op">*=</span> g<span class="op">;</span>                            <span class="co">/* scale in plane units */</span></span></code></pre></div>
+<p>The existing rotation has the same latent issue for 4:2:2
+(<code>zcos_a</code>/<code>zsin_a</code> are applied in plane
+coordinates). It matters far less there because angles are small. This
+work does not fix it and does not replicate it.</p>
+<h3 id="lut">2.4 LUT</h3>
+<p><code>tMax</code> is derived from the actual geometry rather than
+hardcoded: the largest <code>t</code> reachable is at a destination
+corner (<code>t = 1</code> after <code>U_k</code> at worst) carried
+through <code>M</code>, so</p>
+<pre><code>zMax = 1 - min(0, conf.zoom)/100          /* the most zoomed-out scale factor, &gt;= 1 */
+tMax = ((1 + maxShift/rho) * zMax)^2 * safetyMargin</code></pre>
+<p>with <code>safetyMargin = 1.1</code>. Note the sign convention: the
+loop uses <code>z = 1 - zoom/100</code>, so negative <code>zoom</code>
+is zoom-out and pushes samples to larger radii — that is the case
+<code>tMax</code> must cover. 2048 entries with linear interpolation;
+<code>g</code> is smooth and monotone in <code>t</code> on this domain.
+Beyond <code>tMax</code> the inline helpers fall back to direct
+computation — those samples are off-frame anyway, so the branch is
+cold.</p>
+<p>Fixed-point tables are 16.16, consistent with the coordinate
+representation in <code>transformfixedpoint.c:39-56</code>. The multiply
+back uses a 64-bit intermediate:
+<code>x = c + (((int64_t)dx_fp16 * g_fp16) &gt;&gt; 16)</code>.</p>
+<p>The float path keeps a float table for consistency with the
+fixed-point path and to keep one code shape across both; a test compares
+it against direct <code>sqrtf</code> evaluation, and if the table shows
+no benefit there it can be dropped from the float path later without
+changing behaviour.</p>
+<h3 id="domain-failures">2.5 Domain failures</h3>
+<p><code>gU</code> is undefined when <code>1 + k*t &lt;= 0</code>, which
+for barrel <code>k = -0.25</code> first happens at <code>r = 2</code> —
+far outside the frame. <code>gD</code> is undefined when
+<code>1 - 4*k*t &lt; 0</code>, which for pincushion
+<code>k = +0.15</code> first happens at <code>r ≈ 1.29</code>, outside
+the frame corner but reachable under zoom-out.</p>
+<p>The pixel loop cannot report an error. An out-of-domain sample
+resolves to the border value <code>def</code>, exactly as an
+out-of-frame sample already does. <code>vsLensMapBackward</code> returns
+<code>VS_ERROR</code> for these so the zoom budget and the tests can
+distinguish them.</p>
+<h2 id="integration">3. Integration</h2>
+<h3 id="the-inner-loops">3.1 The inner loops</h3>
+<p>Four call sites: <code>transformPlanar</code> and
+<code>transformPacked</code> in each of
+<code>src/transformfloat.c</code> and
+<code>src/transformfixedpoint.c</code>. The insertion is symmetric —
+<code>U_k</code> on the destination-centred vector before
+<code>M</code>, <code>D_k</code> on the source-centred vector after
+it:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> dx <span class="op">=</span> x <span class="op">-</span> c_d_x<span class="op">,</span> dy <span class="op">=</span> y <span class="op">-</span> c_d_y<span class="op">;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>mode <span class="op">==</span> VSLensCorrectWobble<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span> g <span class="op">=</span> lensScaleU<span class="op">(</span>m<span class="op">,</span> tOf<span class="op">(</span>m<span class="op">,</span> dx<span class="op">,</span> dy<span class="op">));</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  dx <span class="op">*=</span> g<span class="op">;</span> dy <span class="op">*=</span> g<span class="op">;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> x_i <span class="op">=</span>  zcos_a<span class="op">*</span>dx <span class="op">+</span> zsin_a<span class="op">*</span>dy <span class="op">+</span> c_s_x <span class="op">-</span> tx<span class="op">;</span>   <span class="co">/* ideal source coordinate */</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> y_i <span class="op">=</span> <span class="op">-</span>zsin_a<span class="op">*</span>dx <span class="op">+</span> zcos_a<span class="op">*</span>dy <span class="op">+</span> c_s_y <span class="op">-</span> ty<span class="op">;</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>mode <span class="op">!=</span> VSLensCorrectOff<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span> ex <span class="op">=</span> x_i <span class="op">-</span> c_s_x<span class="op">,</span> ey <span class="op">=</span> y_i <span class="op">-</span> c_s_y<span class="op">;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span> g  <span class="op">=</span> lensScaleD<span class="op">(</span>m<span class="op">,</span> tOf<span class="op">(</span>m<span class="op">,</span> ex<span class="op">,</span> ey<span class="op">));</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  x_i <span class="op">=</span> c_s_x <span class="op">+</span> ex<span class="op">*</span>g<span class="op">;</span> y_i <span class="op">=</span> c_s_y <span class="op">+</span> ey<span class="op">*</span>g<span class="op">;</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>interpolate<span class="op">(</span>dest<span class="op">,</span> x_i<span class="op">,</span> y_i<span class="op">,</span> <span class="op">...);</span></span></code></pre></div>
+<p>The mode is loop-invariant; the three cases are specialised so the
+inactive path retains its current instruction sequence exactly.</p>
+<p>Ordering note carried over from the handover: zoom lives inside
+<code>M</code>, so it acts between <code>U_k</code> and <code>D_k</code>
+in wobble mode and before <code>D_k</code> in full mode. In both cases
+it zooms the geometrically corrected image, which is what is wanted, and
+the existing zoom machinery keeps working.</p>
+<h3 id="the-identity-early-out">3.2 The identity early-out</h3>
+<p><code>transformfloat.c:297</code> and
+<code>transformfixedpoint.c:~283</code> short-circuit when
+<code>t.alpha==0 &amp;&amp; t.x==0 &amp;&amp; t.y==0 &amp;&amp; t.zoom==0</code>.</p>
+<p>Wobble mode needs no change here: an identity <code>M</code> gives an
+identity composite map, so the fast path is still correct and —
+importantly — still reachable, which is the performance half of the
+default-on argument. Only full mode must suppress it:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>identity <span class="op">&amp;&amp;</span> <span class="op">!(</span>td<span class="op">-&gt;</span>lensActive <span class="op">&amp;&amp;</span> td<span class="op">-&gt;</span>lensMode <span class="op">==</span> VSLensCorrectFull<span class="op">))</span> <span class="op">{</span> <span class="co">/* copy */</span> <span class="op">}</span></span></code></pre></div>
+<h3 id="zoom-budget">3.3 Zoom budget</h3>
+<p><code>transform_get_required_zoom</code>
+(<code>src/transformtype.c:299</code>) reasons in closed form about
+corner displacement under a similarity. With a lens active the map is no
+longer a similarity, and the extra corner motion of order
+<code>|k|·t·(r/rho)^2</code> — a few pixels for <code>k = -0.25</code>
+and a 20 px shift — would show as border slivers <code>optZoom</code>
+did not budget for.</p>
+<p>Add to <code>src/transform.c</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="dt">double</span> vsTransformRequiredZoom<span class="op">(</span><span class="dt">const</span> VSTransformData<span class="op">*</span> td<span class="op">,</span> <span class="dt">const</span> VSTransform<span class="op">*</span> t<span class="op">);</span></span></code></pre></div>
+<p>When the lens is inactive it delegates to the existing closed form,
+so the <code>k = 0</code> path stays bit identical. When active, note
+that zoom sits <em>inside</em> <code>M</code>, making the required zoom
+a fixed point rather than a formula. Solve it directly: overshoot is
+monotone in <code>z</code>, so bisect on <code>z</code> over
+<code>[0, zoomMax]</code>, at each step pushing the four destination
+corners and four edge midpoints through <code>vsLensMapBackward</code>
+and asking whether all eight land inside the source rectangle. 15
+iterations reach 0.01% and cost ~120 evaluations per frame, which is
+nothing against a per-pixel warp.</p>
+<p>The eight-point sample is justified by the extremum of a
+radial-plus-similarity map on a rectangle lying on the boundary, with
+corners and midpoints the candidates; a test validates it against a
+dense boundary sweep rather than relying on the argument.</p>
+<p>Callers are the <code>optZoom</code> paths at
+<code>src/transform.c:456-491</code>.</p>
+<p>For full mode this subsumes the handover’s
+<code>requiredLensZoom = 100 * max(0, k)</code> special case — the
+pincushion FOV loss falls out of the same bisection.</p>
+<h3 id="where-k-comes-from-at-render-time">3.4 Where <code>k</code>
+comes from at render time</h3>
+<p><code>VSTransformData</code> gains:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>VSLensDistortion  lens<span class="op">;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>VSLensCorrectMode lensMode<span class="op">;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span>               lensActive<span class="op">;</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>VSLensPlaneMap    lensMaps<span class="op">[</span><span class="dv">3</span><span class="op">];</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="dt">double</span>            lensMapK<span class="op">;</span>   <span class="co">/* k the maps were built for, for invalidation */</span></span></code></pre></div>
+<p><code>k</code> only becomes known <em>after</em>
+<code>vsTransformDataInit</code> runs, so the maps cannot be built
+there. A <code>lensEnsureMaps(td)</code> guard at the top of each
+transform entry point builds them on first use and rebuilds when
+<code>k</code> changes.</p>
+<p>Sources of <code>k</code>, in priority order:</p>
+<ol type="1">
+<li><code>conf.lensK</code> — manual override, <code>NaN</code> means
+unset.</li>
+<li>The estimate stashed into <code>td</code> by
+<code>vsLocalmotions2Transforms</code>.</li>
+<li><code>vsTransformSetLensK(VSTransformData*, double k)</code> — a new
+public setter for consumers that do not share one
+<code>VSTransformData</code> across the two passes.</li>
+</ol>
+<p>The handover assumed ffmpeg’s <code>vf_vidstabtransform.c</code>
+reuses a single <code>VSTransformData</code>, which would make source 2
+sufficient. That is unverifiable from this repository, so source 3
+exists regardless and is the documented contract.</p>
+<p><code>lensActive</code> reuses the estimator’s guard:
+<code>lensMode != Off &amp;&amp; estimate.determined &amp;&amp; |k| &gt; 0.01</code>.</p>
+<h3 id="the-transforms-file-path">3.5 The transforms-file path</h3>
+<p><code>src/serialize.c:561</code> parses
+<code>"%i %lf %lf %lf %lf %i"</code> and carries no <code>k</code>. The
+file format is <strong>not</strong> extended. That path degrades to
+<code>lensActive = 0</code> unless the user supplies
+<code>conf.lensK</code>. Consistent with the handover’s recommendation
+to keep <code>k</code> a clip-global value on
+<code>VSTransformData</code> rather than per-<code>VSTransform</code>;
+<code>VSTransform.barrel</code> stays diagnostic-only.</p>
+<h2 id="config-surface">4. Config surface</h2>
+<p>In <code>VSTransformConfig</code>, alongside the existing
+<code>estimateLensDistortion</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>VSLensCorrectMode lensCorrection<span class="op">;</span>  <span class="co">/* default VSLensCorrectWobble */</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="dt">double</span>            lensK<span class="op">;</span>           <span class="co">/* NaN -&gt; use the estimate */</span></span></code></pre></div>
+<p><code>estimateLensDistortion</code> stays a separate flag and keeps
+defaulting on. Estimating <code>k</code> to get better transforms and
+rewarping the picture are different choices;
+<code>lensCorrection = Off</code> with estimation on remains a
+meaningful configuration.</p>
+<p>No <code>lensFovPolicy</code> (the handover’s crop/fit choice). Crop
+is the only policy: fit produces black wedges because a radial expansion
+does not preserve a rectangle, and it costs linear resolution. If
+someone wants fit later, they can zoom out through the existing
+<code>zoom</code> option.</p>
+<h2 id="order-of-work">5. Order of work</h2>
+<p>Each step is independently testable and leaves the tree green.</p>
+<ol type="1">
+<li><strong><code>k = 0</code> bit-exactness guard.</strong> Pin current
+output for a set of transforms, interpolation types and pixel formats
+before touching anything. Every later step keeps it passing.</li>
+<li><strong><code>src/lensmap.{c,h}</code> plus its tests.</strong> The
+unit and the LUT in isolation: <code>gU</code>/<code>gD</code> against
+direct computation, <code>D_k ∘ U_k = id</code> to round-off, LUT error
+in <code>g</code> and in implied pixel displacement, domain-failure
+reporting. No render path touched yet.</li>
+<li><strong>Float planar, luma only, wobble mode.</strong>
+<code>VSTransformData</code> fields, <code>lensEnsureMaps</code>, the
+insertion in <code>_FLT(transformPlanar)</code>, the early-out
+condition. This is where the geometry is proven — tests 6.1, 6.2 and 6.3
+below.</li>
+<li><strong>All planes, with the 4:2:2 handling.</strong> Adds test
+6.5.</li>
+<li><strong>Fixed-point planar and the LUT there.</strong> Adds test
+6.4.</li>
+<li><strong><code>transformPacked</code>, both paths.</strong> Same
+insertion, no subsampling.</li>
+<li><strong>Zoom budget</strong> via
+<code>vsTransformRequiredZoom</code>, wired into <code>optZoom</code>.
+Adds test 6.6.</li>
+<li><strong>Full mode.</strong> Mostly a mode flag by this point; adds
+tests 6.7 and 6.8.</li>
+<li><strong>Config surface, <code>vsTransformSetLensK</code>,
+docs.</strong> Update <code>docs/lens-distortion.md</code> and retire
+<code>docs/lens-correction-handover.md</code>.</li>
+</ol>
+<h2 id="test-plan">6. Test plan</h2>
+<p>Reusable assets in <code>tests/test_lensdistortion.c</code>:
+<code>ldRenderWarped</code> (renders a frame through <code>D_k</code>
+and a similarity — the forward direction needed to <em>create</em>
+distorted input), <code>ldFillTexture</code>,
+<code>ldSampleBilinear</code>, <code>ldGenerate</code>. Style
+references: <code>test_transform.c</code>,
+<code>test_interpolate.c</code>, and
+<code>test_simd_equivalence.c</code> for the equivalence pattern.</p>
+<ol type="1">
+<li><strong><code>k = 0</code> is bit-identical</strong> to pre-change
+output, across modes. The primary regression guard.</li>
+<li><strong>Wobble with identity <code>M</code> is
+bit-identical</strong> to the uncorrected output, for several
+<code>k</code>. This is the property the default rests on; if it ever
+fails, the default is wrong.</li>
+<li><strong>The wobble claim itself — the money test.</strong>
+Synthesise a still scene shot by a moving camera: render a textured
+frame through <code>ldRenderWarped</code> at known <code>k</code> under
+a sequence of similarities. Feed the exact inverse transforms with
+wobble correction on. Assert the corrected outputs are pixelwise stable
+frame to frame. Report both the residual and the uncorrected baseline,
+so the test states the size of the improvement rather than only that a
+threshold held.</li>
+<li><strong>Fixed-point versus float equivalence</strong>, 1-2 LSB, over
+several <code>k</code>, modes and interpolation types.</li>
+<li><strong>Chroma alignment</strong> on YUV420P <em>and</em> YUV422P.
+The 4:2:2 case is the one that catches §2.3; without it that bug ships
+silently.</li>
+<li><strong>Zoom budget</strong>: no border pixel is ever sampled, over
+a sweep of <code>k</code> × transform × mode; and the eight-point sample
+matches a dense boundary sweep.</li>
+<li><strong>Full mode: straight lines become straight.</strong> Render a
+grid, distort, correct, fit lines to the grid rows and columns, measure
+maximum deviation.</li>
+<li><strong>Wobble mode: straight lines stay curved, identically in
+every frame.</strong> The inverse of 7, and the direct statement of “the
+lens look survives”.</li>
+<li><strong>Pincushion borders</strong> under full mode:
+<code>k &gt; 0</code> produces black corners unless zoomed; confirm the
+<code>def</code> handling does the right thing rather than sampling
+garbage.</li>
+</ol>
+<h2 id="known-limits-carried-forward">7. Known limits, carried
+forward</h2>
+<ul>
+<li><strong>Peripheral softness in full mode.</strong>
+<code>dD/dr &lt; 1</code> at the periphery (≈0.71 at <code>r = 1</code>,
+<code>k = -0.25</code>), so the outer region is magnified and softens.
+Bicubic helps. Documented, not forced — an automatic interpolation
+change would be a surprising side effect of a mode flag. Wobble mode is
+largely spared, since its net warp is small wherever the stabiliser
+moved little.</li>
+<li><strong>Zoom lenses.</strong> <code>k</code> is one value per clip.
+Footage that zooms during the shot has a <code>k</code> that genuinely
+drifts, and the estimator will return a confident average. Out of scope;
+the hook for later is a windowed estimate.</li>
+<li><strong><code>Full</code> remains opt-in</strong> until it has been
+run over a range of real footage. Flipping that default is a separate
+decision on evidence, not part of this work.</li>
+</ul>
+<h2 id="file-and-symbol-map">8. File and symbol map</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>What</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Render-path lens map, LUT</td>
+<td><code>src/lensmap.{c,h}</code> (new)</td>
+</tr>
+<tr>
+<td>Model, estimator, fit</td>
+<td><code>src/lensdistortion.{c,h}</code> (unchanged)</td>
+</tr>
+<tr>
+<td>Maths write-up</td>
+<td><code>docs/lens-distortion.md</code></td>
+</tr>
+<tr>
+<td>Estimate hook</td>
+<td><code>src/localmotion2transform.c:39</code>
+<code>vsLocalmotions2Transforms</code></td>
+</tr>
+<tr>
+<td>Float warp loops</td>
+<td><code>src/transformfloat.c:291</code>
+<code>_FLT(transformPlanar)</code>, <code>transformPacked</code></td>
+</tr>
+<tr>
+<td>Fixed-point warp loops</td>
+<td><code>src/transformfixedpoint.c</code> <code>transformPlanar</code>,
+<code>transformPacked</code></td>
+</tr>
+<tr>
+<td>Fixed-point helpers</td>
+<td><code>src/transformfixedpoint.c:39-56</code></td>
+</tr>
+<tr>
+<td>Zoom budget</td>
+<td><code>src/transformtype.c:299</code>; new
+<code>vsTransformRequiredZoom</code> in <code>src/transform.c</code>;
+callers <code>src/transform.c:456-491</code></td>
+</tr>
+<tr>
+<td>Config structs</td>
+<td><code>src/transform.h:84</code> <code>VSTransformConfig</code>,
+<code>:123</code> <code>VSTransformData</code></td>
+</tr>
+<tr>
+<td>Transforms file parser</td>
+<td><code>src/serialize.c:561</code></td>
+</tr>
+<tr>
+<td>Tests</td>
+<td><code>tests/test_lensdistortion.c</code>, new
+<code>tests/test_lensmap.c</code>, <code>tests --testLENS</code></td>
+</tr>
+<tr>
+<td>Consumer</td>
+<td>out of tree: ffmpeg <code>vf_vidstabtransform.c</code></td>
+</tr>
+</tbody>
+</table>
+<p>Build and run:</p>
+<pre><code>cmake -S tests -B build/tests &amp;&amp; cmake --build build/tests -j8
+build/tests/tests --all
+build/tests/tests --testLENS</code></pre>

@@ -256,7 +256,11 @@ rebuilds when `k` changes.
 
 Sources of `k`, in priority order:
 
-1. `conf.lensK` — manual override, `NaN` means unset.
+1. `conf.lensK` — manual override, `0` means unset. NaN is deliberately **not** used as the
+   sentinel: both CMakeLists build with `-ffast-math`, under which `isnan()` may fold to `0` and
+   `NaN == x` may return true, so a NaN sentinel in a public header is a trap. Nothing is lost —
+   forcing `k = 0` and disabling correction are the same operation, and "no correction" is spelled
+   `lensCorrection = Off`.
 2. The estimate stashed into `td` by `vsLocalmotions2Transforms`.
 3. `vsTransformSetLensK(VSTransformData*, double k)` — a new public setter for consumers that do not
    share one `VSTransformData` across the two passes.
@@ -280,7 +284,7 @@ In `VSTransformConfig`, alongside the existing `estimateLensDistortion`:
 
 ```c
 VSLensCorrectMode lensCorrection;  /* default VSLensCorrectWobble */
-double            lensK;           /* NaN -> use the estimate */
+double            lensK;           /* 0 -> use the estimate */
 ```
 
 `estimateLensDistortion` stays a separate flag and keeps defaulting on. Estimating `k` to get better

@@ -758,12 +758,12 @@ The first task that changes a picture.
   ```c
   /* VSTransformConfig */
   VSLensCorrectMode lensCorrection;   /* default VSLensCorrectWobble */
-  double            lensK;            /* NaN -> use the estimate */
+  double            lensK;            /* 0 -> use the estimate */
   /* VSTransformData */
   VSLensCorrectMode lensMode;
   int               lensActive;
   double            lensK;
-  double            lensMapK;         /* k the maps were built for, NaN = none */
+  double            lensMapK;         /* effective k the maps were built for; -1 = none */
   VSLensPlaneMap    lensMaps[3];
   /* API */
   VS_API void vsTransformSetLensK(VSTransformData* td, double k);
@@ -902,9 +902,10 @@ Expected: FAIL — `lensCorrection` is not a member of `VSTransformConfig`.
        undistorts the picture outright and stays opt-in.  See
        docs/superpowers/specs/2026-08-09-lens-correction-render-design.md */
     VSLensCorrectMode lensCorrection;
-    /* Manual override for k; NaN means "use whatever was estimated".  Needed
-       for the transforms-file path, which carries no k, and for users who know
-       their lens. */
+    /* Manual override for k; 0 means "use whatever was estimated".  Needed for
+       the transforms-file path, which carries no k, and for users who know
+       their lens.  Not NaN: -ffast-math makes a NaN sentinel unreliable, and
+       nothing is lost, since "no correction" is lensCorrection = Off. */
     double            lensK;
 ```
 
@@ -915,8 +916,9 @@ In `VSTransformData`, after `conf`:
        runs, so the per-plane maps are built lazily by lensEnsureMaps(). */
     VSLensCorrectMode lensMode;
     int               lensActive;
-    double            lensK;      /* NaN until set */
-    double            lensMapK;   /* k the maps were built for, NaN if none */
+    double            lensK;      /* 0 until set */
+    double            lensMapK;   /* effective k the maps were built for; -1 = none,
+                                     a value no effective k can ever take */
     VSLensPlaneMap    lensMaps[3];
 ```
 
@@ -927,7 +929,7 @@ In `vsTransformGetDefaultConfig`, after `conf.estimateLensDistortion = 1;`:
 ```c
   /* Wobble is safe to default on: identity in, identity out. */
   conf.lensCorrection = VSLensCorrectWobble;
-  conf.lensK          = NAN;
+  conf.lensK          = 0.0;
 ```
 
 In `vsTransformDataInit`, before `return VS_OK`:
@@ -935,8 +937,9 @@ In `vsTransformDataInit`, before `return VS_OK`:
 ```c
   td->lensMode   = td->conf.lensCorrection;
   td->lensActive = 0;
-  td->lensK      = td->conf.lensK;      /* NaN unless the caller overrode it */
-  td->lensMapK   = NAN;
+  td->lensK      = td->conf.lensK;      /* 0 unless the caller overrode it */
+  td->lensMapK   = -1.0;                /* no effective k can be -1, so the
+                                           first lensEnsureMaps always builds */
   memset(td->lensMaps, 0, sizeof(td->lensMaps));
 ```
 
@@ -961,11 +964,9 @@ void lensEnsureMaps(VSTransformData* td){
   int planes, p;
   /* |k| below this moves a corner pixel by well under a pixel; acting on it
      would only add noise.  Same guard the estimator uses. */
-  int want = td->lensMode != VSLensCorrectOff && !isnan(k) && fabs(k) > 0.01;
+  int want = td->lensMode != VSLensCorrectOff && fabs(k) > 0.01;
   if(!want) k = 0.0;
-  if(td->lensMapK == k || (isnan(td->lensMapK) && !want && td->lensActive == 0 && k == 0.0)){
-    if(td->lensMapK == k) return;
-  }
+  if(td->lensMapK == k) return;
   planes = td->fiSrc.pFormat < PF_PACKED ? td->fiSrc.planes : 1;
   for(p=0; p<3; p++) vsLensPlaneMapFree(&td->lensMaps[p]);
   td->lensActive = 0;
@@ -1063,7 +1064,7 @@ smaller, not marginally.
 
 Run: `./build/tests/tests --testBASE`
 Expected: PASS — this proves the default-on wobble mode did not disturb `k = 0` output, since
-`lensK` is `NaN` there and the maps stay inactive.
+`lensK` is `0` there and the maps stay inactive.
 
 Run: `./build/tests/tests --all`
 Expected: all pass.
@@ -1786,7 +1787,7 @@ static void test_lensmap_config_override(void){
   /* the default is wobble, but with no k there is nothing to do */
   cfg = vsTransformGetDefaultConfig("override");
   test_bool(cfg.lensCorrection == VSLensCorrectWobble);
-  test_bool(isnan(cfg.lensK));
+  test_bool(cfg.lensK == 0.0);
   test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
   lensEnsureMaps(&td);
   test_bool(td.lensActive == 0);
@@ -1841,7 +1842,7 @@ all comments fails this task.
 Add both `UNIT(...)` lines.
 
 Run: `cmake --build build/tests -j8 && ./build/tests/tests --testLMAP`
-Expected: `test_lensmap_estimate_reaches_render` FAILS — `td.lensK` is still `NaN` after
+Expected: `test_lensmap_estimate_reaches_render` FAILS — `td.lensK` is still `0` after
 `vsLocalmotions2Transforms`.
 
 - [ ] **Step 3: Stash the estimate**
@@ -1852,7 +1853,7 @@ after `useLens` is computed and `lens` is built (around line 66):
 ```c
     /* Hand the estimate to the render path.  An explicit conf.lensK wins: the
        user knows their lens better than a fit over one clip does. */
-    if(isnan(td->conf.lensK) && useLens)
+    if(fabs(td->conf.lensK) <= 0.01 && useLens)
       vsTransformSetLensK(td, le.k);
 ```
 

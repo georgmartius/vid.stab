@@ -73,6 +73,11 @@ if(USE_OMP)
   endif()
 endif()
 
+# libvidstab.h includes the generated version header, so build it here too.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../version.cmake)
+configure_file(../src/libvidstab_version.h.in libvidstab_version.h @ONLY)
+include_directories (${CMAKE_CURRENT_BINARY_DIR})
+
 # Make sure the compiler can find the library's own headers
 include_directories (../src)
 # neon_emu.h lives here, for the emulated NEON build below

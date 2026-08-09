@@ -1,8 +1,11 @@
 /*
- *  libvidstab.h
+ *  libvidstab_version.h
  *
- *  Created on: Feb 21, 2011
- *  Copyright (C) Georg Martius - June 2007
+ *  Generated from libvidstab_version.h.in -- do not edit.
+ *  The version lives in version.cmake.
+ *
+ *  Copyright (C) Georg Martius - 2026
+ *   georg dot martius at web dot de
  *
  *  SPDX-License-Identifier: LGPL-2.1-or-later
  *
@@ -23,19 +26,24 @@
  *  <https://www.gnu.org/licenses/>.
  *
  */
+#ifndef __LIBVIDSTAB_VERSION_H
+#define __LIBVIDSTAB_VERSION_H
 
-#ifndef LIBVIDSTAB_H
-#define LIBVIDSTAB_H
+#define LIBVIDSTAB_VERSION_MAJOR @MAJOR_VERSION@
+#define LIBVIDSTAB_VERSION_MINOR @MINOR_VERSION@
+#define LIBVIDSTAB_VERSION_MICRO @PATCH_VERSION@
 
-#include "libvidstab_version.h"
-#include "frameinfo.h"
-#include "motiondetect.h"
-#include "transform.h"
-#include "vsvector.h"
-#include "serialize.h"
-#include "localmotion2transform.h"
+/** Comparable version, e.g. LIBVIDSTAB_VERSION_INT >= LIBVIDSTAB_VERSION_MAKE(1,4,0).
+    Absent before 1.4, so #ifdef it to detect an older library. */
+#define LIBVIDSTAB_VERSION_MAKE(a,b,c) (((a) << 16) | ((b) << 8) | (c))
+#define LIBVIDSTAB_VERSION_INT \
+  LIBVIDSTAB_VERSION_MAKE(LIBVIDSTAB_VERSION_MAJOR, \
+                          LIBVIDSTAB_VERSION_MINOR, \
+                          LIBVIDSTAB_VERSION_MICRO)
 
-#endif  /* LIBVIDSTAB_H_ */
+#define LIBVIDSTAB_VERSION "v@MAJOR_VERSION@.@MINOR_VERSION@.@PATCH_VERSION@"
+
+#endif
 
 /*
  * Local variables:

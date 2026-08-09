@@ -8,11 +8,7 @@ include (GNUInstallDirs)
 # include (ExternalProject) # There must be a nicer way to include this
 find_package(OpenMP)
 
-set(MAJOR_VERSION 1)
-# SOVERSION is MAJOR.MINOR: bump the minor whenever a public struct changes
-# size, or consumers that embed one by value corrupt their heap.
-set(MINOR_VERSION 4)
-set(PATCH_VERSION 0)
+include(${CMAKE_CURRENT_SOURCE_DIR}/version.cmake)
 # note the separator between minor and patch: without it this produced "1.20"
 # for 1.2.0 (and "1.10" for 1.1.0), which is what ends up in the Version field
 # of the generated vidstab.pc
@@ -100,6 +96,8 @@ set(HEADERS src/frameinfo.h src/transformtype.h src/libvidstab.h
   src/transform.h src/motiondetect.h src/serialize.h
   src/localmotion2transform.h src/boxblur.h src/vsvector.h )
 
+configure_file(src/libvidstab_version.h.in libvidstab_version.h @ONLY)
+
 
 # Create the vidstab library
 add_library (vidstab ${SOURCES})
@@ -117,6 +115,7 @@ if(NOT BUILD_SHARED_LIBS)
 endif()
 target_include_directories(vidstab PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 if (NOT MSVC)
   target_link_libraries(vidstab m)
@@ -136,7 +135,8 @@ endif()
 
 #if(!NOHEADERS)
 FILE(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
-INSTALL(FILES ${HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vid.stab)
+INSTALL(FILES ${HEADERS} "${CMAKE_CURRENT_BINARY_DIR}/libvidstab_version.h"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vid.stab)
 #endif()
 
 INSTALL(TARGETS vidstab

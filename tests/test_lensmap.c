@@ -502,3 +502,130 @@ static void test_lensmap_chroma_render(void){
   lmCheckChromaAlignment(PF_YUV422P, "YUV422P");
   lmCheckChromaAlignment(PF_YUV444P, "YUV444P");
 }
+
+/* Renders src through both warp loops with the given config and returns the
+   mean and worst absolute per-pixel (luma) difference between them. */
+static void lmFixFloatDiff(const VSFrameInfo* fi, const VSFrame* src,
+                           VSLensCorrectMode cm, double k, VSInterpolType ip,
+                           const VSTransform* t, double* meanOut, double* worstOut){
+  VSFrame dfix, dflt;
+  VSTransformData a, b;
+  double sum = 0, worst = 0; int n = 0, x, y;
+  lmInitTd(&a, fi, cm, k, ip);
+  lmInitTd(&b, fi, cm, k, ip);
+  vsFrameAllocate(&dfix, fi); vsFrameAllocate(&dflt, fi);
+  test_bool(vsTransformPrepare(&a, src, &dfix) == VS_OK);
+  test_bool(transformPlanar(&a, *t) == VS_OK);
+  test_bool(vsTransformFinish(&a) == VS_OK);
+  test_bool(vsTransformPrepare(&b, src, &dflt) == VS_OK);
+  test_bool(_FLT(transformPlanar)(&b, *t) == VS_OK);
+  test_bool(vsTransformFinish(&b) == VS_OK);
+  for(y=0; y<fi->height; y++)
+    for(x=0; x<fi->width; x++){
+      double d = fabs((double)dfix.data[0][y*dfix.linesize[0]+x] -
+                      (double)dflt.data[0][y*dflt.linesize[0]+x]);
+      sum += d; n++;
+      if(d > worst) worst = d;
+    }
+  *meanOut = sum/n; *worstOut = worst;
+  vsFrameFree(&dfix); vsFrameFree(&dflt);
+  vsTransformDataCleanup(&a); vsTransformDataCleanup(&b);
+}
+
+/* The fixed-point path is what ships, and it must not disagree with the
+   float path any more *because of the lens* than the two paths already
+   disagree without one.
+
+   An earlier version of this test bounded |fixed - float| in absolute terms
+   for every interpolation type. That failed for VS_BiLinear/VS_BiCubic even
+   with the lens completely inactive: their fixed-point kernels
+   (interpolateBiLin/interpolateBiCub in transformfixedpoint.c) carry a
+   deliberate rounding-bias "+1" correction that the float twins do not, and
+   on a texture with many hard edges (ldFillTexture's 900 random rectangles)
+   that alone produces mean differences of several LSB -- see the task-5
+   report for the measurement. --testBASE cannot catch this because it pins
+   the fixed and float goldens separately and never compares them to each
+   other.
+
+   So the primary assertion here is differential: measure the lens-off
+   disagreement Dbase once per interpolation type (mode and k don't matter
+   with the lens inactive), measure the lens-on disagreement Dlens per
+   (mode, k, interpolation) config, and require that turning the lens on
+   doesn't add more than a small, measured margin on top of whatever the
+   interpolator pair already disagreed about.
+
+   A "tight absolute worst-pixel bound for VS_Zero/VS_Linear" was tried and
+   measured to NOT hold (see the task-5 report): nearest-neighbour-style
+   coordinate-to-pixel snapping (interpolateZero, and interpolateLin's
+   y-rounding) is sensitive to *any* sub-pixel disagreement between the two
+   paths, however small, whenever the true coordinate sits close to a
+   rounding boundary. Turning the lens on moves coordinates by a fraction of
+   a pixel almost everywhere, which is enough to flip the occasional pixel
+   across such a boundary and, on this hard-edged texture, produce a
+   near-full-scale jump for that one pixel -- unrelated to any bug, present
+   for k as small or as large as tested. So WORST is not a stable per-config
+   statistic for any interpolation type on this texture; only MEAN is. The
+   worst-based margin below is kept for visibility (printed every run) but,
+   calibrated honestly, cannot bind (see its comment). */
+static void test_lensmap_fixed_float_equivalence(void){
+  const double ks[] = {-0.3, -0.25, -0.1, 0.12};
+  VSFrameInfo fi;
+  VSFrame src;
+  uint32_t seed = 7;
+  int ik, ip, im;
+  double baseMean[4], baseWorst[4];
+  VSTransform t0 = null_transform();
+  t0.x = 6.25; t0.y = -3.5; t0.alpha = 0.008;
+
+  /* Margins on the lens's *additional* fixed-vs-float disagreement, on top
+     of each interpolation type's own lens-off baseline. Measured across all
+     2 modes x 4 k's x 4 interpolation types with the implementation in this
+     commit:
+       max observed mean(Dlens)  - mean(Dbase)  = 7.73  (Full,  k=0.12, BiLinear/BiCubic)
+       max observed worst(Dlens) - worst(Dbase) = 205   (Full,  k=-0.30, VS_Linear)
+     MEAN_MARGIN is set to ~2x the mean excess and does the real work below
+     (see the mutation-detection evidence in the task-5 report). WORST_MARGIN
+     is set to ~2x the worst excess for the same reason as every other
+     number here being measured rather than guessed, but at that size it
+     exceeds the 0..255 dynamic range of a single channel sample: no
+     configuration can ever fail it, by construction, once worst(Dbase) >= 0.
+     It is kept only so the number is printed and a future reader can see
+     honestly that it does not bind, rather than silently dropping the
+     check and losing the printout. */
+  const double MEAN_MARGIN  = 16.0;
+  const double WORST_MARGIN = 410.0;
+
+  vsFrameInfoInit(&fi, 320, 240, PF_YUV420P);
+  vsFrameAllocate(&src, &fi);
+  ldFillTexture(&src, &fi, &seed);
+  memset(src.data[1], 0x55, (size_t)src.linesize[1]*(fi.height/2));
+  memset(src.data[2], 0xAA, (size_t)src.linesize[2]*(fi.height/2));
+
+  /* Lens-off baseline, once per interpolation type: mode and k are
+     irrelevant here because vsLensPlaneMapInit leaves the map inactive for
+     VSLensCorrectOff regardless of k (see lensmap.c). */
+  for(ip=0; ip<4; ip++){
+    lmFixFloatDiff(&fi, &src, VSLensCorrectOff, 0.0, (VSInterpolType)ip, &t0,
+                  &baseMean[ip], &baseWorst[ip]);
+    fprintf(stderr, "  lens-off baseline ip=%d: mean(Dbase)=%.4f worst(Dbase)=%.0f\n",
+            ip, baseMean[ip], baseWorst[ip]);
+  }
+
+  for(im=1; im<=2; im++){
+    VSLensCorrectMode cm = im == 1 ? VSLensCorrectWobble : VSLensCorrectFull;
+    for(ik=0; ik<4; ik++){
+      for(ip=0; ip<4; ip++){
+        double meanLens, worstLens;
+        lmFixFloatDiff(&fi, &src, cm, ks[ik], (VSInterpolType)ip, &t0,
+                      &meanLens, &worstLens);
+        fprintf(stderr, "  mode=%d k=%.2f ip=%d: mean(Dbase)=%.4f mean(Dlens)=%.4f "
+                "(d=%.4f)  worst(Dbase)=%.0f worst(Dlens)=%.0f (d=%.0f)\n",
+                im, ks[ik], ip, baseMean[ip], meanLens, meanLens - baseMean[ip],
+                baseWorst[ip], worstLens, worstLens - baseWorst[ip]);
+        test_bool(meanLens  <= baseMean[ip]  + MEAN_MARGIN);
+        test_bool(worstLens <= baseWorst[ip] + WORST_MARGIN);
+      }
+    }
+  }
+  vsFrameFree(&src);
+}

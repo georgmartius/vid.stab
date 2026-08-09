@@ -28,6 +28,7 @@
  */
 #include "transformfixedpoint.h"
 #include "transform.h"
+#include "transform_internal.h"
 #include "transformtype_operations.h"
 
 //#include <math.h>
@@ -351,7 +352,12 @@ int transformPlanar(VSTransformData* td, VSTransform t)
   int32_t x = 0, y = 0;
   uint8_t *dat_1, *dat_2;
 
-  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0){
+  lensEnsureMaps(td);
+
+  /* Wobble mode maps identity to identity (D_k . U_k = id), so the fast path
+     stays correct and stays reachable.  Full mode must still undistort. */
+  if (t.alpha==0 && t.x==0 && t.y==0 && t.zoom == 0 &&
+      !(td->lensActive && td->lensMode == VSLensCorrectFull)){
     if(vsFramesEqual(&td->src,&td->destbuf))
       return VS_OK; // noop
     else {
@@ -383,6 +389,21 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     fp16  c_tx    = c_s_x - (fToFp16(t.x) >> wsub);
     fp16  c_ty    = c_s_y - (fToFp16(t.y) >> hsub);
 
+    const VSLensPlaneMap* lm = &td->lensMaps[plane];
+    int lensOn = lm->active;
+    int wobble = lensOn && td->lensMode == VSLensCorrectWobble;
+    /* luma-equivalent shifts: a plane-unit offset is << sub to become luma */
+    int lsx = lm->sxShift, lsy = lm->syShift;
+    /* tDomD as a squared-radius threshold in luma px^2 at scale 2^32, so the
+       per-pixel domain test is an integer compare.  INFINITY for barrel;
+       guard the double->int64 conversion against overflow for extreme k /
+       frame sizes -- if it would not comfortably fit, treat it as no bound
+       at all (pincushion's domain edge is then only enforced by the LUT
+       clamp, which already saturates at the border value there). */
+    double domR2d = lm->tDomD / lm->invRho2 * 4294967296.0;
+    int64_t domR2 = (lm->tDomD == INFINITY || domR2d > (double)(INT64_MAX/2))
+                    ? INT64_MAX : (int64_t)domR2d;
+
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
      *      p_d = c_d + M(p_s - c_s) + t
@@ -396,8 +417,33 @@ int transformPlanar(VSTransformData* td, VSTransform t)
       int32_t y_d1 = (y - c_d_y);
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
-        fp16 x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_tx;
-        fp16 y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_ty;
+        fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
+        fp16 x_s, y_s;
+        if (wobble) {
+          int64_t lx = (int64_t)dx << lsx, ly = (int64_t)dy << lsy;
+          int32_t g  = vsLensLutFp(lm->gU, lx*lx + ly*ly, lm->idxScaleU);
+          dx = (fp16)(((int64_t)dx * g) >> 16);
+          dy = (fp16)(((int64_t)dy * g) >> 16);
+        }
+        /* zcos_a and zsin_a are 16.16; multiplying by a 16.16 offset needs the
+           extra shift the integer form did not.  One expression serves both
+           paths: with the lens off, dx is exactly x_d1<<16, so
+           (zcos_a*(x_d1<<16))>>16 == zcos_a*x_d1 with no rounding at all --
+           the int64 intermediate only removes an overflow risk that the
+           wobble scaling introduces. */
+        x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
+        y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
+        if (lensOn) {
+          int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
+          int64_t lx = ex << lsx, ly = ey << lsy;
+          int64_t r2 = lx*lx + ly*ly;
+          if (r2 > domR2) { x_s = iToFp16(VS_LENS_OUTSIDE_PX); y_s = iToFp16(VS_LENS_OUTSIDE_PX); }
+          else {
+            int32_t g = vsLensLutFp(lm->gD, r2, lm->idxScaleD);
+            x_s = (fp16)(c_s_x + ((ex * g) >> 16));
+            y_s = (fp16)(c_s_y + ((ey * g) >> 16));
+          }
+        }
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
         // inlining the interpolation function would bring 10%
         //  (but then we cannot use the function pointer anymore...)

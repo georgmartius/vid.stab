@@ -66,7 +66,7 @@ endif()
 set(SOURCES src/frameinfo.c src/transformtype.c src/libvidstab.c
   src/transform.c src/transformfixedpoint.c src/motiondetect.c
   src/serialize.c src/localmotion2transform.c
-  src/boxblur.c src/vsvector.c src/lensdistortion.c)
+  src/boxblur.c src/vsvector.c src/lensdistortion.c src/lensmap.c)
 list(APPEND SOURCES ${VIDSTAB_SIMD_SOURCES})
 add_compile_definitions(${VIDSTAB_SIMD_DEFS})
 

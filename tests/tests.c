@@ -52,6 +52,7 @@
 #include "test_synthetic.c"
 #include "test_tripod.c"
 #include "test_lensdistortion.c"
+#include "test_lensmap.c"
 #include "test_transform_baseline.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
@@ -203,6 +204,15 @@ int main(int argc, char** argv){
     UNIT(test_lensdistortion_outliers());
     UNIT(test_lensdistortion_endtoend());
     UNIT(test_lensdistortion_phase2());
+  }
+
+  if(all || contains(argv,argc,"--testLMAP", "render-path lens map and LUTs")){
+    UNIT(test_lensmap_scales());
+    UNIT(test_lensmap_identity_transform());
+    UNIT(test_lensmap_lut());
+    UNIT(test_lensmap_domain());
+    UNIT(test_lensmap_inactive());
+    UNIT(test_lensmap_chroma_consistency());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

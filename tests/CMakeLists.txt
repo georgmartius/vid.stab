@@ -106,7 +106,7 @@ add_executable (tests tests.c testutils.c testframework.c ../src/vsvector.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/boxblur.c
-  ../src/lensdistortion.c
+  ../src/lensdistortion.c ../src/lensmap.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
 
@@ -119,6 +119,7 @@ add_executable (bench EXCLUDE_FROM_ALL ../bench/bench_motiondetect.c
   ../src/libvidstab.c ../src/transformtype.c ../src/frameinfo.c
   ../src/serialize.c ../src/localmotion2transform.c
   ../src/motiondetect.c ../src/boxblur.c
+  ../src/lensdistortion.c ../src/lensmap.c
   ${VIDSTAB_SIMD_SOURCES}
   ${LP_SOURCES})
 # MSVC has the math functions in the C runtime and drives OpenMP from /openmp,

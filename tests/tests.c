@@ -30,6 +30,7 @@
 
 #include "generate.c"
 #include "generate_synthetic.c"
+#include "generate_lensclip.c"
 
 #include "test_frameinfo.c"
 #include "test_transform.c"
@@ -53,6 +54,7 @@
 #include "test_tripod.c"
 #include "test_lensdistortion.c"
 #include "test_lensmap.c"
+#include "test_lenscorrect_roundtrip.c"
 #include "test_transform_baseline.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
@@ -234,6 +236,13 @@ int main(int argc, char** argv){
     UNIT(test_lensmap_estimate_reaches_render());
   }
 
+  if(all || contains(argv,argc,"--testLCR", "checkerboard lens clip round trip")){
+    UNIT(test_lenscorrect_pattern());
+    UNIT(test_lenscorrect_generator());
+    UNIT(test_lenscorrect_roundtrip_full());
+    UNIT(test_lenscorrect_roundtrip_modes());
+  }
+
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){
     UNIT(test_transform_baseline());
   }
@@ -261,6 +270,11 @@ int main(int argc, char** argv){
       fprintf(stderr, "dumped synthetic PPM frames to %s/synthetic/%s\n",
               TEST_OUTPUT_DIR, fmtname);
     }
+  }
+
+  if(contains(argv,argc,"--dumpLensClip",
+              "dump the checkerboard lens clip and the contact sheet as PPM")){
+    lcDumpClip();
   }
 
   if(all || contains(argv,argc,"--testGO", "gradient optimizer")){

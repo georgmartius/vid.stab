@@ -260,13 +260,10 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
           float g  = vsLensLutF(lm->gUf, lm->tMaxU, (lx*lx + ly*ly)*irho2);
           x_d1 *= g; y_d1 *= g;
         }
-        /* Pre-existing divergence, pinned deliberately: unlike the other
-           three warp loops (transformPlanar here and both loops in
-           transformfixedpoint.c), this one ignores t.zoom entirely -- there
-           is no `z = 1 - t.zoom/100.0` factor on cos/sin below. --testBASE
-           holds this exact output byte for byte, so do not "fix" it to
-           match the other loops; it predates the lens code, which merely
-           sits on top of it like everything else here. */
+        /* Unlike the other three warp loops (transformPlanar here and both in
+           transformfixedpoint.c) this one ignores t.zoom: there is no
+           `z = 1 - t.zoom/100.0` factor on cos/sin below.  --testBASE pins
+           this output byte for byte, so do not "fix" it to match them. */
         x_s  =  cos(-t.alpha) * x_d1
           + sin(-t.alpha) * y_d1 + c_s_x -t.x;
         y_s  = -sin(-t.alpha) * x_d1

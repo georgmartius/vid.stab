@@ -106,15 +106,12 @@ typedef struct _VSTransformConfig {
     int            storeTransforms; // stores calculated transforms to file
     int            smoothZoom;   // if 1 the zooming is also smoothed. Typically not recommended.
     VSCamPathAlgo  camPathAlgo;  // algorithm to use for camera path optimization
-    /* Lens distortion.  This belongs to the transform pass and only here: k is
-     * a single parameter pooled over the whole clip, and motion detection is
-     * streaming -- it never holds more than one frame pair at a time.  The
-     * transform pass is where the complete set of local motions exists.
-     * When enabled the transforms are fitted through the estimated lens rather
-     * than assuming none, so barrel distortion stops being absorbed into the
-     * reported camera motion.  It is a no-op unless the estimate comes back
-     * determined and large enough to matter, so undistorted footage is
-     * unaffected. */
+    /* Fit the transforms through an estimated lens rather than assuming none,
+     * so barrel distortion is not absorbed into the reported camera motion.
+     * Lives in the transform pass because k is pooled over the whole clip and
+     * only here does the complete set of local motions exist; motion detection
+     * is streaming.  A no-op unless the estimate comes back determined and
+     * large enough to matter. */
     int            estimateLensDistortion;
     /* Applying the estimated distortion to the picture, as opposed to merely
        using it to interpret the motions.  Wobble is the default: it collapses
@@ -126,11 +123,9 @@ typedef struct _VSTransformConfig {
     VSLensCorrectMode lensCorrection;
     /* Manual override for k; 0.0 means "use whatever was estimated".  Needed
        for the transforms-file path, which carries no k, and for users who know
-       their lens.  A user who wants no lens correction at all sets
-       lensCorrection = VSLensCorrectOff rather than lensK = 0.0 -- forcing
-       k = 0 and switching correction off produce byte-identical output (both
-       make U_k and D_k the identity), so 0.0 does not need to also mean
-       "disabled"; that job belongs to the mode switch. */
+       their lens.  Switching correction off is lensCorrection =
+       VSLensCorrectOff, not lensK = 0.0 (though both give the same output,
+       since U_0 and D_0 are the identity). */
     double            lensK;
     /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
      * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,

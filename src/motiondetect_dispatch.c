@@ -106,10 +106,9 @@ void vs_simd_init(void) {
   }
 #endif
 
-  /* USE_SSE2_ASM is the historical hand written assembly variant.  It is not
-     part of the runtime dispatch: it ignores linesize2 (see the TODO in
-     motiondetect_opt.c) and so is only correct when both frames share a
-     stride.  Left reachable only through an explicit opt in build. */
+  /* The hand written assembly variant ignores linesize2 (see the TODO in
+     motiondetect_opt.c), so it is only correct when both frames share a stride.
+     Hence an opt in build flag rather than part of the runtime dispatch. */
 #ifdef USE_SSE2_ASM
   if (flags & VS_CPU_SSE2) {
     compareSubImg = compareSubImg_thr_sse2_asm;

@@ -883,8 +883,7 @@ static void test_lensdistortion_moving_object(void){
   ldFreeClip(&clip);
 }
 
-/* Where it stops working, recorded deliberately rather than left to be
-   discovered later.
+/* Where it stops working.
 
    The inner similarity fit is plain least squares, which has no breakdown
    resistance at all.  Once outliers are numerous enough to drag the fit itself,

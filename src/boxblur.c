@@ -168,23 +168,13 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
   }
 }
 
-/* The vertical pass used to run one whole column at a time, which touches a
-   new cache line for every single pixel and leaves the compiler nothing to
-   vectorize (each column is one serial accumulator chain).
-
-   Turning the loops inside out fixes both: the accumulators for *all* columns
-   are held in one array and the image is walked row by row, so memory is read
-   and written sequentially and the per-row inner loops are independent across
-   columns and auto-vectorize.
-
-   The recurrence is exactly the one the column-at-a-time version implemented,
-   including its edge behaviour, so the output is bit identical:
+/* The loops are inside out: the accumulators for *all* columns are held in one
+   array and the image is walked row by row, so memory is read and written
+   sequentially and the per-row inner loops auto-vectorize.  The recurrence is
      acc(-1) = src[0][i]*(size2+1) + sum over rows 0..size2-1
      acc(j)  = acc(j-1) + src[endRow(j)][i] - src[startRow(j)][i]
    with  endRow(j)   = min(j + size2, height - 1)
-         startRow(j) = max(0, j - size2 - 1)
-   (in the original those are the positions `end` and `start` had *before* the
-   conditional increments at the bottom of the loop body). */
+         startRow(j) = max(0, j - size2 - 1) */
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
         int width, int height, int dest_strive, int src_strive, int size){
 

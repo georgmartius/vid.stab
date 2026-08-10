@@ -79,8 +79,8 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   conf.storeTransforms    = 0;
   conf.smoothZoom         = 0;
   conf.camPathAlgo        = VSOptimalL1;
-  /* On by default: it costs one extra pass over the local motions and reverts
-     to the previous behaviour whenever the estimate is not trustworthy. */
+  /* On by default: costs one extra pass over the local motions and is a no-op
+     whenever the estimate is not trustworthy. */
   conf.estimateLensDistortion = 1;
   /* Wobble is safe to default on: identity in, identity out. */
   conf.lensCorrection = VSLensCorrectWobble;
@@ -142,11 +142,8 @@ int vsTransformDataInit(VSTransformData* td, const VSTransformConfig* conf,
   td->lensMode   = td->conf.lensCorrection;
   td->lensActive = 0;
   td->lensK      = td->conf.lensK;      /* 0.0 unless the caller overrode it */
-  /* Sentinel meaning "no map built yet", distinct from every value k can
-     actually take: lensEnsureMaps() always leaves lensMapK at 0.0 or at a
-     real, estimated/user k, and the division model's bracket keeps |k| well
-     under 1 (see lensdistortion.h), so -1.0 can never be a genuine effective
-     k and never collides with "not built yet". */
+  /* "No map built yet".  The division model's bracket keeps |k| well under 1
+     (see lensdistortion.h), so -1.0 is never a genuine effective k. */
   td->lensMapK   = -1.0;
   memset(td->lensMaps, 0, sizeof(td->lensMaps));
   return VS_OK;
@@ -174,10 +171,8 @@ void lensEnsureMaps(VSTransformData* td){
   double k = td->lensK;
   int planes, p;
   /* |k| below this moves a corner pixel by well under a pixel; acting on it
-     would only add noise.  Same guard the estimator uses.  This also
-     subsumes "no override" (lensK == 0.0), so there is no separate unset
-     check: 0.0 and "too small to matter" collapse to the same effective
-     k = 0.0, which is exactly the point -- see VSTransformConfig.lensK. */
+     would only add noise.  Same guard the estimator uses, and it subsumes
+     "no override" (lensK == 0.0) -- see VSTransformConfig.lensK. */
   if(td->lensMode == VSLensCorrectOff || fabs(k) <= 0.01) k = 0.0;
   if(td->lensMapK == k) return;
   planes = td->fiSrc.pFormat < PF_PACKED ? td->fiSrc.planes : 1;
@@ -204,10 +199,8 @@ void lensEnsureMaps(VSTransformData* td){
   }
   td->lensActive = td->lensMaps[0].active;
   td->lensMapK   = k;
-  /* Say what the picture is about to get.  This runs once per distinct k, not
-     per frame -- the guard above returns early on every later call.  Silent
-     when the user asked for no correction: they know, and a line saying so on
-     every run of undistorted footage is noise. */
+  /* Once per distinct k, not per frame: the guard above returns early on every
+     later call.  Silent when no correction was asked for. */
   if(td->lensActive)
     vs_log_info(td->conf.modName, "Lens correction: %s, k=%.4f\n",
                 getLensCorrectionModeName(td->lensMode), k);
@@ -496,34 +489,20 @@ int cameraPathAvg(VSTransformData* td, VSTransformations* trans){
 }
 
 
-/* Boundary samples per edge used to decide whether a zoom fits.  MUST be
-   dense, not just corners and edge midpoints: the extremum of a similarity
-   composed with the radial lens map is NOT confined to those eight points.
-   The radial map is monotone in distance from the lens centre, which bounds
-   the *radius* extremum to a corner, but containment here is tested per axis
-   against a rectangle, not against a radius -- composed with a rotation, the
-   radial expansion can push a point strictly BETWEEN two corners outside the
-   source in x (or y) while both corners stay inside.  Measured counter-
-   example: VSLensCorrectFull, k=-0.10, t={x=-25, y=18, alpha=0.03} on a
-   640x360 frame -- the eight-point check reports a fit at zoom=7.14%, but
-   the true worst destination-boundary point (on an edge, not a corner or
-   midpoint) maps 2.47 px outside the source.  64 samples/edge (256 total)
-   keeps every excursion of that width or wider inside the sampling
-   resolution (~10 px spacing on the long edge of a 640-wide frame; the
-   measured counterexample's violating stretch spans only ~5 px, which is
-   why the eight-point version missed it but 64/edge does not -- verified
-   against test_lensmap_required_zoom's independent, much finer sweep). */
+/* Boundary samples per edge used to decide whether a zoom fits.  Corners and
+   edge midpoints do not suffice: containment is tested per axis against a
+   rectangle, not against a radius, so composed with a rotation the radial
+   expansion can push a point strictly between two corners outside the source
+   in x or y while both corners stay inside.  A measured counterexample (Full,
+   k=-0.10, t={-25,18,0.03} on 640x360) violates over a stretch only ~5 px
+   wide, which 64 samples/edge resolves and eight points miss. */
 #define VS_LENS_ZOOM_SAMPLES_PER_EDGE 64
 
 /* Does every destination boundary sample land inside the source at this zoom?
-   The boundary is walked in DESTINATION dimensions (dw, dh) because that is
-   the frame vsLensMapBackward's caller is filling in, pixel by destination
-   pixel; the resulting source coordinate is then tested for containment
-   against the SOURCE dimensions (sw, sh), because that is the buffer the
-   sample is actually read from. The two are the same value today -- the
-   transform pass never resizes -- but they are conceptually distinct axes of
-   the same map, and conflating them would silently stop being correct the
-   day that changes. */
+   The boundary is walked in DESTINATION dimensions (dw, dh), the frame being
+   filled; the resulting source coordinate is tested against the SOURCE ones
+   (sw, sh), the buffer being read.  Equal while the transform pass does not
+   resize, but distinct axes of the map. */
 static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
                           double zoom, int dw, int dh, int sw, int sh){
   const int n = VS_LENS_ZOOM_SAMPLES_PER_EDGE;
@@ -617,19 +596,12 @@ int vsPreprocessTransforms(VSTransformData* td, VSTransformations* trans)
     double zy = 2*VS_MAX(max_t.y,fabs(min_t.y))/td->fiSrc.height;
     double zoom = 100 * VS_MAX(zx,zy); // use maximum
 
-    /* The closed form above reasons about corner translation under a pure
-       similarity; it knows nothing about the lens. lensEnsureMaps() must run
-       before td->lensActive is read (see the other call sites). When the
-       lens is active, additionally budget from the real backward map at the
-       four corner combinations of the same 99th-percentile x/y extremes
-       already computed above, combined with the largest-magnitude rotation
-       seen in this batch of transforms (cheap: one more pass over ts) --
-       sampled at BOTH +maxAlpha and -maxAlpha, since the composite backward
-       map is non-linear in alpha and the two signs need not require the
-       same zoom. That makes eight sample points instead of four. This can
-       only ever raise the budget, never lower it: under-budgeting shows up
-       as black slivers at the border, so the closed-form value is always a
-       floor. */
+    /* The closed form above knows nothing about the lens, so when the lens is
+       active budget additionally from the real backward map, at the four
+       corner combinations of the 99th-percentile x/y extremes above crossed
+       with +/-maxAlpha (both signs: the composite map is non-linear in alpha).
+       This can only raise the budget -- the closed-form value is a floor,
+       since under-budgeting shows up as black slivers at the border. */
     lensEnsureMaps(td);
     if(td->lensActive){
       double cx[2] = { min_t.x, max_t.x };

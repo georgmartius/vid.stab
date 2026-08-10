@@ -1,6 +1,6 @@
-/* Pins the output of the warp loops so the lens-correction work cannot change
-   the k=0 / lens-inactive path.  The golden CRCs are toolchain specific: the
-   test prints what it got, so an intentional change is a copy-paste away. */
+/* Pins the output of the warp loops on the k=0 / lens-inactive path.  The
+   golden CRCs are toolchain specific: the test prints what it got, so an
+   intentional change is a copy-paste away. */
 
 static uint32_t tbCrc32(const uint8_t* p, int n){
   static uint32_t tab[256];
@@ -153,26 +153,18 @@ static const uint32_t TB_GOLD_PACKED_FIXED[4][TB_NUM_T] = {
   {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
 };
 
-/* The float loops are NOT pinned by CRC.  They once were, back when the float
-   path was the oracle the fixed-point path was written against, and an exact
-   golden was the point.  It no longer holds: a CRC of float output is not
-   stable across optimisation levels -- these goldens were captured at -O0 and
-   differ at -O1 and above, on the same compiler, with or without -ffast-math
-   (measured: -ffast-math is not involved, and neither is -ffp-contract).  So
-   the check that used to fail every Release build was pinning a quantity the
-   language does not promise.
-
-   What this guard actually needs to catch is a regression in the k=0 path, and
-   for that the float loops are held against the fixed-point ones instead: same
-   source, same transform, same interpolation, bounded per-byte difference.
-   The fixed-point CRCs above stay exact -- integer arithmetic is reproducible
-   -- so a drift in either implementation still fails, and the pair cannot both
-   move without the CRC noticing.
+/* The float loops are NOT pinned by CRC: a CRC of float output is not stable
+   across optimisation levels (measured at -O0 vs -O1 on one compiler, with
+   -ffast-math and -ffp-contract ruled out), so it pins a quantity the language
+   does not promise.  They are held against the fixed-point loops instead --
+   same source, transform and interpolation, bounded per-byte difference.  The
+   fixed-point CRCs above are exact, integer arithmetic being reproducible, so
+   the pair cannot both drift unnoticed.
 
    The metric is the MEAN absolute per-byte difference, not the worst one.
-   That is forced by the data, not a preference: on this deliberately
-   high-frequency source a sub-pixel difference in where a sample lands can
-   flip a pixel to an unrelated value, so the worst difference runs to 200+
+   That is forced by the data: on this deliberately high-frequency source a
+   sub-pixel difference in where a sample lands can flip a pixel to an
+   unrelated value, so the worst difference runs to 200+
    even when the two implementations agree everywhere that matters. Measured
    across all 20 cases, worst |fixed-float| per case:
 

@@ -28,12 +28,7 @@
  */
 #include "motiondetect_opt.h"
 
-/* NOTE: ARM used to be served from this file by including sse2neon.h and
-   #define'ing USE_SSE2 here.  That never worked: the #define was local to this
-   translation unit, so motiondetect.c kept dispatching to the scalar C
-   compareSubImg and never rounded the field size up to a multiple of 16, and
-   the shimmed kernels below were dead code.  ARM now has native kernels in
-   motiondetect_neon.c, reached through the runtime dispatcher. */
+/* x86 only: ARM has native kernels in motiondetect_neon.c. */
 
 #ifdef VS_HAVE_SSE2
 #include <emmintrin.h>

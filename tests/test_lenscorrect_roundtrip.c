@@ -263,100 +263,45 @@ void test_lenscorrect_generator(void){
 
 /* --- the round trip ------------------------------------------------------- */
 
-/* LC_MAX_FLAT_DELTA is shared by every case rendered through PF_RGB24: Full
-   recovering the base image (barrel, k = -0.25), Wobble holding the lens
-   (barrel), and pincushion (k = +0.15).  After LC_BAND was moved from 60 to
-   61 (see its definition in generate_lensclip.c and "The pattern" in
-   docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md --
-   the old value put a band circle tangent to a cell line, aliasing a
-   sub-supersample-pitch sliver that Wobble's leading U_k expansion dragged
-   onto visible rows) all three measure a worst maxFlat of 1, so one shared
-   constant is correct here -- confirmed by measurement, not assumed.
-   maxFlat = 2 keeps the one-count margin a previous measurement (a k*1.02
-   perturbation reading maxFlat = 3 on four of six Full frames) called for.
+/* Shared by every case rendered through PF_RGB24: Full recovering the base
+   image (barrel, k = -0.25), Wobble holding the lens, and pincushion
+   (k = +0.15).  All three measure a worst maxFlat of 1; a k*1.02 perturbation
+   reads 3, so 2 is the useful cut.
 
-   LC_MIN_PSNR, by contrast, is NOT shared with Wobble (see
-   LC_MIN_PSNR_WOBBLE below) -- Full and pincushion only.  Full's worst is
-   32.47 dB, pincushion's 36.75 dB (both PF_RGB24, `psnr` running a constant
-   1.76 dB above the two-channel figure because the tones share blue = 90;
-   see the `psnr` field comment on LCCompare).  The floor is set well below
-   that worst, but above a KNOWN failure point: a genuine geometry bug
-   injected into Full mode (a 0.38 px sign error in lcInverseTransform)
-   measured 28.73 dB.  LC_MIN_PSNR = 30.5 clears that with margin; anyone
-   tempted to lower this constant needs to still clear 28.73 dB, not some
-   smaller number -- a shared floor pulled down to Wobble's own budget
-   (measured as low as 28.5 in an earlier revision of this file) would let
-   that exact injected bug pass silently. */
+   LC_MIN_PSNR covers Full and pincushion only, not Wobble (see
+   LC_MIN_PSNR_WOBBLE).  Worst measured is 32.47 dB for Full, 36.75 dB for
+   pincushion, while a 0.38 px sign error injected into lcInverseTransform
+   measures 28.73 dB.  30.5 sits between the two; lowering it below 28.73
+   would let that defect pass. */
 #define LC_MAX_FLAT_DELTA 2
 #define LC_MIN_PSNR       30.5
 
-/* Wobble's own floor.  Wobble measures about 2.5 dB below Full
-   (30.0 dB vs 32.5 dB) even with the LC_BAND = 61 retune above in place --
-   that retune eliminated the supersampling-aliasing artefact that used to
-   explain a much larger gap (maxFlat 51 at the old LC_BAND = 60; see "The
-   pattern" in
-   docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md for
-   THAT mechanism, which is no longer why Wobble reads 30.0 dB).  The cause
-   of the remaining ~2.5 dB gap is not
-   established.  Leading hypothesis, offered as a hypothesis and not fact:
-   Wobble's reference is frame 0 of the clip, which is pattern(U_k(x)) --
-   already barrel-compressed at the edges, and so carrying more near-Nyquist
-   energy there than Full's reference (the flat, undistorted base image) --
-   so a given half-pixel resampling error costs more PSNR against it. This
-   has not been measured directly and may not be the whole story.
+/* Wobble's own floor, 1.5 dB weaker than LC_MIN_PSNR: this check verifies mode
+   semantics -- shake removed, lens retained -- not the sub-pixel geometry
+   guarantee LC_MIN_PSNR polices.  Wobble sits ~2.5 dB below Full for reasons
+   not established; the likeliest is that its reference is frame 0, already
+   barrel-compressed at the edges and so carrying more near-Nyquist energy
+   than Full's flat base image.
 
-   What IS measured, from the review's perturbation of the render path's
-   Wobble-branch U_k gain: a +0.1% gain error drives frames 1-5 to
-   28.25-28.34 dB, failing the floor below, while +0.05% passes at
-   29.54-29.64 dB.  So this floor is not merely absorbing Wobble's ordinary
-   budget -- it detects roughly a 0.05-0.1% U_k gain error, i.e. about a
-   0.2-0.4 px displacement at the frame corner, and the margin below is
-   doing real work rather than padding a number nobody will hit.
-
-   Measured worst over frames 1-5 (frame 0 is the memcpy fast path and reads
-   99.00 dB, excluded): 30.00, 30.08, 30.05, 30.00, 30.02 dB -- worst 30.00
-   dB, spread 0.08 dB, i.e. under 0.2 dB.  Per the standing rule for a tight
-   spread, the floor is worst - 1.0 dB rounded down to the nearest 0.5:
-   30.00 - 1.0 = 29.00, already on the grid.
-
-   This floor is 1.5 dB weaker than LC_MIN_PSNR = 30.5, not merely a
-   different number -- and that is deliberate, not an oversight: Wobble's
-   PSNR check here is verifying mode SEMANTICS -- that the shake is removed
-   and the lens retained -- not the sub-pixel geometry guarantee that
-   LC_MIN_PSNR (Full, pincushion) polices via the 28.73 dB injected-defect
-   figure above.  Do not assume Wobble carries that stronger guarantee. */
+   Measured over frames 1-5 (frame 0 takes the memcpy fast path at 99.00 dB):
+   worst 30.00 dB, spread 0.08 dB.  The floor still bites: a +0.1% error on
+   the Wobble branch's U_k gain -- about 0.2-0.4 px at the frame corner --
+   drops those frames to 28.25-28.34 dB. */
 #define LC_MIN_PSNR_WOBBLE 29.0
 
-/* 4:2:0's flat tolerance is per channel, not one shared cap, because the
-   channels genuinely do not behave alike here -- a single ceiling loose
-   enough for the worst of the three (blue) would leave the other two almost
-   unchecked.  setPixelRGB writes one pixel's chroma per 2x2 block while
-   getPixelRGB reads it back nearest neighbour, so every edge in the picture
-   produces a chroma-quantisation discrepancy on both sides of the
-   comparison; luma (and so the part of each channel that comes from Y) is
-   unaffected.  The RGB reconstruction weights that quantised chroma
-   differently per channel -- B carries the largest coefficient, G the
-   smallest -- so a fixed chroma quantisation error shows up as a large
-   delta in B, a small one in G, and something in between in R.  This is
-   NOT a proxy for packed-mode sensitivity to a luma-plane map bug: maxFlat
-   is blind to pure sub-pixel geometry error (it read 1 on every channel
-   under the 0.38 px injected defect discussed at LC_MIN_PSNR above). What
-   the per-channel split actually buys is a tight margin on the channels
-   that hold tight (R, G) plus proper headroom on the one that does not
-   (B), so a bug that pushes 3-26 count deviations into otherwise-flat
-   interiors -- a different failure mode from geometry drift -- still gets
-   caught on R and G instead of hiding under a cap sized for B.
+/* 4:2:0's flat tolerance is per channel: setPixelRGB writes one chroma sample
+   per 2x2 block while getPixelRGB reads it back nearest neighbour, so every
+   edge carries a chroma-quantisation discrepancy, and the RGB reconstruction
+   weights it differently per channel (largest coefficient on B, smallest on
+   G).  One cap sized for B would leave R and G unchecked.
 
-   Measured worst per channel over the six frames, Full mode, k = -0.25:
-   R = 7, G = 1, B = 25 (individual frames: 21, 25, 23, 25, 20, 21 -- a
-   5-count spread).  R and G get worst + 1.  B gets worst plus at least 5
-   counts of headroom over that spread, i.e. comfortably clear of the
-   frame-to-frame swing rather than sitting 1 above it.
+   Measured worst over the six frames, Full mode, k = -0.25: R = 7, G = 1,
+   B = 25, B swinging over a 5-count spread frame to frame -- hence headroom
+   on B and worst + 1 on the other two.  PSNR worst 25.82 dB, spread 0.12 dB.
 
-   PSNR floor: worst measured 25.82 dB, spread 0.12 dB (tight, individual
-   frames 25.94, 25.85, 25.84, 25.85, 25.82, 25.82). Per the standing rule
-   for a tight spread (see the Wobble floor above): worst - 1.0 dB rounded
-   down to the nearest 0.5 = 24.82 -> 24.5. */
+   maxFlat is blind to pure sub-pixel geometry error (it reads 1 on every
+   channel under the 0.38 px defect injected at LC_MIN_PSNR); what it catches
+   is count deviations landing in otherwise-flat interiors. */
 #define LC_MAX_FLAT_DELTA_420_R 8
 #define LC_MAX_FLAT_DELTA_420_G 2
 #define LC_MAX_FLAT_DELTA_420_B 30
@@ -369,14 +314,10 @@ typedef struct {
   int    maxFlat;       /* largest |delta| over the flat pixels, any channel */
   int    maxFlatCh[3];  /* the same, split by channel (R,G,B)                */
   double psnr;     /* over the whole valid mask, summed over all three
-                       channels; but the two tones share blue = 90 (LC_TONE),
-                       so the B channel contributes no squared error and this
-                       reads a constant 10*log10(3/2) = 1.76 dB above the
-                       two-channel figure.  That offset is immaterial: it is
-                       the same for every frame and every mode, and
-                       LC_MIN_PSNR below is set from measurement, not from
-                       theory, so it absorbs the offset rather than being
-                       fooled by it.                                       */
+                       channels.  The two tones share blue = 90 (LC_TONE), so
+                       B contributes no squared error and this reads a constant
+                       10*log10(3/2) = 1.76 dB above the two-channel figure --
+                       harmless, since the floors are set from measurement. */
 } LCCompare;
 
 /* Runs one frame through the render path with the given mode, k and pose. */
@@ -434,23 +375,16 @@ static void lcValidMask(unsigned char* valid, const VSFrameInfo* fi,
 }
 
 /* True when every pixel of the 7x7 neighbourhood of (x,y) in `ideal` carries
-   the identical colour.  What governs how far a bilinear tap reaches back
-   into ideal space is not the tangential compression (1/g = 1.22 at the
-   corner) but the RADIAL derivative of the distortion,
+   the identical colour.  7x7, because how far a bilinear tap reaches back into
+   ideal space is set by the RADIAL derivative of the distortion,
    f'(r) = [2(1+s) - 2r^2/s] / (1+s)^2, s = sqrt(1-4kr^2): at k = -0.25 and
-   r ~ 1.04 (frame corner plus the ~12 px of pose motion) f' = 0.567, so
-   1/f' = 1.76: a kernel reach fixed in SOURCE space maps to a
-   DESTINATION-space extent 1.76x as wide -- not the reverse; an output
-   neighbourhood there draws on a source neighbourhood only 0.567x (= f')
-   as wide as the destination-space extent it has to cover.  Source pixels
-   are themselves box-averaged
-   over +-0.5 px (LC_SS supersampling), which pushes the true support out to
-   about 2.6 px, and a half-width of 2 (5x5) does not cover that; a
-   half-width of 3 (7x7) does.
+   r ~ 1.04 (frame corner plus ~12 px of pose motion) f' = 0.567, so a source
+   reach of one pixel spans 1.76 destination pixels.  Source pixels are
+   themselves box-averaged over +-0.5 px (LC_SS supersampling), putting the
+   true support near 2.6 px -- covered by a half-width of 3, not of 2.
 
-   Using exact equality rather than a gradient threshold means there is no
-   magic number to tune here: inside a checkerboard cell the pattern is
-   constant to the byte, and any antialiased edge pixel fails the test. */
+   Exact equality rather than a gradient threshold leaves no magic number to
+   tune: inside a cell the pattern is constant to the byte. */
 static int lcIsFlat(const VSFrame* ideal, const VSFrameInfo* fi, int x, int y){
   uint8_t r0,g0,b0, r,g,b;
   int i, j;
@@ -648,17 +582,10 @@ void test_lenscorrect_roundtrip_full(void){
    mode's whole promise stated as an assertion: a lens-corrected shot of a
    still camera comes back unchanged.
 
-   Note frame 0 of the loop is trivially exact: an identity transform in
-   Wobble mode takes the memcpy fast path.  PF_RGB24 is a packed format
-   (frameinfo.h: PF_RGB24 > PF_PACKED), so vsDoTransform (transform.c:239-243)
-   calls transformPacked, and tests/CMakeLists.txt's -DTESTING renames the
-   float entry points to the _float suffix (transformfloat.h:35) without
-   renaming src/transformfixedpoint.c's -- so the unqualified transformPacked
-   these tests actually run is the fixed-point one, and the fast path is
-   transformfixedpoint.c:288.  Nothing is resampled at frame 0.  Frames 1..5
-   are the real test.  The Full-mode cases have no such hole -- that same
-   condition excludes Full from the fast path explicitly, so their i == 0
-   walks the inner loop like the rest. */
+   Frame 0 of the loop is trivially exact: an identity transform in Wobble mode
+   takes transformPacked's memcpy fast path and nothing is resampled, so frames
+   1..5 are the real test.  The Full cases have no such hole -- that fast path
+   excludes Full explicitly. */
 static void test_lenscorrect_wobble_holds_the_lens(void){
   LCCase c;
   c.pf          = PF_RGB24;

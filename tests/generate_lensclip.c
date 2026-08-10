@@ -23,44 +23,15 @@
                              diagonal is 400, so ~6 boundaries cross the
                              picture.
 
-                             Coprime with LC_CELL = 32 (gcd(61,32) = 1), not
-                             merely "not a divisor or multiple" -- that
-                             weaker property still let a band circle be
-                             TANGENT to a cell line: at the old LC_BAND = 60,
-                             the circle r = 240 (= 4*60) was tangent to the
-                             HORIZONTAL cell lines y = 0 and y = 480 at
-                             x = 320, leaving a lune of opposite tone
-                             thinner than a subsample pixel near the
-                             tangency -- an aliasing artefact that only
-                             Wobble's leading U_k expansion pulled onto
-                             visible rows (18.41 and 461.59), producing
-                             maxFlat = 51 there.  See "The pattern" in
-                             docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md
-                             for the full diagnosis.
-
-                             Note 240 is NOT a multiple of LC_CELL (240 =
-                             7.5*32); the coincidence was with the distance
-                             from the centre (320,240) to a HORIZONTAL cell
-                             line, which runs 240, 208, 176, ... i.e.
-                             congruent to 16 (mod 32), because 240 = 7*32+16
-                             -- a different family from distances to VERTICAL
-                             cell lines (congruent to 0 mod 32, since
-                             cx = 320 = 10*32).  Coprimality has to clear
-                             both families.  With 61 = 29 (mod 32) and
-                             29^-1 = 21 (mod 32): 61m = 0 (mod 32) first
-                             holds at m = 32, r = 1952; 61m = 16 (mod 32)
-                             first holds at m = 16, r = 976.  The BINDING
-                             bound is the smaller one, r = 976 -- still far
-                             outside the 640x480 frame (max in-picture
-                             radius 400), so neither family's tangency is
-                             reachable.  In general, for gcd(LC_BAND,LC_CELL)
-                             = 1 the first horizontal-line coincidence is at
-                             16*LC_BAND (from m = LC_CELL/2, since
-                             cy mod LC_CELL = LC_CELL/2 when LC_CELL is
-                             even), which clears the picture for any period
-                             above 25.  A future retune of either constant
-                             MUST preserve gcd(LC_BAND,LC_CELL) = 1, not just
-                             avoid exact divisibility.                      */
+                             MUST stay coprime with LC_CELL, not merely a
+                             non-divisor: a band circle tangent to a cell line
+                             leaves a lune of opposite tone thinner than a
+                             subsample, which aliases badly.  Distances from
+                             the centre to vertical cell lines run 0 (mod 32)
+                             and to horizontal ones 16 (mod 32), and with
+                             gcd = 1 the first coincidence of either family
+                             sits at r = 976, well outside the 400 px the
+                             picture reaches.                               */
 #define LC_SS      4      /* supersamples per axis per pixel                 */
 
 /* Both tones are coloured, not grey: the PPM dumps double as the figure in
@@ -175,15 +146,10 @@ static VSTransform lcClipTransform(int i){
    the second row flipped, which is the same matrix.  Centre is w/2, NOT
    (w-1)/2, matching c_d_x there.
 
-   transformfixedpoint.c, not transformfloat.c, is what these tests exercise:
-   tests/CMakeLists.txt builds with -DTESTING, which renames the float path's
-   entry points to the _float suffix (transformfloat.h:35) while
-   transformfixedpoint.c's are unqualified, and vsDoTransform (transform.c:
-   239-243) calls the unqualified names -- so the float implementation never
-   runs here.  transformfloat.c implements the same map in floating point;
-   test_lensmap.c's fixed/float equivalence tests (e.g.
-   test_lensmap_fixed_float_equivalence) are what keep the two paths in step,
-   not this file. */
+   Under -DTESTING the float entry points are renamed with a _float suffix
+   (transformfloat.h), so vsDoTransform reaches the fixed-point path and that
+   is what these tests exercise.  The two paths are kept in step by
+   test_lensmap.c's fixed/float equivalence tests, not by this file. */
 static void lcBackwardAffine(const VSTransform* t, double xd, double yd,
                              double* xs, double* ys){
   double cx = LC_WIDTH/2.0, cy = LC_HEIGHT/2.0;

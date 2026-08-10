@@ -368,33 +368,18 @@ static void test_lensmap_zero_k_stays_inactive(void){
   lmInitTd(&td, &fi, VSLensCorrectWobble, 0.0, VS_BiLinear);
   lensEnsureMaps(&td);
   test_bool(td.lensActive == 0);
-  /* This alone does not prove the per-plane build loop actually ran for this
-     k == 0.0 call, only that the end state is "inactive" -- which is also
-     what a fresh, never-touched VSTransformData already looks like after
-     vsTransformDataInit's memset. td.lensMapK's "no map built yet" sentinel
-     must not be 0.0 itself, or this call would silently short-circuit
-     without ever reaching vsLensPlaneMapInit. vsLensPlaneMapInit sets
-     m->tDomD = -1.0 (the "no bound" sentinel -- not INFINITY, see lensmap.h)
-     on every call, even its own early return for k == 0.0 (see lensmap.c) --
-     and a bare memset leaves it 0.0 -- so checking tDomD tells apart "the
-     loop ran and (correctly) built an inactive map" from "the loop never ran
-     at all". See the mutation evidence in the round-2 handover: asserting
-     only lensActive == 0 here, as a first draft of this test did, does NOT
-     fail when lensMapK is mis-initialised to 0.0 -- only this tDomD check
-     does. */
+  /* lensActive == 0 alone is also what a freshly memset VSTransformData looks
+     like, so it would not catch a lensMapK sentinel of 0.0 short-circuiting
+     the build.  vsLensPlaneMapInit sets tDomD = -1.0 on every call including
+     its k == 0.0 early return, so tDomD tells "built an inactive map" apart
+     from "never ran". */
   test_bool(td.lensMaps[0].tDomD < 0.0);
   vsTransformDataCleanup(&td);
 }
 
-/* Companion check in the other direction: a real, nonzero k must still
-   build active maps on the very first call, i.e. the "no map built yet"
-   sentinel must not accidentally equal a genuine effective k either. With
-   lensMapK's actual sentinel (-1.0, chosen because no effective k can ever
-   be -1.0) this is not distinguishing on its own -- 0.0 != -0.25 regardless
-   of which of the two sentinel candidates was picked -- but it documents
-   the property the ruling asked to preserve and guards against a
-   differently-broken sentinel choice (e.g. one that collided with -0.25
-   itself). */
+/* The other direction: a real, nonzero k must build active maps on the very
+   first call, i.e. the "no map built yet" sentinel must never collide with a
+   genuine effective k. */
 static void test_lensmap_nonzero_k_builds_on_first_call(void){
   VSFrameInfo fi;
   VSTransformData td;
@@ -411,13 +396,11 @@ static void test_lensmap_nonzero_k_builds_on_first_call(void){
    4:2:2 is the case that catches an anisotropic-radius bug. */
 /* Sub-pixel edge locate: row is a clean monotone step from ~40 to ~200 (see
    lmCheckChromaAlignment), so the two samples straddling the midpoint value
-   can be linearly interpolated to get a fractional crossing position. This
-   is intentionally far finer than "first sample past a threshold": the
-   anisotropic-radius bug this test exists to catch moves the chroma edge by
-   roughly one luma pixel, so a whole-pixel-quantised measurement compared
-   against a whole-chroma-pixel tolerance cannot reliably separate "correct"
-   from "buggy" -- the signal and the measurement noise floor are the same
-   size. Returns -1.0 if no crossing is found in [1,n). */
+   can be linearly interpolated to get a fractional crossing position.  Far
+   finer than "first sample past a threshold" on purpose: the anisotropic-
+   radius bug this catches moves the chroma edge by only about one luma pixel,
+   which a whole-pixel measurement could not separate from noise.  Returns
+   -1.0 if no crossing is found in [1,n). */
 static double lmFindEdge(const uint8_t* row, int n, double mid){
   int x;
   for(x=1; x<n; x++)
@@ -426,30 +409,19 @@ static double lmFindEdge(const uint8_t* row, int n, double mid){
   return -1.0;
 }
 
-/* A chroma sample at plane index cx was (conceptually) averaged from the
-   block of (1<<wsub) luma columns [cx*(1<<wsub), (cx+1)*(1<<wsub)), so under
-   bilinear reconstruction it represents the CENTRE of that block, not its
-   first column. Converting a chroma-plane coordinate to its luma-equivalent
-   by a bare "cx << wsub" ignores that half-block offset; for a hard step it
-   is a fixed, deterministic bias of half a chroma pixel (0.5*(1<<wsub) luma
-   px), identical for every correct or buggy implementation, that has nothing
-   to do with the lens map. It must be removed from the *measurement*, or it
-   swamps the sub-pixel signal this test exists to see (confirmed empirically:
-   without this correction a correct implementation already measures ~0.75
-   luma px "worst offset" on both YUV420P and YUV422P, from this bias alone
-   -- see task-4-report.md "Fix round 1"; with a plain translation and no lens
-   active at all, the biased measurement is exactly 0.5 luma px while this
-   corrected one is exactly 0.0, confirming which one is the artifact). */
+/* A chroma sample at plane index cx represents the CENTRE of the block of
+   (1<<wsub) luma columns it was averaged from, not its first column, so a bare
+   "cx << wsub" carries a fixed half-chroma-pixel bias.  That bias is the same
+   for correct and buggy implementations alike and would swamp the sub-pixel
+   signal here: without this correction even a correct implementation measures
+   ~0.75 luma px of worst offset on 4:2:0 and 4:2:2. */
 static double lmChromaToLuma(double cx, int sub){ return (cx + 0.5)*sub - 0.5; }
 
-/* Tolerance, in luma-equivalent px, set from measurement, not a guess (see
-   task-4-report.md "Fix round 1" for the measurement runs). A correct
-   implementation's own worst sub-pixel offset (after the siting correction
-   above) is ~0.27 luma px on YUV420P/YUV422P and 0.00 on YUV444P -- this is
+/* Tolerance in luma-equivalent px, from measurement.  A correct implementation
+   still shows ~0.27 luma px of offset on YUV420P/YUV422P and 0.00 on YUV444P:
    real curvature error from averaging a nonlinear radial map over a chroma
-   sample's footprint, not a bug, and is nearly identical between 4:2:0 and
-   4:2:2 because it is driven by the horizontal subsampling factor, which is
-   the same (wsub=1) for both. The tolerance is set to roughly 2x that. */
+   sample's footprint, driven by the horizontal subsampling factor (wsub=1 for
+   both).  The tolerance is roughly 2x that. */
 #define LM_CHROMA_TOL_LUMA_PX 0.6
 
 static void lmCheckChromaAlignment(VSPixelFormat pf, const char* name){
@@ -539,16 +511,12 @@ static void lmFixFloatDiff(const VSFrameInfo* fi, const VSFrame* src,
    float path any more *because of the lens* than the two paths already
    disagree without one.
 
-   An earlier version of this test bounded |fixed - float| in absolute terms
-   for every interpolation type. That failed for VS_BiLinear/VS_BiCubic even
-   with the lens completely inactive: their fixed-point kernels
-   (interpolateBiLin/interpolateBiCub in transformfixedpoint.c) carry a
-   deliberate rounding-bias "+1" correction that the float twins do not, and
-   on a texture with many hard edges (ldFillTexture's 900 random rectangles)
-   that alone produces mean differences of several LSB -- see the task-5
-   report for the measurement. --testBASE cannot catch this because it pins
-   the fixed and float goldens separately and never compares them to each
-   other.
+   An absolute bound on |fixed - float| does not hold, not even with the lens
+   inactive: interpolateBiLin/interpolateBiCub carry a rounding-bias "+1"
+   correction their float twins do not, which on a hard-edged texture
+   (ldFillTexture's 900 random rectangles) alone costs several LSB of mean
+   difference.  --testBASE cannot catch that -- it pins the fixed and float
+   goldens separately and never compares them.
 
    So the primary assertion here is differential: measure the lens-off
    disagreement Dbase once per interpolation type (mode and k don't matter
@@ -557,19 +525,13 @@ static void lmFixFloatDiff(const VSFrameInfo* fi, const VSFrame* src,
    doesn't add more than a small, measured margin on top of whatever the
    interpolator pair already disagreed about.
 
-   A "tight absolute worst-pixel bound for VS_Zero/VS_Linear" was tried and
-   measured to NOT hold (see the task-5 report): nearest-neighbour-style
-   coordinate-to-pixel snapping (interpolateZero, and interpolateLin's
-   y-rounding) is sensitive to *any* sub-pixel disagreement between the two
-   paths, however small, whenever the true coordinate sits close to a
-   rounding boundary. Turning the lens on moves coordinates by a fraction of
-   a pixel almost everywhere, which is enough to flip the occasional pixel
-   across such a boundary and, on this hard-edged texture, produce a
-   near-full-scale jump for that one pixel -- unrelated to any bug, present
-   for k as small or as large as tested. So WORST is not a stable per-config
-   statistic for any interpolation type on this texture; only MEAN is. The
-   worst-based margin below is kept for visibility (printed every run) but,
-   calibrated honestly, cannot bind (see its comment). */
+   A tight worst-pixel bound does not hold for any interpolation type on this
+   texture: nearest-neighbour-style snapping (interpolateZero, interpolateLin's
+   y-rounding) flips whenever a coordinate sits near a rounding boundary, and
+   turning the lens on shifts coordinates by a fraction of a pixel almost
+   everywhere.  On a hard-edged texture one such flip is a near-full-scale
+   jump.  Only MEAN is a stable per-config statistic; the worst-based margin
+   below is printed for visibility but cannot bind. */
 static void test_lensmap_fixed_float_equivalence(void){
   const double ks[] = {-0.3, -0.25, -0.1, 0.12};
   VSFrameInfo fi;
@@ -582,18 +544,13 @@ static void test_lensmap_fixed_float_equivalence(void){
 
   /* Margin on the lens's *additional* fixed-vs-float disagreement, on top of
      each interpolation type's own lens-off baseline. Measured across all
-     2 modes x 4 k's x 4 interpolation types with the implementation in this
-     commit:
+     2 modes x 4 k's x 4 interpolation types:
        max observed mean(Dlens)  - mean(Dbase)  = 7.73  (Full,  k=0.12, BiLinear/BiCubic)
        max observed worst(Dlens) - worst(Dbase) = 205   (Full,  k=-0.30, VS_Linear)
-     MEAN_MARGIN is set to ~2x the mean excess and does the real work below
-     (see the mutation-detection evidence in the task-5 report). The worst
-     excess has no corresponding assertion: at 2x it would need to be 410,
-     which exceeds the 0..255 dynamic range of a single channel sample, so
-     no configuration could ever fail it -- a dead check. worst(Dlens) is
-     still printed below (it is a genuine, if blunt, signal), just not
-     gated on. test_lensmap_fixed_reference below is the test that actually
-     carries the guarantee this one was originally meant to. */
+     MEAN_MARGIN is ~2x the mean excess and does the real work below.  The
+     worst excess is printed but not asserted: at 2x it would be 410, beyond
+     the 0..255 range of a sample, so nothing could ever fail it.  The pixel
+     level guarantee lives in test_lensmap_fixed_reference below. */
   const double MEAN_MARGIN  = 16.0;
 
   vsFrameInfoInit(&fi, 320, 240, PF_YUV420P);
@@ -661,37 +618,21 @@ static void test_lensmap_fixed_reference(void){
   uint32_t seed = 7;
   int im, ik, ip, x, y;
 
-  /* Measured across 2 modes x 4 k's x 4 interpolation types with the
-     implementation in this commit (fixed-point loop vs. double-precision
-     vsLensMapBackward, same interpolator; see the task-5 report for the
-     full table):
+  /* Measured across 2 modes x 4 k's x 4 interpolation types (fixed-point loop
+     vs. double-precision vsLensMapBackward, same interpolator):
        VS_BiLinear/VS_BiCubic: max observed mean = 0.077, max observed max = 73
        VS_Zero/VS_Linear:      max observed mean = 0.081, max observed max = 236
      TIGHT_MEAN/LOOSE_MEAN are ~2x those mean figures and carry the real
-     guarantee (see the mutation-detection evidence in the task-5 report).
+     guarantee.
 
-     A pixel-exact MAX bound is not achievable for *any* interpolation type
-     on this texture, not just VS_Zero/VS_Linear: every one of them has a
-     coordinate value where the interpolator's behaviour is discontinuous in
-     the true (real-valued) source position, and the fixed vs. double
-     computations, agreeing everywhere to a few thousandths of a pixel, can
-     still land on opposite sides of that discontinuity by pure chance.
-     VS_Zero (round-to-nearest) and VS_Linear's y-rounding (myround) are
-     discontinuous at every half-integer coordinate, which is common enough
-     that most configs hit it several times. VS_BiLinear/VS_BiCubic blend
-     continuously in the interior, so they only have this discontinuity
-     where interpolateBiLinBorder/interpolateBiCub's interior/border regimes
-     switch -- at the source frame's four edges (x=0, x=width-1, y=0,
-     y=height-1) -- which is why their max is smaller and only fires when a
-     sample happens to map within about 0.01px of one of those edges. This
-     was confirmed directly for one such case (mode=Wobble, k=-0.30,
-     VS_BiLinear, destination (3,29)): fixed x_s=0.000946 vs. reference
-     xs=-0.002560 -- a 0.0035px disagreement straddling x=0 exactly, which
-     is enough to route one call through the interior blend and the other
-     through interpolateBiLinBorder. TIGHT_MAX/LOOSE_MAX are still bounded,
-     at ~2x the worst observed max, because they still catch a systematic
-     regression that isn't confined to this coincidence (see the mutation
-     evidence in the task-5 report), just not this specific artifact. */
+     A pixel-exact MAX bound is not achievable for any interpolation type: each
+     has coordinates where its behaviour is discontinuous in the real-valued
+     source position, and the fixed and double computations, agreeing to a few
+     thousandths of a pixel, can land on opposite sides of one.  VS_Zero and
+     VS_Linear's y-rounding break at every half-integer; VS_BiLinear/VS_BiCubic
+     only where the interior and border regimes meet, at the source frame's
+     four edges -- hence their smaller max.  TIGHT_MAX/LOOSE_MAX are ~2x the
+     worst observed, enough to catch a systematic regression. */
   const double TIGHT_MEAN = 0.15;
   const int    TIGHT_MAX  = 150;
   const double LOOSE_MEAN = 0.2;
@@ -819,19 +760,13 @@ static void test_lensmap_fixed_reference_packed(void){
   VSFrame src, dest;
   int im, ik, x, y, z;
 
-  /* Measured across 2 modes x 4 k's with the implementation in this commit
-     (fixed-point transformPacked vs. double-precision vsLensMapBackward,
-     same interpolator, PF_RGB24, 320x240, t.x=6.25 t.y=-3.5 t.alpha=0.008):
+  /* Measured across 2 modes x 4 k's (fixed-point transformPacked vs.
+     double-precision vsLensMapBackward, same interpolator, PF_RGB24, 320x240,
+     t.x=6.25 t.y=-3.5 t.alpha=0.008):
        max observed mean = 0.0387   max observed max = 219
-     TIGHT_MEAN is ~2x the observed mean and carries the real guarantee (see
-     the mutation-detection sweep in the task-6 report). MAX is bounded only
-     loosely, for the same floor()-boundary reason documented in
-     test_lensmap_fixed_reference above: fixed vs. double coordinates that
-     agree to a few thousandths of a pixel can still straddle an integer
-     boundary and pick a different interpolation neighbour, which on this
-     hard-edged (x*7, y*5, x^y) texture is a large single-channel
-     difference. LOOSE_MAX is ~2x the observed max; it still catches a
-     systematic regression, just not this specific coincidence. */
+     TIGHT_MEAN is ~2x the observed mean and carries the real guarantee.  MAX
+     is bounded only loosely, for the same boundary-straddling reason
+     documented in test_lensmap_fixed_reference above. */
   const double TIGHT_MEAN = 0.08;
   const int    LOOSE_MAX  = 440;
 
@@ -1046,15 +981,11 @@ static void test_lensmap_straightness(void){
   vsFrameAllocate(&obs, &fi);
   memset(grid.data[0], 220, (size_t)grid.linesize[0]*fi.height);
   /* Vertical lines only: lmColumnBend tracks the darkest pixel in a window
-     around one column, row by row. A horizontal line was found to break
-     this: on any row a horizontal line fully occupies, every pixel in the
-     search window ties at the minimum value, and the scan (which keeps the
-     first minimum seen, scanning left to right) reports the window's left
-     edge instead of the real vertical line -- a ~40px measurement artifact
-     an order of magnitude bigger than any real lens bend, confirmed
-     empirically (see the task-8 report). Dropping the horizontal lines
-     removes the confound entirely; the claim under test only needs one
-     clean vertical edge. */
+     around one column, row by row.  A horizontal line breaks that: on the rows
+     it occupies every pixel in the window ties at the minimum, and the scan
+     keeps the leftmost, reporting the window edge -- a ~40 px artifact, an
+     order of magnitude larger than any real lens bend.  The claim under test
+     needs only one clean vertical edge. */
   for(y=0; y<fi.height; y++)
     for(x=0; x<fi.width; x++)
       if(x % 80 == 0)
@@ -1110,14 +1041,11 @@ static void test_lensmap_pincushion_border(void){
      depends on the frame's aspect ratio, not just "not a corner". rho is
      normalised by the half-diagonal (here sqrt(160^2+120^2) = 200), so the
      horizontal mid-edges sit at r/rho = 160/200 = 0.8 while the vertical
-     mid-edges sit at r/rho = 120/200 = 0.6. Measured directly: at k=0.15 the
-     horizontal mid-edges (dest[0][0] row-120 and dest[0][319] row-120) are
-     already partly or fully in the border-blend zone (0 and 40 respectively
-     -- confirmed empirically, see the task-8 report), i.e. r=0.8*rho is
-     already close enough to this k's domain edge that "still inside" does
-     not hold there for this frame size. The vertical mid-edges (r=0.6*rho)
-     are the ones that stay cleanly inside (measured 200, the untouched
-     background), so those are the pair checked here. */
+     mid-edges sit at r/rho = 120/200 = 0.6.  At k=0.15 the horizontal
+     mid-edges are already in the border-blend zone (measured 0 and 40), close
+     enough to the domain edge that "still inside" fails there; the vertical
+     ones stay cleanly inside (measured 200, the background), so those are the
+     pair checked here. */
   test_bool(dest.data[0][fi.width/2] > 190);
   test_bool(dest.data[0][(fi.height-1)*dest.linesize[0] + fi.width/2] > 190);
   /* the centre is untouched */
@@ -1141,7 +1069,7 @@ static void test_lensmap_pincushion_border(void){
   vsTransformDataCleanup(&td);
 }
 
-/* Inactive lens: identical to the old closed form, to the last bit. */
+/* Inactive lens: identical to the closed form, to the last bit. */
 static void test_lensmap_required_zoom_off(void){
   VSFrameInfo fi;
   VSTransformData td;
@@ -1300,9 +1228,8 @@ static void test_lensmap_optzoom1_lens_budget_bothsigns(void){
   lensEnsureMaps(&td);
   test_bool(td.lensActive == 1);
 
-  /* independently reproduce both the pos-only (pre-fix) and both-signs
-     (post-fix) corner budgets, using the same four x/y corners the
-     production code derives from this batch */
+  /* independently reproduce the pos-only and both-signs corner budgets, using
+     the same four x/y corners the production code derives from this batch */
   {
     double cx[2] = { -30.0, 42.0 };
     double cy[2] = { -25.0, 20.0 };
@@ -1331,8 +1258,8 @@ static void test_lensmap_optzoom1_lens_budget_bothsigns(void){
   fprintf(stderr, "  optZoom==1 both-signs: actual budget %.4f\n", td.conf.zoom);
   /* the fixed budget must cover the true (both-signs) floor ... */
   test_bool(td.conf.zoom >= bothSignsFloor - 1e-6);
-  /* ... strictly more than the pos-only floor would have guaranteed, i.e.
-     the extra sampling actually mattered here */
+  /* ... and strictly more than the pos-only floor, so sampling both signs
+     actually matters for this geometry */
   test_bool(td.conf.zoom > posOnlyFloor + 0.1);
 
   vsTransformDataCleanup(&td);

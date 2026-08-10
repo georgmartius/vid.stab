@@ -2,11 +2,8 @@
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
                     int width, int height, int dest_strive, int src_strive, int size);
 
-/* Reference implementations: the original column-at-a-time vertical pass and
-   the horizontal pass, transcribed verbatim from boxblur.c before the vertical
-   pass was turned inside out for cache locality and vectorization.  The
-   rewrite is required to be bit identical, so these are what it is checked
-   against -- any difference at all is a regression. */
+/* Straightforward column-at-a-time vertical pass, kept as the reference the
+   row-major boxblur_vert_C must reproduce bit for bit. */
 static void boxblur_vert_reference(unsigned char* dest, const unsigned char* src,
                                    int width, int height, int dest_strive,
                                    int src_strive, int size){
@@ -33,7 +30,7 @@ static void boxblur_vert_reference(unsigned char* dest, const unsigned char* src
   }
 }
 
-/* Bit-exact equivalence of boxblur_vert_C with the original column walk, over
+/* Bit-exact equivalence of boxblur_vert_C with the column walk, over
    a spread of sizes and geometries: odd and even widths, widths that are not a
    multiple of any vector width, strides wider than the image, and the smallest
    heights the kernel size still permits. */

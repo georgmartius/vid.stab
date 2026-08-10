@@ -205,8 +205,8 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
 
     for(j=0; j<n; j++){
       double wx, wy, dpx, dpy, ex, ey;
-      /* zeroed so the optimiser can see it is never read unset: the guard below
-         returns before any use, but that is not visible to it across the call */
+      /* zeroed only to silence a maybe-uninitialized warning; the guard below
+         returns before any use */
       double J[4] = {0,0,0,0};
       double Jp[4][2];
       if(act && !act[j]) continue;
@@ -268,16 +268,11 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
 
 VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
   VSLensEstimateConfig c;
-  /* Asymmetric on purpose: strong barrel is the larger physical effect, but the
-     bracket must stay open above zero.  Clamping at 0 would put the undistorted
-     case exactly on the boundary, where a minimum cannot be bracketed and the
-     curvature is meaningless, and would hide an estimator that wants to go
-     positive -- which is a real signal, both of already-corrected footage and
-     of a mis-specified model.
-
-     Pincushion additionally has a hard model limit: D_k requires
-     1 - 4*k*r^2 >= 0, so beyond k = 1/(4*r^2) -- a quarter at the image corner
-     -- points simply have no preimage under the model.  kMax stays below that. */
+  /* Asymmetric: strong barrel is the larger physical effect, but the bracket
+     must stay open above zero, or the undistorted case sits on the boundary
+     where nothing can be bracketed and the curvature is meaningless.  kMax
+     stays below the model's own limit, k = 1/(4*r^2) = 0.25 at the corner,
+     past which D_k has no preimage. */
   c.kMin = -0.6;
   c.kMax =  0.2;
   c.tolerance = 1e-6;

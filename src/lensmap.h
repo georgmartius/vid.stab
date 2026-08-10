@@ -42,7 +42,7 @@
 
     With M the stabilising similarity, U_k undistort and D_k distort:
 
-      Off     x_src = M(x_out)                 today's behaviour, bit for bit
+      Off     x_src = M(x_out)                 no lens correction
       Wobble  x_src = D_k(M(U_k(x_out)))       same lens, camera held still
       Full    x_src = D_k(M(x_out))            ideal lens, straight lines straight
 
@@ -55,20 +55,12 @@ typedef enum {
   VSLensCorrectFull
 } VSLensCorrectMode;
 
-/* Table size for gU/gD.  Linear interpolation between VS_LENS_LUT_N samples
-   is accurate to under 1e-6 in g -- but only over the part of a table's
-   domain that a sample can actually be read from while still landing inside
-   the frame.  The frame corner is r_observed = 1; the ideal radius that maps
-   there is gU(1) = 1/(1+k), so the in-frame part of gD's domain is
-   t <= tIn = 1/(1+k)^2.  For pincushion (k>0), tIn sits well short of tDomD
-   (e.g. k=0.15: tIn=0.756 vs tDomD=1.667): D_k's derivative diverges as
-   t -> tDomD, so gD's error blows up near the domain edge however fine the
-   grid is, but every one of those samples is off-frame by construction and
-   resolves to the border value regardless of what gD returns.  Beyond tIn,
-   gD is only guaranteed finite, positive and monotone -- not accurate. gU has
-   no such edge in its own table (its pole sits at t=-1/k, far past tMaxU for
-   any k this model supports), so the 1e-6 bound holds across the whole of
-   its table unconditionally. */
+/* Table size for gU/gD.  Linear interpolation between VS_LENS_LUT_N samples is
+   accurate to under 1e-6 in g over gU's whole table, and over gD's up to
+   tIn = 1/(1+k)^2, the largest t still reachable from inside the frame.  Past
+   tIn, D_k's derivative diverges towards tDomD and gD is only guaranteed
+   finite, positive and monotone -- those samples are off-frame by construction
+   and resolve to the border value whatever gD returns. */
 #define VS_LENS_LUT_N       1024
 /* Sentinel destination for a sample outside the model's domain.  Far enough
    outside any frame that every interpolator returns the border value, small
@@ -83,14 +75,10 @@ typedef struct _vslensplanemap {
   double   cdx, cdy;    /* destination plane centre, plane units               */
   double   csx, csy;    /* source plane centre, plane units                    */
   double   tMaxU, tMaxD;/* LUT domains in t = r^2                              */
-  /* t beyond which D_k is undefined; -1.0 (never a genuine t, which is a
-     squared radius and so always >= 0) if k <= 0, meaning "no bound".  Not
-     INFINITY: both CMakeLists build with -ffast-math, whose
-     -ffinite-math-only lets the compiler assume no operand is ever
-     infinite, which makes comparisons against INFINITY unreliable -- the
-     same hazard that ruled out NaN as the lensK "unset" sentinel.  Every
-     reader compares tDomD < 0.0 / >= 0.0 first, a plain finite comparison,
-     rather than testing equality against INFINITY. */
+  /* t beyond which D_k is undefined, or -1.0 for "no bound" when k <= 0 (a
+     genuine t is a squared radius, so never negative).  A finite sentinel
+     rather than INFINITY because the build uses -ffast-math, under which
+     comparisons against INFINITY are unreliable; readers test tDomD < 0.0. */
   double   tDomD;
   double   invRho2;     /* 1/rho^2 in luma-equivalent pixels^2                 */
   int      sxShift;     /* wsub: plane x units -> luma units is << sxShift     */

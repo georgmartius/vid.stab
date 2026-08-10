@@ -1,12 +1,10 @@
 /*
  * test_vsvector.c
  *
- * Regression tests for issue #168: vs_vector_set() sized its buffer from the
- * requested position by doubling, which overflows int for a large position and
- * hands a negative size to the allocator. A failing resize additionally used to
- * assign the failed realloc result straight onto V->data, leaving the vector
- * with data==NULL but a nonzero buffersize - so the *next* set() re-initialized
- * it and silently dropped everything stored so far.
+ * Regression tests for issue #168: vs_vector_set() at a large position must not
+ * overflow int while sizing its buffer, and a failing resize must leave the
+ * vector's data/buffersize pair consistent rather than data==NULL with a
+ * nonzero buffersize (which the next set() would silently re-initialize).
  */
 
 static int vv_count_nonnull(VSVector* v){

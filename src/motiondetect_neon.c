@@ -3,14 +3,9 @@
  *
  *  ARM NEON (16 byte vector) kernels for the motion detection inner loops.
  *
- *  These replace the previous route of running the SSE2 kernels through the
- *  vendored sse2neon.h shim.  Two reasons: the shim's _mm_sad_epu8 has to
- *  emulate PSADBW, whose exact "two 64 bit halves" semantics NEON does not
- *  share, and NEON's own vabdq/vpadal pair expresses the same reduction more
- *  directly; and the shimmed path was in practice never reached at all (see
- *  the history of motiondetect_opt.h -- USE_SSE2 was defined inside
- *  motiondetect_opt.c only, so motiondetect.c kept calling the scalar C
- *  version and never rounded the field size up to a multiple of 16).
+ *  Native rather than shimmed from SSE2: PSADBW's "two 64 bit halves"
+ *  semantics have no NEON equivalent, while vabdq/vpadal express the same
+ *  reduction directly.
  *
  *  SPDX-License-Identifier: LGPL-2.1-or-later
  *
@@ -47,12 +42,9 @@
 
 /* Rows to accumulate before testing the running sum against the threshold.
    1 means "every row", which makes these kernels return exactly the same value
-   as compareSubImg_thr / _sse2 in every case, early exit included -- a much
-   easier property to test than "greater than the threshold".  Coarser cadences
-   are legal (the caller only ever uses the result as "error < minerror", see
-   tests/test_simd_equivalence.c) and save a horizontal reduction per row, but
-   measured only ~1.5% end to end at 1080p, which is not worth giving up the
-   exact-equality guarantee for. */
+   as compareSubImg_thr / _sse2, early exit included.  Coarser cadences are
+   legal (the caller only uses the result as "error < minerror") but measured
+   only ~1.5% end to end at 1080p, not worth giving up exact equality. */
 #ifndef VS_NEON_CHECK_ROWS
 #define VS_NEON_CHECK_ROWS 1
 #endif

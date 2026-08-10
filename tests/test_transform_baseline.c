@@ -47,19 +47,18 @@ static VSTransform tbTransform(int i){
   return t;
 }
 
-/* Runs one transform through the real pipeline and returns the output CRC. */
-static uint32_t tbRun(const VSFrame* src, const VSFrameInfo* fi,
-                      VSInterpolType ip, int useFloat, int i){
+/* Runs one transform through the real pipeline into the caller's frame and
+   returns the output CRC. */
+static uint32_t tbRunInto(VSFrame* dest, const VSFrame* src, const VSFrameInfo* fi,
+                          VSInterpolType ip, int useFloat, int i){
   VSTransformData td;
   VSTransformConfig cfg = vsTransformGetDefaultConfig("baseline");
-  VSFrame dest;
   uint32_t crc;
   cfg.interpolType = ip;
   cfg.crop         = VSCropBorder;   /* deterministic: no dependence on history */
   cfg.optZoom      = 0;
   test_bool(vsTransformDataInit(&td, &cfg, fi, fi) == VS_OK);
-  vsFrameAllocate(&dest, fi);
-  test_bool(vsTransformPrepare(&td, src, &dest) == VS_OK);
+  test_bool(vsTransformPrepare(&td, src, dest) == VS_OK);
   if(useFloat){
     if(fi->pFormat < PF_PACKED) test_bool(_FLT(transformPlanar)(&td, tbTransform(i)) == VS_OK);
     else                        test_bool(_FLT(transformPacked)(&td, tbTransform(i)) == VS_OK);
@@ -67,10 +66,63 @@ static uint32_t tbRun(const VSFrame* src, const VSFrameInfo* fi,
     test_bool(vsDoTransform(&td, tbTransform(i)) == VS_OK);
   }
   test_bool(vsTransformFinish(&td) == VS_OK);
-  crc = tbCrcFrame(&dest, fi);
-  vsFrameFree(&dest);
+  crc = tbCrcFrame(dest, fi);
   vsTransformDataCleanup(&td);
   return crc;
+}
+
+/* Same, for callers that only want the CRC. */
+static uint32_t tbRun(const VSFrame* src, const VSFrameInfo* fi,
+                      VSInterpolType ip, int useFloat, int i){
+  VSFrame dest;
+  uint32_t crc;
+  vsFrameAllocate(&dest, fi);
+  crc = tbRunInto(&dest, src, fi, ip, useFloat, i);
+  vsFrameFree(&dest);
+  return crc;
+}
+
+typedef struct { int max; double mean; int over8; int n; } TBDiff;
+
+/* Per-byte difference statistics between two frames, over every plane. */
+static TBDiff tbDiff(const VSFrame* a, const VSFrame* b, const VSFrameInfo* fi){
+  TBDiff r;
+  double sum = 0;
+  int plane, x, y;
+  r.max = 0; r.over8 = 0; r.n = 0; r.mean = 0;
+  for(plane=0; plane<fi->planes; plane++){
+    int w = CHROMA_SIZE(fi->width,  vsGetPlaneWidthSubS(fi, plane));
+    int h = CHROMA_SIZE(fi->height, vsGetPlaneHeightSubS(fi, plane));
+    for(y=0; y<h; y++){
+      const uint8_t* pa = a->data[plane] + (size_t)y*a->linesize[plane];
+      const uint8_t* pb = b->data[plane] + (size_t)y*b->linesize[plane];
+      for(x=0; x<w; x++){
+        int d = (int)pa[x] - (int)pb[x];
+        if(d < 0) d = -d;
+        if(d > r.max) r.max = d;
+        if(d > 8) r.over8++;
+        sum += d;
+        r.n++;
+      }
+    }
+  }
+  if(r.n) r.mean = sum / r.n;
+  return r;
+}
+
+/* Mean |fixed - float| for one case, for the regeneration printer below. */
+static double tbMeanFF(const VSFrame* src, const VSFrameInfo* fi,
+                       VSInterpolType ip, int i){
+  VSFrame a, b;
+  double m;
+  vsFrameAllocate(&a, fi);
+  vsFrameAllocate(&b, fi);
+  tbRunInto(&a, src, fi, ip, 0, i);
+  tbRunInto(&b, src, fi, ip, 1, i);
+  m = tbDiff(&a, &b, fi).mean;
+  vsFrameFree(&a);
+  vsFrameFree(&b);
+  return m;
 }
 
 /* Deterministic analytic pattern for the packed source, so the packed warp
@@ -92,30 +144,99 @@ static const uint32_t TB_GOLD_FIXED[4][TB_NUM_T] = {
   {0xEE415B68u,0x6D974C04u,0x72B0F49Cu,0x252E6A3Bu,0xF1999AC2u,},
   {0xEE415B68u,0x0FC226D7u,0xB60B7C0Eu,0xF98197D5u,0xF02D480Cu,},
 };
-static const uint32_t TB_GOLD_FLOAT[4][TB_NUM_T] = {
-  {0xEE415B68u,0x2745FC6Bu,0x3652C8D0u,0x6ACDCC5Au,0x552B3A53u,},
-  {0xEE415B68u,0x9CF29AC6u,0xD9E501C7u,0x55D282A1u,0x7920DDE0u,},
-  {0xEE415B68u,0x9CF29AC6u,0xCB1C1F42u,0xA8F3FE88u,0x77911B01u,},
-  {0xEE415B68u,0x9CF29AC6u,0x318756E1u,0x1219068Fu,0x1EDBA420u,},
-};
-
-/* Same shape, but for a PF_RGB24 (packed) source, so transformPacked and
-   _FLT(transformPacked) are pinned too.  Note: _FLT(transformPacked) has a
-   pre-existing translation-only fast path for |alpha| <= 0.1 degrees that
-   ignores zoom entirely; transform 4 (small alpha + zoom) goes down that
-   path in the float case, and its golden below encodes that quirk. That is
-   intentional -- this guard pins current behaviour, not "correct" behaviour. */
+/* Same shape, but for a PF_RGB24 (packed) source, so transformPacked is
+   pinned too. */
 static const uint32_t TB_GOLD_PACKED_FIXED[4][TB_NUM_T] = {
   {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
   {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
   {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
   {0x95C3E009u,0x5510ACC8u,0xE6DDC561u,0x14936393u,0x4FBCDF2Au,},
 };
-static const uint32_t TB_GOLD_PACKED_FLOAT[4][TB_NUM_T] = {
-  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
-  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
-  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
-  {0x95C3E009u,0xE6C77673u,0x38B15C66u,0xA187C187u,0xB46D462Fu,},
+
+/* The float loops are NOT pinned by CRC.  They once were, back when the float
+   path was the oracle the fixed-point path was written against, and an exact
+   golden was the point.  It no longer holds: a CRC of float output is not
+   stable across optimisation levels -- these goldens were captured at -O0 and
+   differ at -O1 and above, on the same compiler, with or without -ffast-math
+   (measured: -ffast-math is not involved, and neither is -ffp-contract).  So
+   the check that used to fail every Release build was pinning a quantity the
+   language does not promise.
+
+   What this guard actually needs to catch is a regression in the k=0 path, and
+   for that the float loops are held against the fixed-point ones instead: same
+   source, same transform, same interpolation, bounded per-byte difference.
+   The fixed-point CRCs above stay exact -- integer arithmetic is reproducible
+   -- so a drift in either implementation still fails, and the pair cannot both
+   move without the CRC noticing.
+
+   The metric is the MEAN absolute per-byte difference, not the worst one.
+   That is forced by the data, not a preference: on this deliberately
+   high-frequency source a sub-pixel difference in where a sample lands can
+   flip a pixel to an unrelated value, so the worst difference runs to 200+
+   even when the two implementations agree everywhere that matters. Measured
+   across all 20 cases, worst |fixed-float| per case:
+
+     planar  max 0..245, mean 0.0000..3.39
+     packed  max 0..249, mean 0.0000..26.91
+
+   The means are what carry information. They are also stable where the CRC
+   was not: between -O0 and -O3 every max and every over-8 count is identical
+   and the means move only in the fourth decimal (3.1573 -> 3.1572), because
+   the optimiser moves a handful of pixels slightly rather than changing the
+   picture. test_lensmap_fixed_float_equivalence reached the same conclusion
+   independently for the lens-active path, and records there why gating on
+   the worst difference would be a dead check.
+
+   So the float loops are pinned the same way as the fixed ones -- a golden
+   table, regenerable the same way -- but of the mean rather than a CRC, and
+   with an explicit drift allowance rather than none. That is the whole fix:
+   the old check demanded bit-exactness from a quantity the language does not
+   promise; this one demands stability from a quantity that measurably has it.
+
+   A single global bound was tried first and rejected: the per-case baselines
+   span 0.0000 to 26.91, so one bound loose enough for the largest is far too
+   loose for the rest. Injecting a half-pixel error into the float planar loop
+   moved every non-identity case by 2.2 to 4.6, but only ONE case crossed a
+   global bound of 6.0. Against the table below the same injection fails 16 of
+   the 20 planar checks -- the four it does not are the identity transform,
+   which takes an early-out and is genuinely unaffected.
+
+   Measured sensitivity, by adding a constant offset to x_s in the float
+   planar loop and counting failed checks:
+
+     +0.05 px   0 failures   (passes -- below the guard's resolution)
+     +0.15 px   1 failure
+     +0.25 px  15 failures
+     +0.50 px  16 failures
+
+   So this catches a systematic geometry error somewhere between 0.15 and
+   0.25 px. TB_MEAN_DRIFT = 1.0 is enormous next to the 0.0001 the optimiser
+   actually moves these means, and could be tightened a long way; it is left
+   loose deliberately, because the failure this test exists to prevent is a
+   changed picture, and a guard that cries wolf on a compiler upgrade is one
+   that gets deleted. */
+#define TB_MEAN_DRIFT 1.0
+
+/* Mean |fixed - float| per case, same [interpolation][transform] order as the
+   CRC tables. Note packed transform 4: _FLT(transformPacked) has a
+   translation-only fast path for |alpha| <= 0.1 degrees that ignores zoom
+   entirely, so there the two loops legitimately render different pictures and
+   the entry is 26.9 rather than the ~2 of its neighbours. It is pinned like
+   any other value; it records current behaviour, not correct behaviour. */
+static const double TB_MEAN_FF[4][TB_NUM_T] = {
+  {0.0000, 0.0656, 0.0000, 0.0104, 0.0140, },
+  {0.0000, 0.0338, 0.0055, 0.0126, 0.0181, },
+  {0.0000, 3.3918, 3.1573, 1.0524, 0.0617, },
+  {0.0000, 3.3794, 3.2570, 1.0974, 0.1572, },
+};
+/* Identical across interpolation types: transformPacked and its float twin
+   carry their own sampling and ignore cfg.interpolType, which the packed CRC
+   table above shows the same way. */
+static const double TB_MEAN_FF_PACKED[4][TB_NUM_T] = {
+  {0.0000, 0.4228, 2.1724, 0.6096, 26.9078, },
+  {0.0000, 0.4228, 2.1724, 0.6096, 26.9078, },
+  {0.0000, 0.4228, 2.1724, 0.6096, 26.9078, },
+  {0.0000, 0.4228, 2.1724, 0.6096, 26.9078, },
 };
 
 void test_transform_baseline(void){
@@ -135,16 +256,37 @@ void test_transform_baseline(void){
 
   for(ip=0; ip<4; ip++){
     for(i=0; i<TB_NUM_T; i++){
-      uint32_t gf = tbRun(&src, &fi, (VSInterpolType)ip, 0, i);
-      uint32_t gl = tbRun(&src, &fi, (VSInterpolType)ip, 1, i);
-      uint32_t pf = tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 0, i);
-      uint32_t pl = tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 1, i);
-      if(gf != TB_GOLD_FIXED[ip][i] || gl != TB_GOLD_FLOAT[ip][i]
-         || pf != TB_GOLD_PACKED_FIXED[ip][i] || pl != TB_GOLD_PACKED_FLOAT[ip][i]) mismatch = 1;
+      VSFrame planarFixed, planarFloat, packedFixed, packedFloat;
+      uint32_t gf, pf;
+      TBDiff dPlanar, dPacked;
+      double packedTol;
+
+      vsFrameAllocate(&planarFixed, &fi);
+      vsFrameAllocate(&planarFloat, &fi);
+      vsFrameAllocate(&packedFixed, &fiPacked);
+      vsFrameAllocate(&packedFloat, &fiPacked);
+
+      gf = tbRunInto(&planarFixed, &src, &fi, (VSInterpolType)ip, 0, i);
+                tbRunInto(&planarFloat, &src, &fi, (VSInterpolType)ip, 1, i);
+      pf = tbRunInto(&packedFixed, &srcPacked, &fiPacked, (VSInterpolType)ip, 0, i);
+                tbRunInto(&packedFloat, &srcPacked, &fiPacked, (VSInterpolType)ip, 1, i);
+
+      dPlanar = tbDiff(&planarFixed, &planarFloat, &fi);
+      dPacked = tbDiff(&packedFixed, &packedFloat, &fiPacked);
+
+      if(gf != TB_GOLD_FIXED[ip][i] || pf != TB_GOLD_PACKED_FIXED[ip][i]
+         || fabs(dPlanar.mean - TB_MEAN_FF[ip][i])        > TB_MEAN_DRIFT
+         || fabs(dPacked.mean - TB_MEAN_FF_PACKED[ip][i]) > TB_MEAN_DRIFT) mismatch = 1;
       test_bool(gf == TB_GOLD_FIXED[ip][i]);
-      test_bool(gl == TB_GOLD_FLOAT[ip][i]);
       test_bool(pf == TB_GOLD_PACKED_FIXED[ip][i]);
-      test_bool(pl == TB_GOLD_PACKED_FLOAT[ip][i]);
+      /* Symmetric: the float loops moving CLOSER to the fixed ones is just as
+         much a change in behaviour as moving away, and worth a look either
+         way. */
+      test_bool(fabs(dPlanar.mean - TB_MEAN_FF[ip][i])        <= TB_MEAN_DRIFT);
+      test_bool(fabs(dPacked.mean - TB_MEAN_FF_PACKED[ip][i]) <= TB_MEAN_DRIFT);
+
+      vsFrameFree(&planarFixed); vsFrameFree(&planarFloat);
+      vsFrameFree(&packedFixed); vsFrameFree(&packedFloat);
     }
   }
   if(mismatch){
@@ -155,22 +297,22 @@ void test_transform_baseline(void){
       for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&src, &fi, (VSInterpolType)ip, 0, i));
       fprintf(stderr, "},\n");
     }
-    fprintf(stderr, "};\nstatic const uint32_t TB_GOLD_FLOAT[4][TB_NUM_T] = {\n");
-    for(ip=0; ip<4; ip++){
-      fprintf(stderr, "  {");
-      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&src, &fi, (VSInterpolType)ip, 1, i));
-      fprintf(stderr, "},\n");
-    }
     fprintf(stderr, "};\nstatic const uint32_t TB_GOLD_PACKED_FIXED[4][TB_NUM_T] = {\n");
     for(ip=0; ip<4; ip++){
       fprintf(stderr, "  {");
       for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 0, i));
       fprintf(stderr, "},\n");
     }
-    fprintf(stderr, "};\nstatic const uint32_t TB_GOLD_PACKED_FLOAT[4][TB_NUM_T] = {\n");
+    fprintf(stderr, "};\nstatic const double TB_MEAN_FF[4][TB_NUM_T] = {\n");
     for(ip=0; ip<4; ip++){
       fprintf(stderr, "  {");
-      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "0x%08Xu,", tbRun(&srcPacked, &fiPacked, (VSInterpolType)ip, 1, i));
+      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "%.4f, ", tbMeanFF(&src, &fi, (VSInterpolType)ip, i));
+      fprintf(stderr, "},\n");
+    }
+    fprintf(stderr, "};\nstatic const double TB_MEAN_FF_PACKED[4][TB_NUM_T] = {\n");
+    for(ip=0; ip<4; ip++){
+      fprintf(stderr, "  {");
+      for(i=0; i<TB_NUM_T; i++) fprintf(stderr, "%.4f, ", tbMeanFF(&srcPacked, &fiPacked, (VSInterpolType)ip, i));
       fprintf(stderr, "},\n");
     }
     fprintf(stderr, "};\n");

@@ -246,12 +246,18 @@ VSTransform vsMotionsToTransform(VSTransformData* td,
   if(residual>100){ // test threshold.
     t.extra=1;
   }
+  /* The zoom gate has to run *before* the dump: global_motions.trf is meant to
+     record the transforms this function actually returns, and it is read back
+     as input by vidstabtransform (vsReadOldTransforms). Writing the ungated
+     estimate made the file describe a per-frame zoom that the pipeline then
+     discarded, so replaying the dump applied a zoom the original run never
+     did. */
+  if(!td->conf.smoothZoom)
+    t.zoom=0;
   if(f){
     fprintf(f,"0 %f %f %f %f %i\n#\t\t\t\t\t %f %i\n", t.x, t.y, t.alpha, t.zoom, t.extra,
             residual, k + 1);
   }
-  if(!td->conf.smoothZoom)
-    t.zoom=0;
   return t;
 }
 

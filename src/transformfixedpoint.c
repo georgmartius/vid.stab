@@ -221,6 +221,24 @@ void interpolateZero(uint8_t *rv, fp16 x, fp16 y,
 
 
 /**
+ * blendBiLinN: the bi-linear blend of four already fetched samples.
+ *
+ * Factored out so that interpolateN() (one channel, range checked) and
+ * interpolateNall() (all channels of one pixel, indices hoisted) share one
+ * copy of the arithmetic and cannot drift apart.
+ *   v1 = (x_c,y_c)  v2 = (x_c,y_f)  v3 = (x_f,y_c)  v4 = (x_f,y_f)
+ */
+static uint8_t blendBiLinN(short v1, short v2, short v3, short v4,
+                           fp16 x, fp16 x_f, fp16 x_c,
+                           fp16 y, fp16 y_f, fp16 y_c)
+{
+  fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +
+    fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
+  int32_t res = fp16ToIRound(s);
+  return (res >= 0) ? ((res < 255) ? res : 255) : 0;
+}
+
+/**
  * interpolateN: Bi-linear interpolation function for N channel image.
  *
  * Parameters:
@@ -249,20 +267,66 @@ void interpolateN(uint8_t *rv, fp16 x, fp16 y,
   } else {
     int32_t ix_c = ix_f + 1;
     int32_t iy_c = iy_f + 1;
-    /* the "ceil" neighbours may be one past the last row/column; use the
-       range checked accessor, their interpolation weight is 0 in that case */
-    short v1 = PIXELN(img, img_linesize, ix_c, iy_c, width, height, N, channel, def);
-    short v2 = PIXELN(img, img_linesize, ix_c, iy_f, width, height, N, channel, def);
-    short v3 = PIXELN(img, img_linesize, ix_f, iy_c, width, height, N, channel, def);
-    short v4 = PIXELN(img, img_linesize, ix_f, iy_f, width, height, N, channel, def);
-    fp16 x_f = iToFp16(ix_f);
-    fp16 x_c = iToFp16(ix_c);
-    fp16 y_f = iToFp16(iy_f);
-    fp16 y_c = iToFp16(iy_c);
-    fp16 s  = fp16To8(v1*(x - x_f)+v3*(x_c - x))*fp16To8(y - y_f) +
-      fp16To8(v2*(x - x_f) + v4*(x_c - x))*fp16To8(y_c - y);
-    int32_t res = fp16ToIRound(s);
-    *rv = (res >= 0) ? ((res < 255) ? res : 255) : 0;
+    short v1, v2, v3, v4;
+    /* ix_f/iy_f are in range by the test above, so only the "ceil" neighbours
+       can be one past the last row/column.  Away from that border no bound can
+       be violated and the unchecked accessor is used; on it the range checked
+       one supplies def, exactly as before. */
+    if (ix_c < width && iy_c < height) {
+      v1 = PIXN(img, img_linesize, ix_c, iy_c, N, channel);
+      v2 = PIXN(img, img_linesize, ix_c, iy_f, N, channel);
+      v3 = PIXN(img, img_linesize, ix_f, iy_c, N, channel);
+      v4 = PIXN(img, img_linesize, ix_f, iy_f, N, channel);
+    } else {
+      v1 = PIXELN(img, img_linesize, ix_c, iy_c, width, height, N, channel, def);
+      v2 = PIXELN(img, img_linesize, ix_c, iy_f, width, height, N, channel, def);
+      v3 = PIXELN(img, img_linesize, ix_f, iy_c, width, height, N, channel, def);
+      v4 = PIXELN(img, img_linesize, ix_f, iy_f, width, height, N, channel, def);
+    }
+    *rv = blendBiLinN(v1, v2, v3, v4, x, iToFp16(ix_f), iToFp16(ix_c),
+                      y, iToFp16(iy_f), iToFp16(iy_c));
+  }
+}
+
+/**
+ * interpolateNall: interpolateN() for every channel of one destination pixel.
+ *
+ * transformPacked() used to call interpolateN() once per channel, which
+ * recomputed the source indices and the interpolation weights N times for the
+ * same pixel.  Here they are computed once and only the four sample loads and
+ * the blend happen per channel.
+ *
+ * Parameters: as interpolateN(), except
+ *           dest: the N consecutive destination channels of one pixel
+ *           crop: if nonzero, out of range pixels become 16 (black), otherwise
+ *                 the destination keeps the value it already had
+ */
+static void interpolateNall(uint8_t *dest, fp16 x, fp16 y,
+                            const uint8_t *img, int img_linesize,
+                            int width, int height, uint8_t N, char crop)
+{
+  int32_t ix_f = fp16ToI(x);
+  int32_t iy_f = fp16ToI(y);
+  uint8_t k;
+  if (ix_f < 0 || ix_f > width-1 || iy_f < 0 || iy_f > height - 1) {
+    if (crop)
+      for (k = 0; k < N; k++)
+        dest[k] = 16;
+    /* else: leave the destination untouched, like interpolateN(.., def=*dest) */
+  } else if (ix_f + 1 < width && iy_f + 1 < height) {
+    /* interior: no sample can be out of range, so no per sample bound check */
+    fp16 x_f = iToFp16(ix_f), x_c = iToFp16(ix_f + 1);
+    fp16 y_f = iToFp16(iy_f), y_c = iToFp16(iy_f + 1);
+    const uint8_t *rowf = img + ix_f*N + iy_f*img_linesize;
+    const uint8_t *rowc = rowf + img_linesize;
+    for (k = 0; k < N; k++)
+      dest[k] = blendBiLinN(rowc[N+k], rowf[N+k], rowc[k], rowf[k],
+                            x, x_f, x_c, y, y_f, y_c);
+  } else {
+    /* last row or column: the checked path, one channel at a time */
+    for (k = 0; k < N; k++)
+      interpolateN(&dest[k], x, y, img, img_linesize, width, height,
+                   N, k, crop ? 16 : dest[k]);
   }
 }
 
@@ -278,7 +342,7 @@ void interpolateN(uint8_t *rv, fp16 x, fp16 y,
  */
 int transformPacked(VSTransformData* td, VSTransform t)
 {
-  int x = 0, y = 0, k = 0;
+  int x = 0, y = 0;
   uint8_t *D_1, *D_2;
 
   lensEnsureMaps(td);
@@ -359,13 +423,11 @@ int transformPacked(VSTransformData* td, VSTransform t)
         }
       }
 
-      for (k = 0; k < channels; k++) { // iterate over colors
-        // linesize is in bytes, only the column is scaled by the channel count
-        uint8_t *dest = &D_2[x * channels + y * td->destbuf.linesize[0] + k];
-        interpolateN(dest, x_s, y_s, D_1, td->src.linesize[0],
-                     td->fiSrc.width, td->fiSrc.height,
-                     channels, k, td->conf.crop ? 16 : *dest);
-      }
+      // linesize is in bytes, only the column is scaled by the channel count
+      interpolateNall(&D_2[x * channels + y * td->destbuf.linesize[0]],
+                      x_s, y_s, D_1, td->src.linesize[0],
+                      td->fiSrc.width, td->fiSrc.height,
+                      channels, td->conf.crop);
     }
   }
   return VS_OK;
@@ -423,8 +485,22 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     int32_t c_d_y = dh / 2;
 
     float z     = 1.0-t.zoom/100.0;
+    /* A chroma sample spans (1<<wsub) luma columns and (1<<hsub) luma rows, so
+       for wsub!=hsub (4:2:2, 4:4:0, 4:1:1) the plane's two axes are not to the
+       same scale. The rotation mixes the axes, so its cross terms have to be
+       converted between them: rotate in luma units and come back, which turns
+       the sine into sin*(ay/ax) for the x row and sin*(ax/ay) for the y row.
+       Doing it in float here rather than by shifting the fp16 product per
+       pixel keeps the full fixed point precision and costs nothing in the
+       loop. The scaling (cosine) terms stay put: they are diagonal, so they
+       never leave their own axis. With wsub==hsub both factors are 1 and this
+       is bit-identical to the plain rotation -- which is why only the
+       asymmetric formats were ever wrong (issue #79). */
+    float ax = (float)(1 << wsub), ay = (float)(1 << hsub);
+    float zsin  = z*sin(-t.alpha);
     fp16 zcos_a = fToFp16(z*cos(-t.alpha)); // scaled cos
-    fp16 zsin_a = fToFp16(z*sin(-t.alpha)); // scaled sin
+    fp16 zsin_xy = fToFp16(zsin * (ay/ax)); // scaled sin, y_d1 -> x_s
+    fp16 zsin_yx = fToFp16(zsin * (ax/ay)); // scaled sin, x_d1 -> y_s
     fp16  c_tx    = c_s_x - (fToFp16(t.x) >> wsub);
     fp16  c_ty    = c_s_y - (fToFp16(t.y) >> hsub);
 
@@ -467,14 +543,14 @@ int transformPlanar(VSTransformData* td, VSTransform t)
           dx = (fp16)(((int64_t)dx * g) >> 16);
           dy = (fp16)(((int64_t)dy * g) >> 16);
         }
-        /* zcos_a and zsin_a are 16.16; multiplying by a 16.16 offset needs the
+        /* The rotation terms are 16.16; multiplying by a 16.16 offset needs the
            extra shift the integer form did not.  One expression serves both
            paths: with the lens off, dx is exactly x_d1<<16, so
            (zcos_a*(x_d1<<16))>>16 == zcos_a*x_d1 with no rounding at all --
            the int64 intermediate only removes an overflow risk that the
            wobble scaling introduces. */
-        x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
-        y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
+        x_s = (fp16)((((int64_t)zcos_a *dx + (int64_t)zsin_xy*dy) >> 16)) + c_tx;
+        y_s = (fp16)(((-(int64_t)zsin_yx*dx + (int64_t)zcos_a *dy) >> 16)) + c_ty;
         if (lensOn) {
           int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
           int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);

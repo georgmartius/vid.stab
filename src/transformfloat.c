@@ -191,10 +191,20 @@ void _FLT(interpolateN)(uint8_t *rv, float x, float y,
     int x_c = x_f+1;
     int y_f = myfloor(y);
     int y_c = y_f+1;
-    short v1 = PIXELN(img, img_linesize, x_c, y_c, width, height, N, channel, def);
-    short v2 = PIXELN(img, img_linesize, x_c, y_f, width, height, N, channel, def);
-    short v3 = PIXELN(img, img_linesize, x_f, y_c, width, height, N, channel, def);
-    short v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
+    short v1, v2, v3, v4;
+    /* away from the frame border none of the four samples can be out of
+       range, so the per sample bound check is skipped there */
+    if (x_f >= 0 && y_f >= 0 && x_c < width && y_c < height) {
+      v1 = PIXN(img, img_linesize, x_c, y_c, N, channel);
+      v2 = PIXN(img, img_linesize, x_c, y_f, N, channel);
+      v3 = PIXN(img, img_linesize, x_f, y_c, N, channel);
+      v4 = PIXN(img, img_linesize, x_f, y_f, N, channel);
+    } else {
+      v1 = PIXELN(img, img_linesize, x_c, y_c, width, height, N, channel, def);
+      v2 = PIXELN(img, img_linesize, x_c, y_f, width, height, N, channel, def);
+      v3 = PIXELN(img, img_linesize, x_f, y_c, width, height, N, channel, def);
+      v4 = PIXELN(img, img_linesize, x_f, y_f, width, height, N, channel, def);
+    }
     float s  = (v1*(x - x_f)+v3*(x_c - x))*(y - y_f) +
       (v2*(x - x_f) + v4*(x_c - x))*(y_c - y);
     int32_t res = (int32_t)s;
@@ -354,8 +364,16 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
     uint8_t black = plane==0 ? 0 : 0x80;
 
     float z = 1.0-t.zoom/100;
-    float zcos_a = z*cos(-t.alpha); // scaled cos
-    float zsin_a = z*sin(-t.alpha); // scaled sin
+    /* see the comment on the same computation in transformfixedpoint.c: a
+       chroma sample is (1<<wsub) luma wide and (1<<hsub) luma tall, so for
+       wsub!=hsub the rotation's cross terms have to be converted between the
+       two axis scales (issue #79). Identical to the plain rotation whenever
+       wsub==hsub, which includes the luma plane. */
+    float ax = (float)(1 << wsub), ay = (float)(1 << hsub);
+    float zcos_a = z*cos(-t.alpha);            // scaled cos
+    float zsin   = z*sin(-t.alpha);            // scaled sin
+    float zsin_xy = zsin * (ay/ax);            // y_d1 -> x_s
+    float zsin_yx = zsin * (ax/ay);            // x_d1 -> y_s
     float tx = t.x / (float)(1 << wsub);
     float ty = t.y / (float)(1 << hsub);
 
@@ -387,8 +405,8 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
           float g  = vsLensLutF(lm->gUf, lm->tMaxU, (lx*lx + ly*ly)*irho2);
           x_d1 *= g; y_d1 *= g;
         }
-        x_s  =  zcos_a * x_d1 + zsin_a * y_d1 + c_s_x - tx;
-        y_s  = -zsin_a * x_d1 + zcos_a * y_d1 + c_s_y - ty;
+        x_s  =  zcos_a  * x_d1 + zsin_xy * y_d1 + c_s_x - tx;
+        y_s  = -zsin_yx * x_d1 + zcos_a  * y_d1 + c_s_y - ty;
         if (lensOn) {
           float ex = x_s - c_s_x, ey = y_s - c_s_y;
           float lx = ex*sxf, ly = ey*syf;

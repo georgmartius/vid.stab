@@ -33,6 +33,62 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
                     int width, int height, int dest_strive, int src_strive, int size);
 
+/* ---- magic-number reciprocal for the `acc/size` in the two passes ----------
+
+   `size` is a runtime value, so `acc/size` compiles to a real integer division:
+   ~20-30 cycles of latency in the serial horizontal chain, and -- worse -- it
+   blocks the vertical pass's output loop from vectorizing at all, since no
+   x86/NEON SIMD unit has an integer divide.
+
+   Replaced by  (acc*mul) >> shift.  That is only worth doing if it is *exactly*
+   equal to acc/size for every acc that can occur, so the constants are checked
+   rather than assumed:
+
+     mul   = ceil(2^shift / size),  e = mul*size - 2^shift  (0 <= e < size)
+     acc*mul/2^shift = acc/size + acc*e/(size*2^shift)
+
+   With acc = q*size + r the floor is q iff  r/size + acc*e/(size*2^shift) < 1,
+   and the worst case r = size-1 leaves the condition
+
+     acc_max * e < 2^shift                                   (exactness)
+
+   plus, so the multiply stays a 32x32->32 one (vpmulld / vmulq_u32):
+
+     acc_max * mul <= 2^32-1                                 (no overflow)
+
+   The window holds 2*(size/2)+1 pixels, so acc_max = 255*(2*(size/2)+1), and
+   the overflow bound alone caps shift at 24 (255*2^24 < 2^32).  Exactness then
+   needs 255*size*(size-1) < 2^24, i.e. it holds for every odd size up to 265
+   and fails first at 267 -- so this is *not* usable for arbitrary sizes, and
+   the caller-visible range is not restricted here.  Instead the search below
+   returns valid=0 when no shift works and the callers keep the division.
+   (boxblurPlanar only ever passes stepSize-derived sizes, far inside the range.)
+*/
+typedef struct { uint32_t mul; int shift; int valid; } VSReciprocal;
+
+static VSReciprocal vs_reciprocal(int size, uint32_t acc_max){
+  VSReciprocal r = { 0, 0, 0 };
+  int shift;
+  if(size <= 0) return r;
+  /* larger shift is better for exactness and worse for overflow, so walk down
+     from the top and take the first shift that satisfies both */
+  for(shift=31; shift>=0; shift--){
+    uint64_t pow2 = (uint64_t)1 << shift;
+    uint64_t mul  = (pow2 + (uint64_t)size - 1) / (uint64_t)size;   /* ceil */
+    uint64_t e    = mul*(uint64_t)size - pow2;
+    if(mul*(uint64_t)acc_max > 0xFFFFFFFFu) continue;               /* overflow */
+    if((uint64_t)acc_max*e >= pow2)         continue;               /* not exact */
+    r.mul = (uint32_t)mul; r.shift = shift; r.valid = 1;
+    return r;
+  }
+  return r;
+}
+
+/* upper bound on the accumulator: the window is 2*(size/2)+1 pixels wide */
+static uint32_t vs_boxblur_accmax(int size){
+  return 255u * (uint32_t)(2*(size/2)+1);
+}
+
 /*
   The algorithm:
   box filter: kernel has only 1's
@@ -136,6 +192,9 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
 
   int j;
   int size2 = size/2; // size of one side of the kernel without center
+  /* one integer division per pixel sits in the middle of the serial running
+     sum here; the exact reciprocal removes it (see vs_reciprocal) */
+  const VSReciprocal rec = vs_reciprocal(size, vs_boxblur_accmax(size));
   /* Every row is an independent accumulator chain, so this parallelises with
      no sharing at all.  (It used to be commented out as "no speedup"; that no
      longer holds -- at 1080p the two boxblur passes are several ms of purely
@@ -158,12 +217,22 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
       end++;
     }
     // go through the image
-    for(i=0; i< width; i++){
-      acc = acc + (*end) - (*start);
-      if(i > size2) start++;
-      if(i < width - size2 - 1) end++;
-      (*current) = acc/size;
-      current++;
+    if(rec.valid){
+      for(i=0; i< width; i++){
+        acc = acc + (*end) - (*start);
+        if(i > size2) start++;
+        if(i < width - size2 - 1) end++;
+        (*current) = (unsigned char)((acc * rec.mul) >> rec.shift);
+        current++;
+      }
+    }else{
+      for(i=0; i< width; i++){
+        acc = acc + (*end) - (*start);
+        if(i > size2) start++;
+        if(i < width - size2 - 1) end++;
+        (*current) = acc/size;
+        current++;
+      }
     }
   }
 }
@@ -181,6 +250,10 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
   int i,j,k;
   int size2 = size/2; // size of one side of the kernel without center
   uint32_t* acc;
+  /* without this the output loop below cannot vectorize at all: `acc[i]/size`
+     has a runtime divisor and there is no SIMD integer divide (see
+     vs_reciprocal for why this is exact) */
+  const VSReciprocal rec = vs_reciprocal(size, vs_boxblur_accmax(size));
 
   if(width <= 0 || height <= 0)
     return;
@@ -190,16 +263,17 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
     for(i=0; i< width; i++){
       const unsigned char *start, *end;
       unsigned char *current;
-      int a;
+      uint32_t a;
       start = end = src + i;
       current = dest + i;
-      a = (*start)*(size2+1);
+      a = (uint32_t)(*start)*(uint32_t)(size2+1);
       for(k=0; k<size2; k++){ a+=(*end); end+=src_strive; }
       for(j=0; j< height; j++){
         a = a - (*start) + (*end);
         if(j > size2) start+=src_strive;
         if(j < height - size2 - 1) end+=src_strive;
-        *current = a/size;
+        *current = rec.valid ? (unsigned char)((a * rec.mul) >> rec.shift)
+                             : (unsigned char)(a/(uint32_t)size);
         current+=dest_strive;
       }
     }
@@ -241,8 +315,15 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
 
         for(ii=c0; ii<c1; ii++)
           acc[ii] += (uint32_t)endRow[ii] - (uint32_t)startRow[ii];
-        for(ii=c0; ii<c1; ii++)
-          out[ii] = (unsigned char)(acc[ii]/size);
+        if(rec.valid){
+          const uint32_t mul = rec.mul;
+          const int shift = rec.shift;
+          for(ii=c0; ii<c1; ii++)
+            out[ii] = (unsigned char)((acc[ii] * mul) >> shift);
+        }else{
+          for(ii=c0; ii<c1; ii++)
+            out[ii] = (unsigned char)(acc[ii]/size);
+        }
       }
     }
   }

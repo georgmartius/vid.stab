@@ -119,7 +119,7 @@ typedef struct _VSTransformConfig {
        field of view and leaves a locked-off shot untouched, while removing the
        frame-to-frame distortion variation the stabiliser cannot.  Full
        undistorts the picture outright and stays opt-in.  See
-       docs/superpowers/specs/2026-08-09-lens-correction-render-design.md */
+       docs/lens-distortion.md, "Applying the correction to the output". */
     VSLensCorrectMode lensCorrection;
     /* Manual override for k; 0.0 means "use whatever was estimated".  Needed
        for the transforms-file path, which carries no k, and for users who know

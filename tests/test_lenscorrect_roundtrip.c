@@ -5,7 +5,7 @@
  *  checkerboard clip is distorted by a known k, corrected back, and compared
  *  against the analytic original.  The generator lives in generate_lensclip.c.
  *
- *  See docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md
+ *  See docs/lens-distortion.md, "Seeing it: the checkerboard round trip".
  */
 
 /* --- the pattern ---------------------------------------------------------- */

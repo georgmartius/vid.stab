@@ -147,10 +147,7 @@ static void test_lensmap_inactive(void){
    for 4:2:2 (wsub=1, hsub=0) it is not: rotation mixes an x-offset and a
    y-offset that are expressed in different luma-equivalent scales on that
    plane, so a nonzero alpha makes the luma point and its chroma counterpart
-   genuinely diverge -- by design, see docs/superpowers/specs/
-   2026-08-09-lens-correction-render-design.md section 2.3, which states
-   this work neither fixes nor replicates a per-axis-consistent rotation for
-   anisotropic chroma. Zeroing alpha here isolates the thing this module is
+   genuinely diverge.  Zeroing alpha here isolates the thing this module is
    actually responsible for: the radial map must be computed in
    luma-equivalent units, not plane units, and translation -- which *is*
    subsampled correctly per axis -- still exercises that at off-centre

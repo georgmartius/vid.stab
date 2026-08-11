@@ -3,8 +3,7 @@
    Included as a translation unit by tests.c (after generate_synthetic.c and
    test_synthetic.c), so it needs no includes of its own.
 
-   See docs/superpowers/specs/2026-08-03-tripod-mode-tests-design.md and
-   GitHub issues #85 / #27. */
+   See GitHub issues #85 / #27. */
 
 /* Tripod mode on the transform side is defined as relative=0:smoothing=0 (see
    transform.h:171). optZoom and zoom are switched off too: optZoom defaults to

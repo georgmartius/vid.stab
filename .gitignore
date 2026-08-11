@@ -29,3 +29,6 @@ tests/build/
 # out-of-tree build directories used while benchmarking
 bld*/
 tests/tbld/
+
+# Working notes and design specs are kept out of the repo
+docs/superpowers/

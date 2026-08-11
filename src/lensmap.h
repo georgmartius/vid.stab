@@ -47,8 +47,8 @@
       Full    x_src = D_k(M(x_out))            ideal lens, straight lines straight
 
     Wobble collapses to the identity when M does, so it costs no field of view
-    and leaves locked-off shots untouched.  See
-    docs/superpowers/specs/2026-08-09-lens-correction-render-design.md */
+    and leaves locked-off shots untouched.  See docs/lens-distortion.md,
+    "Applying the correction to the output". */
 typedef enum {
   VSLensCorrectOff = 0,
   VSLensCorrectWobble,

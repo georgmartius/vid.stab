@@ -11,7 +11,7 @@
  *  so the clip carries no generation blur and the ground truth for the round
  *  trip is the pattern function itself.
  *
- *  See docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md
+ *  See docs/lens-distortion.md, "Seeing it: the checkerboard round trip".
  */
 
 #include "lensdistortion.h"

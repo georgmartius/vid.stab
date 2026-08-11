@@ -322,8 +322,7 @@ Not addressed:
 Sections 1-7 cover using `k` to *interpret* the motions. This section covers the render-side
 work that consumes that estimate: rewarping the actual output pixels. Implementation:
 `src/lensmap.{c,h}`, integrated into the four warp loops in `src/transformfloat.c` and
-`src/transformfixedpoint.c`. Tests: `tests/test_lensmap.c`, run with `tests --testLMAP`. Full
-design: `docs/superpowers/specs/2026-08-09-lens-correction-render-design.md`.
+`src/transformfixedpoint.c`. Tests: `tests/test_lensmap.c`, run with `tests --testLMAP`.
 
 ### The three modes
 
@@ -471,7 +470,7 @@ bending and the band circles show the radial compression that bending hides near
 Frame `i` is `pattern(S_i(U_k(x)))` — the scene through a known lens, moved by a known pose —
 evaluated directly at its final coordinates, so the footage carries no resampling blur and the
 ground truth is exact. Correcting it with the same `k` and the exact inverse pose must return the
-original scene. Design: `docs/superpowers/specs/2026-08-09-lens-checkerboard-footage-design.md`.
+original scene.
 
 To regenerate the figure:
 

@@ -91,7 +91,7 @@ void vs_simd_init(void) {
      *whole* frame, including the scalar and 256 bit code around the kernel.
      Measured on an i7-7800X at 1080p, AVX-512 came out ~18% slower than AVX2
      both single threaded and on 9 threads -- see
-     docs/superpowers/simd-optimization-report.md.
+     docs/simd.md.
 
      Newer cores (Ice Lake and later, Zen 4/5) do not throttle this way and may
      well come out ahead, but there is no reliable runtime way to ask "does

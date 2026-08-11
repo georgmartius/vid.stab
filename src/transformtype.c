@@ -120,7 +120,47 @@ void storeVSTransform(FILE* f, const VSTransform* t){
 }
 
 
+double focal_from_fov(double fovDeg, int width){
+  if(fovDeg <= 0.0 || fovDeg >= 180.0 || width <= 0) return 0.0;
+  /* the half angle spans half the width; /360 halves and converts at once */
+  return (width/2.0) / tan(fovDeg * M_PI/360.0);
+}
+
+/* out = a . b, aliasing-safe. */
+static void mat3mul(const double a[9], const double b[9], double out[9]){
+  double t[9];
+  int i, j, k;
+  for(i=0; i<3; i++)
+    for(j=0; j<3; j++){
+      double s = 0;
+      for(k=0; k<3; k++) s += a[3*i+k] * b[3*k+j];
+      t[3*i+j] = s;
+    }
+  for(i=0; i<9; i++) out[i] = t[i];
+}
+
+void rotation_matrix_backward(double yaw, double pitch, double roll, double r[9]){
+  double cy = cos(-yaw),  sy = sin(-yaw);
+  double cp = cos(pitch), sp = sin(pitch);
+  double cr = cos(roll),  sr = sin(roll);
+  double Ry[9] = {  cy, 0, sy,    0,  1,   0,   -sy,  0, cy };
+  double Rx[9] = {   1, 0,  0,    0, cp, -sp,     0, sp, cp };
+  double Rz[9] = {  cr,-sr, 0,   sr, cr,   0,     0,  0,  1 };
+  /* Multiplied out rather than hand-expanded on purpose.  This runs once per
+     frame per plane, so the eighteen extra multiplies do not register, and
+     an algebraic slip here produces a matrix that still looks like a small
+     rotation -- the failure would show up as a quietly worse fit, not as an
+     obviously broken picture. */
+  mat3mul(Ry, Rx, r);
+  mat3mul(r,  Rz, r);
+}
+
 PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi){
+  return prepare_transform_fov(t, fi, 0.0);
+}
+
+PreparedTransform prepare_transform_fov(const VSTransform* t,
+                                        const VSFrameInfo* fi, double f){
   PreparedTransform pt;
   pt.t = t;
   double z = 1.0+t->zoom/100.0;
@@ -128,6 +168,18 @@ PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi)
   pt.zsin_a = z*sin(t->alpha); // scaled sin
   pt.c_x    = fi->width / 2;
   pt.c_y    = fi->height / 2;
+  pt.z      = z;
+  pt.f      = f;
+  if(f > 0.0){
+    double b[9];
+    /* x and y are yaw and pitch already scaled into centre-pixels by f, so
+       dividing by f is what turns them back into angles. */
+    rotation_matrix_backward(t->x/f, t->y/f, t->alpha, b);
+    /* forward = backward^-1 = backward^T */
+    pt.r[0]=b[0]; pt.r[1]=b[3]; pt.r[2]=b[6];
+    pt.r[3]=b[1]; pt.r[4]=b[4]; pt.r[5]=b[7];
+    pt.r[6]=b[2]; pt.r[7]=b[5]; pt.r[8]=b[8];
+  }
   return pt;
 }
 
@@ -141,6 +193,17 @@ Vec transform_vec(const PreparedTransform* pt, const Vec* v){
 void transform_vec_double(double* x, double* y, const PreparedTransform* pt, const Vec* v){
   double rx = v->x - pt->c_x;
   double ry = v->y - pt->c_y;
+  if(pt->f > 0.0){
+    /* Z is f cos(angle) to first order and the angles a stabiliser sees are
+       small, so it cannot reach zero here; a frame would have to rotate most
+       of the way to edge-on first. */
+    double X = pt->r[0]*rx + pt->r[1]*ry + pt->r[2]*pt->f;
+    double Y = pt->r[3]*rx + pt->r[4]*ry + pt->r[5]*pt->f;
+    double Z = pt->r[6]*rx + pt->r[7]*ry + pt->r[8]*pt->f;
+    *x = pt->z * pt->f * X/Z + pt->c_x;
+    *y = pt->z * pt->f * Y/Z + pt->c_y;
+    return;
+  }
   *x =  pt->zcos_a * rx + pt->zsin_a * ry + pt->t->x + pt->c_x;
   *y = -pt->zsin_a * rx + pt->zcos_a * ry + pt->t->y + pt->c_y;
 }

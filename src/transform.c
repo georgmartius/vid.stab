@@ -85,6 +85,9 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   /* Wobble is safe to default on: identity in, identity out. */
   conf.lensCorrection = VSLensCorrectWobble;
   conf.lensK          = 0.0;
+  /* Off: the rotational model needs a number only the user knows, and a wrong
+     one is worse than none.  See VSTransformConfig.fov. */
+  conf.fov            = 0.0;
   return conf;
 }
 

@@ -112,7 +112,7 @@ static void test_fov_degenerates_to_similarity(void){
    the NEGATED applied step, because vsDoTransform's map is backward. */
 typedef struct { double xy; double alpha; } FovErr;
 
-static FovErr fovFitClip(double fovDeg, double k, const char* label){
+static FovErr fovFitClip(double fovDeg, double k, double cfgFov, const char* label){
   VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
   VSTransformConfig    tdconf = vsTransformGetDefaultConfig(label);
   VSMotionDetect md;
@@ -127,10 +127,11 @@ static FovErr fovFitClip(double fovDeg, double k, const char* label){
 
   test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
   md.conf.numThreads = 1;
+  tdconf.fov = cfgFov;
   test_bool(vsTransformDataInit(&td, &tdconf, &fi, &fi) == VS_OK);
 
-  fprintf(stderr, "--- %s: fov %.0f deg (f = %.0f), k = %.2f ---\n",
-          label, fovDeg, f, k);
+  fprintf(stderr, "--- %s: fov %.0f deg (f = %.0f), k = %.2f, model fov %.0f ---\n",
+          label, fovDeg, f, k, cfgFov);
   for(i=0; i<FC_NUM_FRAMES; i++){
     LocalMotions lms;
     VSTransform got, want, diff;
@@ -180,9 +181,9 @@ static FovErr fovFitClip(double fovDeg, double k, const char* label){
    more -- a tolerance loose enough to swallow the effect would make the test
    decorative. */
 static void test_fov_similarity_gap(void){
-  FovErr narrow = fovFitClip( 10.0, 0.0, "fov-narrow");
-  FovErr mid    = fovFitClip( 50.0, 0.0, "fov-mid");
-  FovErr wide   = fovFitClip(110.0, 0.0, "fov-wide");
+  FovErr narrow = fovFitClip( 10.0, 0.0, 0.0, "fov-narrow");
+  FovErr mid    = fovFitClip( 50.0, 0.0, 0.0, "fov-mid");
+  FovErr wide   = fovFitClip(110.0, 0.0, 0.0, "fov-wide");
 
   fprintf(stderr, "--- similarity fit error vs field of view ---\n");
   fprintf(stderr, "   10 deg: %.3f px   50 deg: %.3f px   110 deg: %.3f px\n",
@@ -212,8 +213,8 @@ static void test_fov_similarity_gap(void){
    corrections are applied is the subject of the fov implementation, and
    pinning it here beforehand would only enshrine today's accident. */
 static void test_fov_with_lens(void){
-  FovErr bare = fovFitClip(110.0,  0.0,  "fov-wide-nolens");
-  FovErr lens = fovFitClip(110.0, -0.25, "fov-wide-barrel");
+  FovErr bare = fovFitClip(110.0,  0.0, 0.0, "fov-wide-nolens");
+  FovErr lens = fovFitClip(110.0, -0.25, 0.0, "fov-wide-barrel");
   fprintf(stderr, "--- wide lens, with and without barrel distortion ---\n");
   fprintf(stderr, "   k =  0.00: %.3f px    k = -0.25: %.3f px\n",
           bare.xy, lens.xy);
@@ -260,8 +261,25 @@ void fcDumpClip(void){
           TEST_OUTPUT_DIR);
 }
 
+/* The point of the whole exercise: told the field of view, the same fit on
+   the same footage recovers the rotation the similarity model could not. */
+static void test_fov_model_recovers(void){
+  FovErr blind  = fovFitClip(110.0, 0.0,   0.0, "fov-wide-blind");
+  FovErr told   = fovFitClip(110.0, 0.0, 110.0, "fov-wide-told");
+  fprintf(stderr, "--- 110 deg clip: fov = 0 vs fov = 110 ---\n");
+  fprintf(stderr, "   blind: %.3f px    told: %.3f px\n", blind.xy, told.xy);
+  /* Measured 3.65 -> 0.43 px.  The recovered value is not merely better, it
+     is below the 0.79 px the DETECTOR floor costs on the 10 degree clip --
+     that is, told the field of view, a 110 degree lens is fitted at least as
+     well as a 10 degree one, which is the whole claim. */
+  test_bool(blind.xy > 2.5);
+  test_bool(told.xy  < 0.7);
+  test_bool(told.xy  < 0.25 * blind.xy);
+}
+
 void test_fov_model(void){
   test_fov_degenerates_to_similarity();
   test_fov_similarity_gap();
   test_fov_with_lens();
+  test_fov_model_recovers();
 }

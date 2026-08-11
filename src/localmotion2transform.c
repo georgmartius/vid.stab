@@ -131,7 +131,16 @@ double calcTransformQuality(VSArray params, void* dat){
   VSTransform t = vsArrayToTransform(params);
   double error=0;
 
-  PreparedTransform pt= prepare_transform(&t, &gd->td->fiSrc);
+  /* The one line that switches the fit from the similarity model to the
+     rotational one.  Nothing else in the optimiser changes: the parameters
+     stay (x, y, alpha, zoom) in centre-pixels, so meanMotions is still a
+     usable seed and the step sizes are still the right size.  The detector
+     side needs no change at all -- it already produces displacements on a
+     spatial grid, and the gradient ACROSS that grid is exactly the signal
+     that tells a rotation from a translation. */
+  PreparedTransform pt= prepare_transform_fov(&t, &gd->td->fiSrc,
+                                              focal_from_fov(gd->td->conf.fov,
+                                                             gd->td->fiSrc.width));
   int num = 1; // we start with 1 to avoid div by zero
   for (int i = 0; i < num_motions; i++) {
     if(gd->missmatches.dat[i]>=0){

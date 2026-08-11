@@ -31,6 +31,7 @@
 #include "generate.c"
 #include "generate_synthetic.c"
 #include "generate_lensclip.c"
+#include "generate_fovclip.c"
 
 #include "test_frameinfo.c"
 #include "test_transform.c"
@@ -57,6 +58,7 @@
 #include "test_lensdistortion.c"
 #include "test_lensmap.c"
 #include "test_lenscorrect_roundtrip.c"
+#include "test_fovmodel.c"
 #include "test_transform_baseline.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
@@ -253,6 +255,10 @@ int main(int argc, char** argv){
     UNIT(test_lenscorrect_roundtrip_modes());
   }
 
+  if(all || contains(argv,argc,"--testFOV", "rotational (K R K^-1) motion model")){
+    UNIT(test_fov_model());
+  }
+
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){
     UNIT(test_transform_baseline());
   }
@@ -280,6 +286,11 @@ int main(int argc, char** argv){
       fprintf(stderr, "dumped synthetic PPM frames to %s/synthetic/%s\n",
               TEST_OUTPUT_DIR, fmtname);
     }
+  }
+
+  if(contains(argv,argc,"--dumpFovClip",
+              "dump the rotational fov clip and its contact sheet as PPM")){
+    fcDumpClip();
   }
 
   if(contains(argv,argc,"--dumpLensClip",

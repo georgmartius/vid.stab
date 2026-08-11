@@ -137,40 +137,44 @@ static void test_lensmap_inactive(void){
   vsLensPlaneMapFree(&m);
 }
 
-/* Chroma planes: the map must be the luma map expressed in plane units.
+/* Chroma planes: the map must be the luma map expressed in plane units.  A
+   chroma pixel and the luma pixel it stands for must land on the same source
+   point, once the plane's own units are scaled back to luma.
 
-   alpha is deliberately left at 0 here.  The legacy affine step (which
-   vsLensMapBackward must reproduce exactly, for the k=0 bit-exactness
-   guard) applies one shared sin/cos pair in plane coordinates to every
-   plane, regardless of that plane's own subsampling.  For 4:2:0 that is
-   harmless because the plane is subsampled isotropically (wsub==hsub), but
-   for 4:2:2 (wsub=1, hsub=0) it is not: rotation mixes an x-offset and a
-   y-offset that are expressed in different luma-equivalent scales on that
-   plane, so a nonzero alpha makes the luma point and its chroma counterpart
-   genuinely diverge.  Zeroing alpha here isolates the thing this module is
-   actually responsible for: the radial map must be computed in
-   luma-equivalent units, not plane units, and translation -- which *is*
-   subsampled correctly per axis -- still exercises that at off-centre
-   positions. */
+   The pose deliberately carries rotation as well as translation.  Rotation
+   mixes the two axes, which sit at different luma scales whenever
+   wsub != hsub, so it is what catches a cross term converted with the wrong
+   ratio -- or with none, as a plane-agnostic sin/cos pair would (issue #79).
+   4:2:2 and 4:4:0 subsample opposite axes, so a swapped ay/ax fails on one of
+   the two even though it would look right on either alone. */
 static void test_lensmap_chroma_consistency(void){
-  VSFrameInfo fi422, fi420;
-  VSLensPlaneMap luma, c422, c420;
+  VSFrameInfo fi422, fi420, fi440;
+  VSLensPlaneMap luma, c422, c420, c440;
   VSTransform t = null_transform();
   int x, y;
-  t.x = 9.0; t.y = -5.0;
+  t.x = 9.0; t.y = -5.0; t.alpha = 0.04;
   vsFrameInfoInit(&fi422, 640, 360, PF_YUV422P);
   vsFrameInfoInit(&fi420, 640, 360, PF_YUV420P);
+  vsFrameInfoInit(&fi440, 640, 360, PF_YUV440P);
   test_bool(vsLensPlaneMapInit(&luma, &fi422, &fi422, 0, -0.25, VSLensCorrectWobble) == VS_OK);
   test_bool(vsLensPlaneMapInit(&c422, &fi422, &fi422, 1, -0.25, VSLensCorrectWobble) == VS_OK);
   test_bool(vsLensPlaneMapInit(&c420, &fi420, &fi420, 1, -0.25, VSLensCorrectWobble) == VS_OK);
+  test_bool(vsLensPlaneMapInit(&c440, &fi440, &fi440, 1, -0.25, VSLensCorrectWobble) == VS_OK);
   for(y=0; y<180; y+=13){
     for(x=0; x<320; x+=13){
       double lx, ly, cx, cy;
-      /* 4:2:2 chroma pixel (x,y) is luma (2x, y) */
+      /* 4:2:2 chroma pixel (x,y) is luma (2x, y): subsampled in x only */
       test_bool(vsLensMapBackward(&luma, &t, 2.0*x, 1.0*y, &lx, &ly) == VS_OK);
       test_bool(vsLensMapBackward(&c422, &t, 1.0*x, 1.0*y, &cx, &cy) == VS_OK);
       test_bool(fabs(cx*2.0 - lx) < 1e-6);
       test_bool(fabs(cy*1.0 - ly) < 1e-6);
+      /* 4:4:0 chroma pixel (x,y) is luma (x, 2y): subsampled in y only, so a
+         cross-term ratio that is inverted reads correct on 4:2:2 and fails
+         here */
+      test_bool(vsLensMapBackward(&luma, &t, 1.0*x, 2.0*y, &lx, &ly) == VS_OK);
+      test_bool(vsLensMapBackward(&c440, &t, 1.0*x, 1.0*y, &cx, &cy) == VS_OK);
+      test_bool(fabs(cx*1.0 - lx) < 1e-6);
+      test_bool(fabs(cy*2.0 - ly) < 1e-6);
       /* 4:2:0 chroma pixel (x,y) is luma (2x, 2y) -- isotropic, easier */
       if(y < 90){
         test_bool(vsLensMapBackward(&luma, &t, 2.0*x, 2.0*y, &lx, &ly) == VS_OK);
@@ -180,7 +184,8 @@ static void test_lensmap_chroma_consistency(void){
       }
     }
   }
-  vsLensPlaneMapFree(&luma); vsLensPlaneMapFree(&c422); vsLensPlaneMapFree(&c420);
+  vsLensPlaneMapFree(&luma); vsLensPlaneMapFree(&c422);
+  vsLensPlaneMapFree(&c420); vsLensPlaneMapFree(&c440);
 }
 
 /* --- render-path tests ---------------------------------------------------- */

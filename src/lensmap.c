@@ -142,6 +142,7 @@ static double tOf(const VSLensPlaneMap* m, double dx, double dy){
 int vsLensMapBackward(const VSLensPlaneMap* m, const VSTransform* t,
                       double xd, double yd, double* xs, double* ys){
   double dx = xd - m->cdx, dy = yd - m->cdy;
+  double ax = (double)(1 << m->sxShift), ay = (double)(1 << m->syShift);
   double z, ca, sa, tx, ty, xi, yi, ex, ey, tt;
   if(m->mode == VSLensCorrectWobble){
     double g = vsLensScaleUDirectI(m->k, tOf(m, dx, dy));
@@ -149,10 +150,14 @@ int vsLensMapBackward(const VSLensPlaneMap* m, const VSTransform* t,
   }
   z  = 1.0 - t->zoom/100.0;
   ca = z*cos(-t->alpha); sa = z*sin(-t->alpha);
-  tx = t->x / (double)(1 << m->sxShift);
-  ty = t->y / (double)(1 << m->syShift);
-  xi =  ca*dx + sa*dy + m->csx - tx;
-  yi = -sa*dx + ca*dy + m->csy - ty;
+  tx = t->x / ax;
+  ty = t->y / ay;
+  /* The rotation mixes the two axes, which are to different luma scales when
+     wsub != hsub, so its cross terms convert between them -- the same
+     conversion the warp loops apply (issue #79).  Both factors are 1 when
+     wsub == hsub, which includes the luma and every packed plane. */
+  xi =  ca*dx + sa*(ay/ax)*dy + m->csx - tx;
+  yi = -sa*(ax/ay)*dx + ca*dy + m->csy - ty;
   if(m->mode != VSLensCorrectOff){
     ex = xi - m->csx; ey = yi - m->csy;
     tt = tOf(m, ex, ey);

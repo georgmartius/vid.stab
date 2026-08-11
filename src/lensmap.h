@@ -55,12 +55,22 @@ typedef enum {
   VSLensCorrectFull
 } VSLensCorrectMode;
 
-/* Table size for gU/gD.  Linear interpolation between VS_LENS_LUT_N samples is
-   accurate to under 1e-6 in g over gU's whole table, and over gD's up to
-   tIn = 1/(1+k)^2, the largest t still reachable from inside the frame.  Past
-   tIn, D_k's derivative diverges towards tDomD and gD is only guaranteed
-   finite, positive and monotone -- those samples are off-frame by construction
-   and resolve to the border value whatever gD returns. */
+/* Both U_k and D_k are radial: they leave a point's direction from the lens
+   centre alone and only scale its distance, by a factor g that depends on the
+   radius and nothing else.  Evaluating g costs a division (U_k) or a square
+   root (D_k), which is too much per pixel, so each map's g is precomputed into
+   a lookup table indexed by t = r^2 -- the squared radius, which the inner
+   loop already has and which saves it a square root of its own.  gU and gD
+   below are those tables; the warp loops read them through vsLensLutF/Fp,
+   linearly interpolating between neighbouring samples.
+
+   1024 samples make that interpolation accurate to under 1e-6 in g across the
+   whole of gU's table, and across gD's up to tIn = 1/(1+k)^2, the largest
+   radius still reachable from inside the frame.  Past tIn, D_k's derivative
+   diverges towards its domain edge tDomD and gD is only guaranteed finite,
+   positive and monotone -- but those samples land outside the source frame by
+   construction, so the interpolator returns the border value whatever gD
+   says. */
 #define VS_LENS_LUT_N       1024
 /* Sentinel destination for a sample outside the model's domain.  Far enough
    outside any frame that every interpolator returns the border value, small

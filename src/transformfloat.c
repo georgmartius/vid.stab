@@ -256,10 +256,20 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
    *      p_s = M^{-1}(p_d - c_d - t) + c_s
    */
   int channels = td->fiSrc.bytesPerPixel;
+
+  /* See the same block in transformPlanar.  sxf and syf are 1 here, so the
+     luma conversion drops out. */
+  double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
+  double rb[9];
+  if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+
   /* All channels */
   /* The translation-only shortcut copies whole pixels and cannot express a
-     radial map, so the lens forces the general path. */
-  if (fabs(t.alpha) > 0.1*M_PI/180.0 || td->lensActive) { // 0.1 deg
+     radial map, so the lens forces the general path -- and neither can it
+     express a perspective divide, so fov does too: under the rotational
+     model a pure yaw is not a uniform pixel shift, which is the entire
+     point of it. */
+  if (fabs(t.alpha) > 0.1*M_PI/180.0 || td->lensActive || fFov > 0.0) { // 0.1 deg
     for (x = 0; x < td->fiDest.width; x++) {
       for (y = 0; y < td->fiDest.height; y++) {
         float x_d1 = (x - c_d_x);
@@ -274,10 +284,22 @@ int _FLT(transformPacked)(VSTransformData* td, VSTransform t)
            transformfixedpoint.c) this one ignores t.zoom: there is no
            `z = 1 - t.zoom/100.0` factor on cos/sin below.  --testBASE pins
            this output byte for byte, so do not "fix" it to match them. */
+        if (fFov > 0.0) {
+          /* Deliberately no z factor either, matching the branch below: this
+             function's zoom omission is pinned by --testBASE and fixing it
+             for one model only would make the two disagree.  When it is
+             fixed, both branches change together. */
+          double X = rb[0]*x_d1 + rb[1]*y_d1 + rb[2]*fFov;
+          double Y = rb[3]*x_d1 + rb[4]*y_d1 + rb[5]*fFov;
+          double Z = rb[6]*x_d1 + rb[7]*y_d1 + rb[8]*fFov;
+          x_s = (float)(fFov*X/Z) + c_s_x;
+          y_s = (float)(fFov*Y/Z) + c_s_y;
+        } else {
         x_s  =  cos(-t.alpha) * x_d1
           + sin(-t.alpha) * y_d1 + c_s_x -t.x;
         y_s  = -sin(-t.alpha) * x_d1
           + cos(-t.alpha) * y_d1 + c_s_y -t.y;
+        }
         if (lensOn) {
           float ex = x_s - c_s_x, ey = y_s - c_s_y;
           float lx = ex*sxf, ly = ey*syf;
@@ -383,6 +405,16 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
     float sxf = (float)(1 << wsub), syf = (float)(1 << hsub);
     float irho2 = (float)lm->invRho2;
 
+    /* Rotational model (VSTransformConfig.fov).  f is a property of the
+       picture, so it is the full-resolution focal length and the homography
+       is applied in LUMA units -- the plane's offsets are scaled up by
+       sxf/syf going in and back down coming out, exactly as the lens map
+       already does.  Scaling f per plane instead would be the chroma bug
+       class of 9e2f8b7: invisible on 4:2:0, wrong on 4:2:2. */
+    double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
+    double rb[9];
+    if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
      *      p_d = c_d + M(p_s - c_s) + t
@@ -405,8 +437,19 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
           float g  = vsLensLutF(lm->gUf, lm->tMaxU, (lx*lx + ly*ly)*irho2);
           x_d1 *= g; y_d1 *= g;
         }
-        x_s  =  zcos_a  * x_d1 + zsin_xy * y_d1 + c_s_x - tx;
-        y_s  = -zsin_yx * x_d1 + zcos_a  * y_d1 + c_s_y - ty;
+        if (fFov > 0.0) {
+          /* Z is f cos(angle) to first order; a stabiliser's angles are small
+             and it cannot reach zero. */
+          double lx = x_d1*sxf, ly = y_d1*syf;
+          double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
+          double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
+          double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
+          x_s = (float)(z*fFov*X/Z / sxf) + c_s_x;
+          y_s = (float)(z*fFov*Y/Z / syf) + c_s_y;
+        } else {
+          x_s  =  zcos_a  * x_d1 + zsin_xy * y_d1 + c_s_x - tx;
+          y_s  = -zsin_yx * x_d1 + zcos_a  * y_d1 + c_s_y - ty;
+        }
         if (lensOn) {
           float ex = x_s - c_s_x, ey = y_s - c_s_y;
           float lx = ex*sxf, ly = ey*syf;

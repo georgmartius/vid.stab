@@ -220,6 +220,135 @@ static void test_fov_with_lens(void){
           bare.xy, lens.xy);
 }
 
+/* --- 3. the warp ---------------------------------------------------------- */
+
+/* The fit being right buys nothing if the renderer still draws the old model,
+   and an image that merely looks plausible will not catch a perspective term
+   that is half the size it should be.  So this borrows the pattern
+   test_lensmap_fixed_reference established: run the shipping warp loop, then
+   recompute every destination pixel's source coordinate independently with
+   vsLensMapBackward in double precision and sample the SAME interpolator at
+   it.  Interpolator behaviour cancels exactly, leaving only the geometry
+   under test.
+
+   It covers both loops (planar and packed), both backends (the fixed-point
+   one that ships and the float one built under -DTESTING), and a 4:2:2
+   format, whose two axes are to different scales -- the case where a focal
+   length scaled per plane instead of applied in luma units would be wrong,
+   and the case 4:2:0 test footage silently passes.  See issue #79 and
+   commit 9e2f8b7 for the same bug in the rotation. */
+static void fovWarpVsReference(VSPixelFormat pf, int packed, int useFloat,
+                               double fovDeg, const char* name){
+  VSTransformConfig cfg = vsTransformGetDefaultConfig(name);
+  VSTransformData td;
+  VSFrameInfo fi;
+  VSFrame src, dest;
+  VSLensPlaneMap ref;
+  VSTransform t = null_transform();
+  uint32_t seed = 7;
+  double sumDiff = 0;
+  int n = 0, maxDiff = 0, x, y;
+
+  t.x = 6.25; t.y = -3.5; t.alpha = 0.008;
+
+  test_bool(vsFrameInfoInit(&fi, 320, 240, pf) != 0);
+  vsFrameAllocate(&src, &fi);
+  ldFillTexture(&src, &fi, &seed);
+  vsFrameAllocate(&dest, &fi);
+
+  cfg.fov            = fovDeg;
+  cfg.lensCorrection = VSLensCorrectOff;
+  cfg.interpolType   = VS_BiLinear;
+  cfg.crop           = VSCropBorder;   /* so the out-of-frame default is 16 */
+  cfg.optZoom        = 0;
+  test_bool(vsTransformDataInit(&td, &cfg, &fi, &fi) == VS_OK);
+
+  test_bool(vsTransformPrepare(&td, &src, &dest) == VS_OK);
+  if(packed)
+    test_bool((useFloat ? transformPacked_float(&td, t) : transformPacked(&td, t)) == VS_OK);
+  else
+    test_bool((useFloat ? transformPlanar_float(&td, t) : transformPlanar(&td, t)) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+
+  /* An "off" map per plane: no radial terms, correct plane geometry, and the
+     frame's focal length.  EVERY plane is checked, which is the point of
+     including a 4:2:2 format -- on 4:2:0 the two axes are subsampled equally
+     and a per-plane scaling of f would cancel out, so luma-only coverage
+     would pass a wrong implementation. */
+  {
+    int planes = packed ? 1 : fi.planes;
+    int p;
+    for(p=0; p<planes; p++){
+      int pw = packed ? fi.width  : CHROMA_SIZE(fi.width,  vsGetPlaneWidthSubS(&fi, p));
+      int ph = packed ? fi.height : CHROMA_SIZE(fi.height, vsGetPlaneHeightSubS(&fi, p));
+      uint8_t def = p == 0 ? 0 : 0x80;
+      test_bool(vsLensPlaneMapInit(&ref, &fi, &fi, p, 0.0, VSLensCorrectOff) == VS_OK);
+      ref.f = focal_from_fov(fovDeg, fi.width);
+      test_bool(ref.f > 0.0);
+
+      for(y=0; y<ph; y++)
+        for(x=0; x<pw; x++){
+          double xs, ys;
+          uint8_t expected, actual;
+          int diff;
+          test_bool(vsLensMapBackward(&ref, &t, x, y, &xs, &ys) == VS_OK);
+          if(packed){
+            int c;
+            for(c=0; c<fi.bytesPerPixel; c++){
+              if(useFloat)
+                interpolateN_float(&expected, (float)xs, (float)ys, src.data[0],
+                                   src.linesize[0], fi.width, fi.height,
+                                   fi.bytesPerPixel, (uint8_t)c, 16);
+              else
+                interpolateN(&expected, lmDToFp16(xs), lmDToFp16(ys), src.data[0],
+                             src.linesize[0], fi.width, fi.height,
+                             fi.bytesPerPixel, (uint8_t)c, 16);
+              actual = dest.data[0][y*dest.linesize[0] + x*fi.bytesPerPixel + c];
+              diff = actual > expected ? actual - expected : expected - actual;
+              sumDiff += diff; n++;
+              if(diff > maxDiff) maxDiff = diff;
+            }
+            continue;
+          }
+          if(useFloat)
+            td.interpolate_float(&expected, (float)xs, (float)ys, src.data[p],
+                                 src.linesize[p], pw, ph, def);
+          else
+            td.interpolate(&expected, lmDToFp16(xs), lmDToFp16(ys), src.data[p],
+                           src.linesize[p], pw, ph, def);
+          actual = dest.data[p][y*dest.linesize[p]+x];
+          diff = actual > expected ? actual - expected : expected - actual;
+          sumDiff += diff; n++;
+          if(diff > maxDiff) maxDiff = diff;
+        }
+      vsLensPlaneMapFree(&ref);
+    }
+  }
+
+  fprintf(stderr, "  %-28s fov=%3.0f: mean=%.4f max=%d\n",
+          name, fovDeg, sumDiff/n, maxDiff);
+  /* Same bounds and the same reasoning as test_lensmap_fixed_reference: the
+     mean carries the guarantee, the max only catches a systematic break,
+     because two computations agreeing to a few thousandths of a pixel can
+     still land either side of an interpolator's discontinuity. */
+  test_bool(sumDiff/n <= 0.15);
+  test_bool(maxDiff   <= 150);
+
+  vsFrameFree(&src); vsFrameFree(&dest);
+  vsTransformDataCleanup(&td);
+}
+
+static void test_fov_warp_against_reference(void){
+  fprintf(stderr, "--- warp loops vs the double-precision reference map ---\n");
+  fovWarpVsReference(PF_GRAY8,   0, 0,  90.0, "planar fixed, gray");
+  fovWarpVsReference(PF_GRAY8,   0, 1,  90.0, "planar float, gray");
+  fovWarpVsReference(PF_YUV420P, 0, 0, 110.0, "planar fixed, 4:2:0");
+  fovWarpVsReference(PF_YUV422P, 0, 0, 110.0, "planar fixed, 4:2:2");
+  fovWarpVsReference(PF_YUV422P, 0, 1, 110.0, "planar float, 4:2:2");
+  fovWarpVsReference(PF_RGB24,   1, 0, 110.0, "packed fixed, rgb");
+  fovWarpVsReference(PF_RGB24,   1, 1, 110.0, "packed float, rgb");
+}
+
 /* --- the figure ----------------------------------------------------------- */
 
 /* Three panels of the same camera pose: the base scene, then frame 5 at 110
@@ -281,5 +410,6 @@ void test_fov_model(void){
   test_fov_degenerates_to_similarity();
   test_fov_similarity_gap();
   test_fov_with_lens();
+  test_fov_warp_against_reference();
   test_fov_model_recovers();
 }

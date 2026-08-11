@@ -32,3 +32,6 @@ tests/tbld/
 
 # Working notes and design specs are kept out of the repo
 docs/superpowers/
+
+# out-of-tree test build (cmake -S tests -B build-tests)
+build-tests/

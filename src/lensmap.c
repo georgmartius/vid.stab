@@ -27,6 +27,7 @@
  */
 #include "lensmap.h"
 #include "transform.h"                /* CHROMA_SIZE, VS_OK, VS_ERROR */
+#include "transformtype_operations.h" /* rotation_matrix_backward */
 #include "vidstabdefines.h"
 #include <stdlib.h>
 #include <string.h>
@@ -47,17 +48,25 @@ int vsLensPlaneMapInit(VSLensPlaneMap* m, const VSFrameInfo* fiSrc,
   int i;
   memset(m, 0, sizeof(*m));
   m->tDomD = -1.0;    /* no bound; see lensmap.h -- never compare with INFINITY */
-  if(mode == VSLensCorrectOff || k == 0.0) return VS_OK;
 
-  m->k       = k;
-  m->mode    = mode;
+  /* The plane's geometry is filled even when there is no distortion to
+     correct, before the early return below.  It describes the frame, not the
+     lens, and vsLensMapBackward needs it to evaluate the affine or the
+     rotational map on a plane whose radial terms are both off.  Leaving it
+     zeroed would put the centre at the corner.  mode and k are deliberately
+     NOT set here, so an inactive map stays Off with k = 0 and both radial
+     branches stay unreachable. */
   m->sxShift = vsGetPlaneWidthSubS(fiSrc, plane);
   m->syShift = vsGetPlaneHeightSubS(fiSrc, plane);
-
   m->cdx  = (fiDest->width  >> m->sxShift)/2.0;
   m->cdy  = (fiDest->height >> m->syShift)/2.0;
   m->csx  = (fiSrc->width   >> m->sxShift)/2.0;
   m->csy  = (fiSrc->height  >> m->syShift)/2.0;
+
+  if(mode == VSLensCorrectOff || k == 0.0) return VS_OK;
+
+  m->k       = k;
+  m->mode    = mode;
 
   /* rho is the SOURCE half-diagonal in luma pixels: the same lens, whatever
      the destination geometry.  See the spec, section 2.2. */
@@ -149,6 +158,18 @@ int vsLensMapBackward(const VSLensPlaneMap* m, const VSTransform* t,
     dx *= g; dy *= g;
   }
   z  = 1.0 - t->zoom/100.0;
+  if(m->f > 0.0){
+    /* Rotational model, in luma units so one f serves every plane -- the same
+       arithmetic the warp loops run (transformfloat.c, transformfixedpoint.c);
+       this function is what keeps them honest. */
+    double rb[9], lx = dx*ax, ly = dy*ay, X, Y, Z;
+    rotation_matrix_backward(t->x/m->f, t->y/m->f, t->alpha, rb);
+    X = rb[0]*lx + rb[1]*ly + rb[2]*m->f;
+    Y = rb[3]*lx + rb[4]*ly + rb[5]*m->f;
+    Z = rb[6]*lx + rb[7]*ly + rb[8]*m->f;
+    xi = z*m->f*X/Z / ax + m->csx;
+    yi = z*m->f*Y/Z / ay + m->csy;
+  } else {
   ca = z*cos(-t->alpha); sa = z*sin(-t->alpha);
   tx = t->x / ax;
   ty = t->y / ay;
@@ -158,6 +179,7 @@ int vsLensMapBackward(const VSLensPlaneMap* m, const VSTransform* t,
      wsub == hsub, which includes the luma and every packed plane. */
   xi =  ca*dx + sa*(ay/ax)*dy + m->csx - tx;
   yi = -sa*(ax/ay)*dx + ca*dy + m->csy - ty;
+  }
   if(m->mode != VSLensCorrectOff){
     ex = xi - m->csx; ey = yi - m->csy;
     tt = tOf(m, ex, ey);

@@ -396,6 +396,15 @@ int transformPacked(VSTransformData* td, VSTransform t)
   int64_t domR2 = (lm->tDomD < 0.0 || domR2d > (double)(INT64_MAX/2))
                   ? INT64_MAX : (int64_t)domR2d;
 
+  /* Rotational model (VSTransformConfig.fov).  The coordinates are computed
+     in double and handed to the existing fixed-point interpolator, which is
+     the cheap half of the plan in docs/fov_correction.md: a per-pixel divide
+     in 16.16 is unpleasant, interpolation dominates the cost anyway, and
+     nothing here is on the fov = 0 path so no existing output moves. */
+  double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
+  double rb[9];
+  if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+
   /* All channels */
   for (y = 0; y < td->fiDest.height; y++) {
     int32_t y_d1 = (y - c_d_y);
@@ -409,8 +418,17 @@ int transformPacked(VSTransformData* td, VSTransform t)
         dx = (fp16)(((int64_t)dx * g) >> 16);
         dy = (fp16)(((int64_t)dy * g) >> 16);
       }
+      if (fFov > 0.0) {
+        double lx = fp16ToF(dx), ly = fp16ToF(dy);
+        double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
+        double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
+        double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
+        x_s = fToFp16(z*fFov*X/Z) + c_s_x;
+        y_s = fToFp16(z*fFov*Y/Z) + c_s_y;
+      } else {
       x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
       y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
+      }
       if (lensOn) {
         int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
         int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
@@ -522,6 +540,15 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     int64_t domR2 = (lm->tDomD < 0.0 || domR2d > (double)(INT64_MAX/2))
                     ? INT64_MAX : (int64_t)domR2d;
 
+    /* Rotational model (VSTransformConfig.fov); see transformPacked.  As
+       there the divide is done in double, and as in transformfloat.c the
+       homography is applied in LUMA units -- shifting by lsx/lsy in and out,
+       which is what makes f a single frame-wide number rather than something
+       needing a per-plane correction (issue #79's bug class). */
+    double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
+    double rb[9];
+    if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
      *      p_d = c_d + M(p_s - c_s) + t
@@ -549,8 +576,17 @@ int transformPlanar(VSTransformData* td, VSTransform t)
            (zcos_a*(x_d1<<16))>>16 == zcos_a*x_d1 with no rounding at all --
            the int64 intermediate only removes an overflow risk that the
            wobble scaling introduces. */
+        if (fFov > 0.0) {
+          double lx = fp16ToF(dx) * (1 << lsx), ly = fp16ToF(dy) * (1 << lsy);
+          double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
+          double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
+          double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
+          x_s = fToFp16(z*fFov*X/Z / (1 << lsx)) + c_s_x;
+          y_s = fToFp16(z*fFov*Y/Z / (1 << lsy)) + c_s_y;
+        } else {
         x_s = (fp16)((((int64_t)zcos_a *dx + (int64_t)zsin_xy*dy) >> 16)) + c_tx;
         y_s = (fp16)(((-(int64_t)zsin_yx*dx + (int64_t)zcos_a *dy) >> 16)) + c_ty;
+        }
         if (lensOn) {
           int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
           int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);

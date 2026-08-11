@@ -406,6 +406,119 @@ static void test_fov_model_recovers(void){
   test_bool(told.xy  < 0.25 * blind.xy);
 }
 
+/* --- 4. is the field of view identifiable? -------------------------------- */
+
+/* Exploratory: fit the clip at a range of assumed field of view values and
+   report the residual of each fit.  If the rotational model is identifiable
+   from local motions at all, this curve has a minimum at the truth, and an
+   estimator is a search over it.  If it is flat, or if its minimum wanders
+   with the lens, no estimator can work and the parameter has to stay a user
+   input.  Prints only. */
+static double fovResidualAt(const LocalMotions* lmsAll, int nFrames,
+                            const VSFrameInfo* fi, double cfgFov){
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("fov-sweep");
+  VSTransformData td;
+  double total = 0;
+  int i;
+  cfg.fov = cfgFov;
+  test_bool(vsTransformDataInit(&td, &cfg, fi, fi) == VS_OK);
+  for(i=1; i<nFrames; i++){
+    const LocalMotions* lms = &lmsAll[i];
+    VSTransform t = vsMotionsToTransform(&td, lms, 0);
+    PreparedTransform pt = prepare_transform_fov(&t, fi,
+                             focal_from_fov(cfgFov, fi->width));
+    int j, n = vs_vector_size(lms);
+    double e = 0;
+    for(j=0; j<n; j++){
+      LocalMotion* m = LMGet(lms, j);
+      double vx, vy;
+      transform_vec_double(&vx, &vy, &pt, (Vec*)&m->f);
+      vx -= m->f.x + m->v.x; vy -= m->f.y + m->v.y;
+      e += vx*vx + vy*vy;
+    }
+    total += e / (n > 0 ? n : 1);
+  }
+  vsTransformDataCleanup(&td);
+  return total / (nFrames - 1);
+}
+
+/* Returns the residual at the best candidate as a fraction of the residual
+   the similarity model (fov = 0) leaves.  Below 1 means the data prefers some
+   rotational model; near 1 means the residual is flat and the field of view
+   is not identifiable from this footage at all. */
+static double fovSweep(double clipFov, double k, const char* label){
+  static const double CAND[] = {0.0, 40.0, 60.0, 80.0, 90.0, 100.0, 110.0,
+                                120.0, 130.0, 150.0};
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
+  VSMotionDetect md;
+  VSFrameInfo fi;
+  VSFrame frames[FC_NUM_FRAMES];
+  LocalMotions lmsAll[FC_NUM_FRAMES];
+  double best = 0, base = 0; int bestI = 0;
+  int i;
+
+  fcGenerateClip(frames, &fi, PF_RGB24, clipFov, k, FC_NUM_FRAMES);
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+  for(i=0; i<FC_NUM_FRAMES; i++)
+    test_bool(vsMotionDetection(&md, &lmsAll[i], &frames[i]) == VS_OK);
+
+  fprintf(stderr, "--- %s: residual vs assumed fov (clip is %.0f deg, k=%.2f) ---\n",
+          label, clipFov, k);
+  for(i=0; i<(int)(sizeof(CAND)/sizeof(CAND[0])); i++){
+    double r = fovResidualAt(lmsAll, FC_NUM_FRAMES, &fi, CAND[i]);
+    fprintf(stderr, "   fov %5.0f: residual %10.5f%s\n", CAND[i], r,
+            (i == 0 ? "   (similarity model)" : ""));
+    if(i == 0) base = r;                       /* CAND[0] is the fov = 0 case */
+    if(i == 0 || r < best){ best = r; bestI = i; }
+  }
+  fprintf(stderr, "   -> minimum at fov %.0f (truth %.0f), %.1f%% of the "
+                  "similarity residual\n",
+          CAND[bestI], clipFov, 100.0*best/base);
+
+  for(i=0; i<FC_NUM_FRAMES; i++) vs_vector_del(&lmsAll[i]);
+  vsMotionDetectionCleanup(&md);
+  for(i=0; i<FC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  return best/base;
+}
+
+/* Whether fov could be ESTIMATED rather than supplied, which is the obvious
+   thing to want given that k already is (VSTransformConfig.lensK).  Measured
+   here, the answer is "only on genuinely wide glass", and this test exists to
+   keep that answer honest rather than to gate a feature.
+
+   At 110 degrees the residual curve has a clear interior minimum, 13 percent
+   below what the similarity model leaves, and a barrel lens on top does not
+   destroy it -- so a search would find something.  Two caveats, both visible
+   above: the minimum sits at 100 rather than 110, biased low by about a
+   tenth, and at 60 degrees the curve is FLAT -- 108.17 at fov = 0 against
+   108.05 at its best, a fifth of a percent, which is noise.  An estimator run
+   on 60 degree footage would return an arbitrary number, and a wrong fov is
+   worse than no fov (see VSTransformConfig.fov).
+
+   So an estimator would need a confidence gate of its own -- like the lens
+   estimator's "determined" -- keyed on the depth of the minimum, and it would
+   have to leave fov at 0 far more often than it sets it.  That is why fov
+   ships as a user parameter: the bounds below say what any future estimator
+   has to respect, not that one exists. */
+void test_fov_identifiability(void){
+  double wide   = fovSweep(110.0,  0.0,  "sweep-110-nolens");
+  double narrow = fovSweep( 60.0,  0.0,  "sweep-60-nolens");
+  double barrel = fovSweep(110.0, -0.25, "sweep-110-barrel");
+
+  fprintf(stderr, "--- best residual as a fraction of the similarity one ---\n");
+  fprintf(stderr, "   110 deg: %.3f    60 deg: %.3f    110 deg + barrel: %.3f\n",
+          wide, narrow, barrel);
+
+  /* A wide lens leaves a signal worth searching... */
+  test_bool(wide   < 0.95);
+  test_bool(barrel < 0.95);
+  /* ...and a moderate one does not.  Asserted in the direction that matters:
+     if this ever drops well below 1, the flatness finding is stale and the
+     case for gating an estimator needs re-examining. */
+  test_bool(narrow > 0.98);
+}
+
 void test_fov_model(void){
   test_fov_degenerates_to_similarity();
   test_fov_similarity_gap();

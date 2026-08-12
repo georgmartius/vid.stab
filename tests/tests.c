@@ -259,6 +259,7 @@ int main(int argc, char** argv){
     UNIT(test_fov_model());
     UNIT(test_fov_identifiability());
     UNIT(test_fov_lens_estimator_coupling());
+    UNIT(test_fov_estimator_exact());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

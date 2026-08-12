@@ -128,8 +128,72 @@ static int lensSolve4(double A[16], double b[4], double x[4]){
   return VS_OK;
 }
 
+/* The forward camera map on a CENTRED point: where a source point ends up
+   before the lens redistorts it.  Every model site in this file goes through
+   this one struct so that the fit, its Jacobian and the residual used for
+   outlier rejection cannot drift apart -- which is exactly how the estimator
+   came to disagree with the transform pass in the first place.
+
+   f <= 0 is the similarity, unchanged and bit-identical to what it always
+   was.  f > 0 is the rotational model, reading the same four parameters:
+   (tx,ty) are yaw and pitch scaled by f, and (c,s) carry roll and zoom as
+   z*cos(alpha), z*sin(alpha) -- the same reinterpretation prepare_transform_fov
+   makes, so the VSTransform this fit produces means the same thing to the
+   rest of the library either way. */
+typedef struct {
+  double f;
+  double c, s, tx, ty;   /* the similarity parameters, used when f <= 0 */
+  double z;              /* sqrt(c^2+s^2), used when f > 0 */
+  double rf[9];          /* forward rotation, used when f > 0 */
+} LensFwd;
+
+static void lensFwdInit(LensFwd* w, double f, double tx, double ty,
+                        double c, double s){
+  w->f = f; w->c = c; w->s = s; w->tx = tx; w->ty = ty;
+  w->z = 1.0;
+  if(f > 0.0){
+    double b[9];
+    w->z = sqrt(c*c + s*s);
+    rotation_matrix_backward(tx/f, ty/f, atan2(s, c), b);
+    /* forward = backward^-1 = backward^T */
+    w->rf[0]=b[0]; w->rf[1]=b[3]; w->rf[2]=b[6];
+    w->rf[3]=b[1]; w->rf[4]=b[4]; w->rf[5]=b[7];
+    w->rf[6]=b[2]; w->rf[7]=b[5]; w->rf[8]=b[8];
+  }
+}
+
+static void lensFwdApply(const LensFwd* w, double ax, double ay,
+                         double* wx, double* wy){
+  if(w->f > 0.0){
+    double X = w->rf[0]*ax + w->rf[1]*ay + w->rf[2]*w->f;
+    double Y = w->rf[3]*ax + w->rf[4]*ay + w->rf[5]*w->f;
+    double Z = w->rf[6]*ax + w->rf[7]*ay + w->rf[8]*w->f;
+    *wx = w->z * w->f * X/Z;
+    *wy = w->z * w->f * Y/Z;
+    return;
+  }
+  *wx =  w->c*ax + w->s*ay + w->tx;
+  *wy = -w->s*ax + w->c*ay + w->ty;
+}
+
+/* Finite-difference steps for d(forward map)/d(parameter) on the rotational
+   path.  Only the ROTATION is differenced -- the distortion Jacobian stays
+   analytic and is applied to the result -- so this costs four evaluations of
+   nine multiplies and a divide per point, not four distortion evaluations.
+   tx,ty are pixels (order 10), c,s are dimensionless (order 1); both steps
+   sit far above double's noise floor for the derivative magnitudes here
+   (~1e-14 px) and far below the scale on which the map curves. */
+#define LENS_H_T   1e-3
+#define LENS_H_CS  1e-6
+
 int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
                         int gaussNewtonSteps, VSTransform* out, double* residual){
+  return vsLensFitSimilarityFov(ld, m, gaussNewtonSteps, 0.0, out, residual);
+}
+
+int vsLensFitSimilarityFov(const VSLensDistortion* ld, const VSPointMatches* m,
+                           int gaussNewtonSteps, double f,
+                           VSTransform* out, double* residual){
   int n, j, it, ret = VS_OK, nAct = 0;
   double *ax, *ay, *bx, *by;
   double c = 1, s = 0, tx = 0, ty = 0;
@@ -199,9 +263,21 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
      linear algebra stays well conditioned; converted back at the end. */
   for(it=0; it<gaussNewtonSteps; it++){
     double H[16], g[4], delta[4];
+    LensFwd W, Wp[4];
     int i, q;
     for(i=0; i<16; i++) H[i] = 0;
     for(i=0; i<4; i++)  g[i] = 0;
+
+    /* Built once per iteration, not per point: the map depends only on the
+       parameters.  Wp are the four perturbed copies the rotational path
+       differences against; on the similarity path they are never touched. */
+    lensFwdInit(&W, f, tx, ty, c, s);
+    if(f > 0.0){
+      lensFwdInit(&Wp[0], f, tx+LENS_H_T, ty, c, s);
+      lensFwdInit(&Wp[1], f, tx, ty+LENS_H_T, c, s);
+      lensFwdInit(&Wp[2], f, tx, ty, c+LENS_H_CS, s);
+      lensFwdInit(&Wp[3], f, tx, ty, c, s+LENS_H_CS);
+    }
 
     for(j=0; j<n; j++){
       double wx, wy, dpx, dpy, ex, ey;
@@ -210,8 +286,7 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
       double J[4] = {0,0,0,0};
       double Jp[4][2];
       if(act && !act[j]) continue;
-      wx = c*ax[j] + s*ay[j] + tx;
-      wy = -s*ax[j] + c*ay[j] + ty;
+      lensFwdApply(&W, ax[j], ay[j], &wx, &wy);
       if(vsLensDistortPoint(ld, wx + ld->cx, wy + ld->cy, &dpx, &dpy) != VS_OK ||
          lensDistortJacobian(ld, wx, wy, J) != VS_OK){
         vs_free(ax); return VS_ERROR;
@@ -219,12 +294,24 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
       ex = bx[j] - (dpx - ld->cx);
       ey = by[j] - (dpy - ld->cy);
       /* dw/d(tx,ty,c,s) pushed through the 2x2 distortion Jacobian */
+      if(f > 0.0){
+        static const double H[4] = {LENS_H_T, LENS_H_T, LENS_H_CS, LENS_H_CS};
+        for(i=0; i<4; i++){
+          double pwx, pwy, dwx, dwy;
+          lensFwdApply(&Wp[i], ax[j], ay[j], &pwx, &pwy);
+          dwx = (pwx - wx)/H[i];
+          dwy = (pwy - wy)/H[i];
+          Jp[i][0] = J[0]*dwx + J[1]*dwy;
+          Jp[i][1] = J[2]*dwx + J[3]*dwy;
+        }
+      } else {
       Jp[0][0] = J[0];               Jp[0][1] = J[2];
       Jp[1][0] = J[1];               Jp[1][1] = J[3];
       Jp[2][0] = J[0]*ax[j] + J[1]*ay[j];
       Jp[2][1] = J[2]*ax[j] + J[3]*ay[j];
       Jp[3][0] = J[0]*ay[j] - J[1]*ax[j];
       Jp[3][1] = J[2]*ay[j] - J[3]*ax[j];
+      }
       for(i=0; i<4; i++){
         g[i] += Jp[i][0]*ex + Jp[i][1]*ey;
         for(q=i; q<4; q++)
@@ -238,17 +325,20 @@ int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
   }
 
   /* final residual at the converged parameters, over the active matches only */
+  {
+  LensFwd W;
+  lensFwdInit(&W, f, tx, ty, c, s);
   for(j=0; j<n; j++){
     double wx, wy, dpx, dpy, ex, ey;
     if(act && !act[j]) continue;
-    wx = c*ax[j] + s*ay[j] + tx;
-    wy = -s*ax[j] + c*ay[j] + ty;
+    lensFwdApply(&W, ax[j], ay[j], &wx, &wy);
     if(vsLensDistortPoint(ld, wx + ld->cx, wy + ld->cy, &dpx, &dpy) != VS_OK){
       ret = VS_ERROR; break;
     }
     ex = bx[j] - (dpx - ld->cx);
     ey = by[j] - (dpy - ld->cy);
     res2 += ex*ex + ey*ey;
+  }
   }
 
   if(ret == VS_OK){
@@ -282,6 +372,9 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
   c.rejectOutliers = 1;
   c.outlierStddevs = 2.5;
   c.outlierPasses  = 3;
+  /* No field of view: the similarity model, exactly as before.  Set from
+     VSTransformConfig.fov by vsLocalmotions2Transforms. */
+  c.f = 0.0;
   return c;
 }
 
@@ -345,6 +438,7 @@ struct LensObjective {
   int numFrames;
   int gnSteps;
   int evals;
+  double f;             /* focal length in px; 0 keeps the similarity model */
 };
 
 /* E(k): the similarities are profiled out, i.e. every frame is refitted from
@@ -359,7 +453,7 @@ static double lensObjective(double k, struct LensObjective* o){
     VSTransform t;
     double r;
     if(o->frames[i].n < 3) continue;   /* cannot pin a similarity down */
-    if(vsLensFitSimilarity(&ld, &o->frames[i], o->gnSteps, &t, &r) != VS_OK)
+    if(vsLensFitSimilarityFov(&ld, &o->frames[i], o->gnSteps, o->f, &t, &r) != VS_OK)
       return LENS_PENALTY;
     sum2  += r*r*o->frames[i].n;
     total += o->frames[i].n;
@@ -446,7 +540,7 @@ VSLensEstimate vsEstimateLensDistortionFromMatches(const VSFrameInfo* fi,
   est.used = nPoints;
 
   o.fi = fi; o.frames = frames; o.numFrames = numFrames;
-  o.gnSteps = cfg->gaussNewtonSteps; o.evals = 0;
+  o.gnSteps = cfg->gaussNewtonSteps; o.evals = 0; o.f = cfg->f;
 
   est.k = lensBrentMinimise(cfg->kMin, cfg->kMax, cfg->tolerance,
                             cfg->maxIterations, &o, &iters);
@@ -592,20 +686,28 @@ VSLensEstimate vsEstimateLensDistortion(const VSFrameInfo* fi,
 
 int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches* m,
                          const VSTransform* t, double* residuals){
+  return vsLensMatchResidualsFov(ld, m, t, 0.0, residuals);
+}
+
+int vsLensMatchResidualsFov(const VSLensDistortion* ld, const VSPointMatches* m,
+                            const VSTransform* t, double f, double* residuals){
   int j;
-  double z, zcos_a, zsin_a;
+  double z;
+  LensFwd w;
   if(!ld || !m || !t || !residuals) return VS_ERROR;
   z = 1.0 + t->zoom/100.0;
-  zcos_a = z*cos(t->alpha);
-  zsin_a = z*sin(t->alpha);
+  /* Must use the SAME model the fit used, or stage two rejects the frame edge
+     systematically at wide field of view -- the failure this function's own
+     comment in vsLensMotionsToTransform warns about for k, one model up. */
+  lensFwdInit(&w, f, t->x, t->y, z*cos(t->alpha), z*sin(t->alpha));
   for(j=0; j<m->n; j++){
     double ux, uy, rx, ry, wx, wy, dpx, dpy;
     if(vsLensUndistortPoint(ld, m->px[j], m->py[j], &ux, &uy) != VS_OK) return VS_ERROR;
     rx = ux - ld->cx;
     ry = uy - ld->cy;
     /* same convention as transform_vec_double */
-    wx =  zcos_a*rx + zsin_a*ry + t->x + ld->cx;
-    wy = -zsin_a*rx + zcos_a*ry + t->y + ld->cy;
+    lensFwdApply(&w, rx, ry, &wx, &wy);
+    wx += ld->cx; wy += ld->cy;
     if(vsLensDistortPoint(ld, wx, wy, &dpx, &dpy) != VS_OK) return VS_ERROR;
     residuals[j] = sqrt(sqr(m->qx[j]-dpx) + sqr(m->qy[j]-dpy));
   }
@@ -650,7 +752,7 @@ VSTransform vsLensMotionsToTransform(const VSFrameInfo* fi, const VSLensDistorti
      about any assumed transform -- so it is safe to apply before k is known. */
   if(cfg->rejectOutliers) lensMaskOutliers(res, act, n, cfg->outlierStddevs);
 
-  if(vsLensFitSimilarity(ld, &m, cfg->gaussNewtonSteps, &t, residual) != VS_OK){
+  if(vsLensFitSimilarityFov(ld, &m, cfg->gaussNewtonSteps, cfg->f, &t, residual) != VS_OK){
     vs_free(buf); vs_free(act);
     t = null_transform(); t.extra = 1;
     return t;
@@ -660,11 +762,11 @@ VSTransform vsLensMotionsToTransform(const VSFrameInfo* fi, const VSLensDistorti
      that must not be done blind -- at k=0 on distorted footage it would reject
      the frame edge, where the residual is systematic rather than anomalous. */
   if(cfg->rejectOutliers &&
-     vsLensMatchResiduals(ld, &m, &t, res) == VS_OK &&
+     vsLensMatchResidualsFov(ld, &m, &t, cfg->f, res) == VS_OK &&
      lensMaskOutliers(res, act, n, cfg->outlierStddevs) > 0){
     VSTransform refined;
     double r2;
-    if(vsLensFitSimilarity(ld, &m, cfg->gaussNewtonSteps, &refined, &r2) == VS_OK){
+    if(vsLensFitSimilarityFov(ld, &m, cfg->gaussNewtonSteps, cfg->f, &refined, &r2) == VS_OK){
       t = refined;
       if(residual) *residual = r2;
     }

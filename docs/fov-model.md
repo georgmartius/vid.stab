@@ -94,6 +94,45 @@ model error. Told the field of view, the 110° clip is fitted *better than that
 floor* — the perspective term is removed essentially completely, and what is
 left is measurement noise.
 
+### Interaction with lens distortion estimation
+
+`k` is estimated from the local motions before the transforms are fitted, and
+that estimate is fitted through a motion model too. Perspective expands the
+periphery and pincushion expands the periphery, so an estimator that does not
+know `f` explains one with the other. On synthetic footage whose true `k` is
+−0.25 throughout:
+
+| clip FOV | `k` estimated blind | `k` with the estimator told `f` |
+| --- | ---: | ---: |
+| 20° | −0.2418 *(determined)* | — |
+| 40° | −0.1472 *(determined, and used)* | **−0.2405** |
+| 70° | **+0.0504** *(determined, and used)* | **−0.2473** |
+| 110° | +0.2000 *(not determined)* | −0.3763 |
+
+Blind, the estimate is not merely imprecise — by 70° it has the **wrong sign**
+and is still reported as determined, because the confidence gate keys on
+scatter (the uncertainty stays near 0.01) while this is systematic bias. A
+wrong `k` is then handed to the render path and a wrong distortion is applied
+to the picture.
+
+`VSLensEstimateConfig.f` fixes this, and `vsLocalmotions2Transforms` sets it
+from `conf.fov` automatically — for the estimate, for the lens-aware transform
+fit, and for the residual the outlier rejection is built on, which has to use
+the same model or it cuts the frame edge systematically.
+
+Two things this does *not* fix, both measured:
+
+- **110° still lands at −0.3763.** That residual error is not the model.
+  `test_fov_estimator_exact()` feeds the same estimator correspondences
+  computed straight from the model and recovers −0.2537. What is left is the
+  **detector**: block matching assumes a local translation, and at 110° the
+  perspective term stretches a 16 px field enough to bias the match it
+  returns. Fixing that means changing the matcher.
+- **At 70° the good estimate is discarded.** −0.2473 is accurate, but its
+  uncertainty (0.0233) exceeds the default `maxUncertainty` of 0.02, so it is
+  reported "not determined" and not used. The gate is tuned for the narrow
+  case; a wide clip legitimately has more scatter.
+
 ### A caveat about barrel distortion
 
 On the 110° clip the similarity fit is *better* with barrel distortion present

@@ -89,11 +89,30 @@ typedef struct _vspointmatches {
 VS_API int vsLensFitSimilarity(const VSLensDistortion* ld, const VSPointMatches* m,
                                int gaussNewtonSteps, VSTransform* out, double* residual);
 
+/** As vsLensFitSimilarity, but with the camera motion modelled as a rotation
+    about the optical centre at focal length f pixels rather than as a
+    similarity.  f <= 0 is exactly vsLensFitSimilarity.
+
+    This exists because k and the perspective term are confounded: both expand
+    the periphery, so fitting a similarity through an assumed lens on wide
+    footage explains the perspective with k and returns the wrong number --
+    the wrong SIGN, by 70 degrees.  See docs/fov-model.md and
+    test_fov_lens_estimator_coupling(). */
+VS_API int vsLensFitSimilarityFov(const VSLensDistortion* ld, const VSPointMatches* m,
+                                  int gaussNewtonSteps, double f,
+                                  VSTransform* out, double* residual);
+
 /** Per-correspondence distance |q - D(S(U(p)))| in pixels, under the given
     distortion and similarity.  Writes m->n values, including for matches that
     are masked out.  Returns VS_ERROR if a point leaves the model's domain. */
 VS_API int vsLensMatchResiduals(const VSLensDistortion* ld, const VSPointMatches* m,
                                 const VSTransform* t, double* residuals);
+
+/** As vsLensMatchResiduals, under the rotational model at focal length f.
+    Must match whatever model the fit used, or the residual-based outlier
+    rejection built on it cuts the frame edge systematically. */
+VS_API int vsLensMatchResidualsFov(const VSLensDistortion* ld, const VSPointMatches* m,
+                                   const VSTransform* t, double f, double* residuals);
 
 /** Tuning for the distortion search; vsLensEstimateGetDefaultConfig fills it. */
 typedef struct _vslensestimateconfig {
@@ -106,6 +125,10 @@ typedef struct _vslensestimateconfig {
   int    rejectOutliers; // 1 to run the reject-and-refit passes below, 0 to fit everything
   double outlierStddevs; // reject beyond median + this many robust sigmas of residual, default 2.5
   int    outlierPasses;  // total search passes; 1 means no rejection ever happens, default 3
+  /* Focal length in pixels for the rotational model, 0 (the default) for the
+     similarity one.  Set from VSTransformConfig.fov; k is otherwise fitted
+     against the wrong model on wide footage.  See vsLensFitSimilarityFov. */
+  double f;
 } VSLensEstimateConfig;
 
 /** Outcome of the search. */

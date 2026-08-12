@@ -564,7 +564,8 @@ void test_fov_model(void){
 
    This is a defect in the lens estimator that predates fov -- it needs no fov
    set to happen, and this clip is simply the first thing to have shown it. */
-static double fovEstimateK(double clipFov, double trueK, const char* label){
+static double fovEstimateKf(double clipFov, double trueK, double cfgFov,
+                            const char* label){
   VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
   VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
   VSMotionDetect md;
@@ -584,14 +585,19 @@ static double fovEstimateK(double clipFov, double trueK, const char* label){
     vs_vector_append_dup(&mlms, &lms, sizeof(LocalMotions));
   }
 
+  ecfg.f = focal_from_fov(cfgFov, fi.width);
   est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
-  fprintf(stderr, "  %-18s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
+  fprintf(stderr, "  %-22s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
           label, trueK, est.k, est.uncertainty,
           est.determined ? "DETERMINED (and used)" : "not determined");
 
   vsMotionDetectionCleanup(&md);
   for(i=0; i<FC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
   return est.k;
+}
+
+static double fovEstimateK(double clipFov, double trueK, const char* label){
+  return fovEstimateKf(clipFov, trueK, 0.0, label);
 }
 
 void test_fov_lens_estimator_coupling(void){
@@ -614,10 +620,122 @@ void test_fov_lens_estimator_coupling(void){
   test_bool(k40 < k70);
   test_bool(k70 < k110);
 
-  /* DEFECT MARKER, not a specification: at 70 degrees the estimate has the
-     wrong sign.  Kept as an assertion so that making the estimator fov-aware
-     fails this test loudly and forces the comment above to be rewritten,
-     rather than leaving a stale account of a bug that is gone.  Delete it,
-     and the numbers above, in the same commit that fixes this. */
+  /* Blind, at 70 degrees, the estimate has the wrong sign.  Asserted so the
+     account above cannot go stale silently. */
   test_bool(k70 > 0.0);
+
+  /* Told the field of view, the same footage through the same estimator:
+     -0.2405 at 40 degrees and -0.2473 at 70, against -0.1472 and +0.0504
+     blind.  The sign error is gone and both are within the same 0.02 the 20
+     degree case meets unaided.
+
+     110 degrees lands at -0.3763 -- much closer than the blind +0.2000, but
+     not within tolerance, and that residual error is NOT the estimator's
+     model.  test_fov_estimator_exact() below feeds the same estimator
+     correspondences computed straight from the model and gets -0.2537 there,
+     so what is left at 110 degrees is the DETECTOR: block matching assumes a
+     local translation, and at 110 degrees the perspective term stretches a
+     16 px field enough that the match it returns is biased.  Fixing that
+     would mean changing the matcher, not the estimator. */
+  fprintf(stderr, "--- the same clips, with the estimator told the fov ---\n");
+  k40  = fovEstimateKf( 40.0, K,  40.0, "40 deg, told");
+  k70  = fovEstimateKf( 70.0, K,  70.0, "70 deg, told");
+  k110 = fovEstimateKf(110.0, K, 110.0, "110 deg, told");
+  test_bool(fabs(k40 - K) < 0.02);
+  test_bool(fabs(k70 - K) < 0.02);
+  /* At 110 the claim is only that it is much better, and on the right side. */
+  test_bool(k110 < 0.0);
+  test_bool(fabs(k110 - K) < 0.35*fabs(0.2000 - K));
+}
+
+/* --- 6. the estimator on exact correspondences ---------------------------- */
+
+/* Feeds the estimator matches computed straight from the model -- q =
+   D_k(S(U_k(p))) with S a known rotation at a known f -- so nothing the
+   detector does can be blamed.  This is what separates "the estimator's model
+   is wrong" from "the measurements going into it are noisy". */
+static double fovExactK(double fovDeg, double trueK, double cfgFov,
+                        int quantise, const char* label){
+  VSFrameInfo fi;
+  VSLensDistortion ld;
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSLensEstimate est;
+  VSManyLocalMotions mlms;
+  double f = fcFocal(fovDeg);
+  int frame, gx, gy, i;
+
+  test_bool(vsFrameInfoInit(&fi, LC_WIDTH, LC_HEIGHT, PF_GRAY8) != 0);
+  ld = vsLensDistortionInit(&fi, trueK);
+
+  vs_vector_init(&mlms, FC_NUM_FRAMES);
+  for(frame=1; frame<FC_NUM_FRAMES; frame++){
+    LocalMotions lms;
+    double yaw, pitch, roll, rb[9], rf[9];
+    fcStepAngles(frame, f, &yaw, &pitch, &roll);
+    /* the step's forward map, as the estimator's S */
+    rotation_matrix_backward(yaw, pitch, roll, rb);
+    rf[0]=rb[0]; rf[1]=rb[3]; rf[2]=rb[6];
+    rf[3]=rb[1]; rf[4]=rb[4]; rf[5]=rb[7];
+    rf[6]=rb[2]; rf[7]=rb[5]; rf[8]=rb[8];
+
+    vs_vector_init(&lms, 16*12);
+    for(gy=0; gy<12; gy++)
+      for(gx=0; gx<16; gx++){
+        LocalMotion lm;
+        double px = 20 + gx*(LC_WIDTH -40)/15.0;
+        double py = 20 + gy*(LC_HEIGHT-40)/11.0;
+        double ux, uy, ax, ay, X, Y, Z, wx, wy, qx, qy;
+        if(vsLensUndistortPoint(&ld, px, py, &ux, &uy) != VS_OK) continue;
+        ax = ux - ld.cx; ay = uy - ld.cy;
+        X = rf[0]*ax + rf[1]*ay + rf[2]*f;
+        Y = rf[3]*ax + rf[4]*ay + rf[5]*f;
+        Z = rf[6]*ax + rf[7]*ay + rf[8]*f;
+        wx = f*X/Z + ld.cx; wy = f*Y/Z + ld.cy;
+        if(vsLensDistortPoint(&ld, wx, wy, &qx, &qy) != VS_OK) continue;
+        lm.f.x = (int16_t)lrint(px);
+        lm.f.y = (int16_t)lrint(py);
+        /* LocalMotion.v is integral, so the detector could never deliver more
+           than this; quantise == 0 keeps the exact double to separate the
+           model's error from the quantiser's. */
+        lm.v.x = (int16_t)(quantise ? lrint(qx - lrint(px)) : lrint(qx - px));
+        lm.v.y = (int16_t)(quantise ? lrint(qy - lrint(py)) : lrint(qy - py));
+        lm.f.size = 32; lm.contrast = 1.0; lm.match = 1.0;
+        vs_vector_append_dup(&lms, &lm, sizeof(LocalMotion));
+      }
+    vs_vector_append_dup(&mlms, &lms, sizeof(LocalMotions));
+  }
+
+  ecfg.f = focal_from_fov(cfgFov, fi.width);
+  est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
+  fprintf(stderr, "  %-26s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
+          label, trueK, est.k, est.uncertainty,
+          est.determined ? "determined" : "not determined");
+  for(i=0; i<vs_vector_size(&mlms); i++) vs_vector_del(VSMLMGet(&mlms, i));
+  return est.k;
+}
+
+void test_fov_estimator_exact(void){
+  double k70, k110q, k110, kzero, kblind;
+  fprintf(stderr, "--- estimator on exact model correspondences ---\n");
+  k70    = fovExactK( 70.0, -0.25,  70.0, 1, "70 deg, told, quantised");
+  k110q  = fovExactK(110.0, -0.25, 110.0, 1, "110 deg, told, quantised");
+  k110   = fovExactK(110.0, -0.25, 110.0, 0, "110 deg, told, unquantised");
+  kzero  = fovExactK(110.0,  0.0,  110.0, 0, "110 deg, k=0, unquantised");
+  kblind = fovExactK(110.0, -0.25,   0.0, 0, "110 deg, BLIND, unquantised");
+
+  /* Told f, the model is right at every field of view -- this is the
+     assertion that says threading f into the estimator actually worked. */
+  test_bool(fabs(k70   + 0.25) < 0.02);
+  test_bool(fabs(k110  + 0.25) < 0.02);
+  test_bool(fabs(kzero)        < 0.02);   /* and it does not invent distortion */
+
+  /* Quantising the displacements to integers, which is all a detector can
+     deliver, changes nothing: the 110 degree shortfall on real footage is
+     not the quantiser either. */
+  test_bool(fabs(k110q - k110) < 0.01);
+
+  /* Blind, on correspondences with no measurement error whatsoever, it still
+     returns the wrong sign.  That is the cleanest possible statement that the
+     old behaviour was a misspecified model and not noise. */
+  test_bool(kblind > 0.0);
 }

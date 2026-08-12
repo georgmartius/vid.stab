@@ -634,12 +634,23 @@ static void ldClipToLocalMotions(const LDSynthClip* clip, VSManyLocalMotions* ml
   }
 }
 
+/* Fresh heap pages tend to arrive zeroed, which silently supplies the NULL a
+   struct field the allocating code forgot to set is meant to hold.  Poisoning
+   every allocation makes that omission fail here rather than on whichever
+   platform happens to hand back dirtier memory. */
+static void* ldPoisonMalloc(size_t size){
+  void* p = malloc(size);
+  if(p) memset(p, 0xA5, size);
+  return p;
+}
+
 static void test_lensdistortion_from_localmotions(void){
   LDSynthConfig cfg = ldDefaultSynthConfig();
   LDSynthClip clip;
   VSManyLocalMotions mlms;
   VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
   VSLensEstimate est;
+  vs_malloc_t savedMalloc = vs_malloc;
   int i;
 
   cfg.k = -0.25;
@@ -648,7 +659,11 @@ static void test_lensdistortion_from_localmotions(void){
   clip = ldGenerate(&cfg);
   ldClipToLocalMotions(&clip, &mlms);
 
+  /* Only around the call under test: ldGenerate and the vectors above are the
+     fixture, and poisoning those would test the test. */
+  vs_malloc = ldPoisonMalloc;
   est = vsEstimateLensDistortion(&clip.fi, &mlms, &ecfg);
+  vs_malloc = savedMalloc;
   fprintf(stderr, "--- recovery through the LocalMotions entry point ---\n");
   fprintf(stderr, "true k -0.25 -> %.5f (err %.2e)\n", est.k, fabs(est.k+0.25));
   test_bool(est.determined);

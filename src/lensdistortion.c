@@ -572,6 +572,7 @@ VSLensEstimate vsEstimateLensDistortion(const VSFrameInfo* fi,
     }
     frames[i].px = px; frames[i].py = py;
     frames[i].qx = qx; frames[i].qy = qy;
+    frames[i].active = 0;   /* no caller-supplied mask; the estimator masks internally */
     frames[i].n  = n;
     offset += n;
   }

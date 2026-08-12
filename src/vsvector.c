@@ -196,8 +196,8 @@ VSVector vs_vector_concat(const VSVector *V1, const VSVector *V2){
   VSVector result;
   assert(V1 && V2);
   vs_vector_init(&result, V1->nelems + V2->nelems);
-  memcpy(result.data, V1->data, sizeof(void*)* V1->nelems);
-  memcpy(result.data+V1->nelems, V2->data, sizeof(void*)* V2->nelems);
+  if(V1->nelems) memcpy(result.data, V1->data, sizeof(void*)* V1->nelems);
+  if(V2->nelems) memcpy(result.data+V1->nelems, V2->data, sizeof(void*)* V2->nelems);
   result.nelems=V1->nelems+V2->nelems;
   return result;
 }

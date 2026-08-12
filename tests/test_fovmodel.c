@@ -526,3 +526,98 @@ void test_fov_model(void){
   test_fov_warp_against_reference();
   test_fov_model_recovers();
 }
+
+/* probe: does fov survive the lens-aware fit path? */
+
+/* --- 5. the lens estimator is blind to all of this ------------------------ */
+
+/* Where in the pipeline the rotational model is and is not applied, checked
+   rather than assumed.
+
+   MOTION ESTIMATION does not use it, and does not need to.  Its one call to
+   prepare_transform (motiondetect.c, fieldSearchOffset) only centres the fine
+   scan's search window on the coarse scan's guess; the fine scan then
+   measures the displacement itself, so the model there is a hint, not a
+   measurement.  VSMotionDetectConfig has no fov by design -- detection is
+   streaming and fov is a transform-side parameter.
+
+   LENS ESTIMATION does use a model, runs BEFORE the fit, and is fitted as a
+   similarity (vsLensFitSimilarity).  It has no fov and no way to accept one.
+   That is not a cosmetic gap: perspective expands the periphery and pincushion
+   expands the periphery, so on a wide lens the estimator explains the
+   perspective term with k and returns the wrong number.
+
+   Measured below on footage whose true k is -0.25 throughout:
+
+      20 deg   k = -0.2445 +- 0.0103   determined -- correct
+      40 deg   k = -0.1454 +- 0.0128   determined -- 42 percent too small
+      70 deg   k = +0.0487 +- 0.0107   determined -- WRONG SIGN
+     110 deg   k = +0.2000 +- 0.0174   not determined (at the search bound)
+
+   The uncertainties are the tell.  They stay around 0.01 while the estimate
+   drifts by 0.3, because this is a systematic bias from a misspecified model,
+   not scatter -- and "determined" keys on the uncertainty, which cannot see
+   bias.  So at 40 and 70 degrees the estimator is confidently wrong and the
+   result is USED: it is handed to vsTransformSetLensK and a wrong distortion
+   is applied to the picture.  Only at 110 does it fail safe, and only because
+   it runs into the bound.
+
+   This is a defect in the lens estimator that predates fov -- it needs no fov
+   set to happen, and this clip is simply the first thing to have shown it. */
+static double fovEstimateK(double clipFov, double trueK, const char* label){
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig(label);
+  VSLensEstimateConfig ecfg = vsLensEstimateGetDefaultConfig();
+  VSMotionDetect md;
+  VSFrameInfo fi;
+  VSFrame frames[FC_NUM_FRAMES];
+  VSManyLocalMotions mlms;
+  VSLensEstimate est;
+  int i;
+
+  fcGenerateClip(frames, &fi, PF_RGB24, clipFov, trueK, FC_NUM_FRAMES);
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+  vs_vector_init(&mlms, FC_NUM_FRAMES);
+  for(i=0; i<FC_NUM_FRAMES; i++){
+    LocalMotions lms;
+    test_bool(vsMotionDetection(&md, &lms, &frames[i]) == VS_OK);
+    vs_vector_append_dup(&mlms, &lms, sizeof(LocalMotions));
+  }
+
+  est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
+  fprintf(stderr, "  %-18s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
+          label, trueK, est.k, est.uncertainty,
+          est.determined ? "DETERMINED (and used)" : "not determined");
+
+  vsMotionDetectionCleanup(&md);
+  for(i=0; i<FC_NUM_FRAMES; i++) vsFrameFree(&frames[i]);
+  return est.k;
+}
+
+void test_fov_lens_estimator_coupling(void){
+  const double K = -0.25;
+  double k20, k40, k70, k110;
+
+  fprintf(stderr, "--- lens estimate vs field of view (the estimator has no fov) ---\n");
+  k20  = fovEstimateK( 20.0, K, "20 deg");
+  k40  = fovEstimateK( 40.0, K, "40 deg");
+  k70  = fovEstimateK( 70.0, K, "70 deg");
+  k110 = fovEstimateK(110.0, K, "110 deg");
+
+  /* Where the similarity model holds, the estimator is right.  This is the
+     assertion that must survive any fix. */
+  test_bool(fabs(k20 - K) < 0.02);
+
+  /* The bias is monotone in the field of view and toward pincushion, which is
+     what identifies the perspective term as its cause rather than noise. */
+  test_bool(k20 < k40);
+  test_bool(k40 < k70);
+  test_bool(k70 < k110);
+
+  /* DEFECT MARKER, not a specification: at 70 degrees the estimate has the
+     wrong sign.  Kept as an assertion so that making the estimator fov-aware
+     fails this test loudly and forces the comment above to be rewritten,
+     rather than leaving a stale account of a bug that is gone.  Delete it,
+     and the numbers above, in the same commit that fixes this. */
+  test_bool(k70 > 0.0);
+}

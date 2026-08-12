@@ -572,7 +572,14 @@ VSLensEstimate vsEstimateLensDistortion(const VSFrameInfo* fi,
     }
     frames[i].px = px; frames[i].py = py;
     frames[i].qx = qx; frames[i].qy = qy;
-    frames[i].active = 0;   /* no caller-supplied mask; the estimator masks internally */
+    /* No caller-supplied mask; the estimator masks internally.  NULL is what
+       the readers expect on the first, unmasked pass -- vsLensFitSimilarity
+       tests (!act || act[j]) -- and vs_malloc does not zero, so leaving it
+       alone read whatever was on the heap and dereferenced it.  That is a
+       crash whenever the allocator hands back a dirtied page rather than a
+       fresh one, which is why it survived the tests and would not have
+       survived a long-running filter graph. */
+    frames[i].active = 0;
     frames[i].n  = n;
     offset += n;
   }

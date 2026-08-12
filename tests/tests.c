@@ -258,6 +258,7 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testFOV", "rotational (K R K^-1) motion model")){
     UNIT(test_fov_model());
     UNIT(test_fov_identifiability());
+    UNIT(test_fov_lens_estimator_coupling());
   }
 
   if(all || contains(argv,argc,"--testBASE", "warp-loop output baseline (k=0 guard)")){

@@ -810,3 +810,125 @@ void test_fov_uncertainty_calibration(void){
     }
   }
 }
+
+/* --- 8. where does the detector's wide-fov bias actually come from? ------- */
+
+/* Compares every local motion the detector returns against the exact
+   displacement the model says that field should show, binned by distance from
+   the optical centre.
+
+   The question this settles: the block matcher assumes the mapping is a pure
+   translation over the block.  At 110 degrees it is not -- the perspective
+   term stretches it.  But a least-squares/SAD fit of a translation to a
+   LINEARLY varying displacement field returns the value at the block centre,
+   which is exactly what the estimator already expects, so to first order
+   there should be no bias at all.  Any bias that survives is therefore
+   second order (the divide's curvature over the block), or it is not a
+   per-field measurement error at all but a selection effect -- the periphery
+   stretches most, matches worst, and gets rejected most, and the periphery is
+   where the k signal lives.
+
+   Those two have completely different fixes, so measure before choosing. */
+static void fovDetectorBiasAt(double CLIPFOV){
+  const double K = 0.0;
+  VSMotionDetectConfig mdconf = vsMotionDetectGetDefaultConfig("bias");
+  VSMotionDetect md;
+  VSFrameInfo fi;
+  VSFrame frames[FC_NUM_FRAMES];
+  VSLensDistortion ld;
+  double f = fcFocal(CLIPFOV);
+  /* radial bins, as a fraction of the half-diagonal */
+  double sumR[5] = {0,0,0,0,0}, sumT[5] = {0,0,0,0,0}, sumN[5] = {0,0,0,0,0};
+  double bad[5] = {0,0,0,0,0};          /* |err| > 5 px: outright mismatches */
+  double sumRg[5] = {0,0,0,0,0}, sumNg[5] = {0,0,0,0,0};   /* the rest */
+  int frame, j, b;
+
+  fcGenerateClip(frames, &fi, PF_RGB24, CLIPFOV, K, FC_NUM_FRAMES);
+  ld = vsLensDistortionInit(&fi, K);
+  test_bool(vsMotionDetectInit(&md, &mdconf, &fi) == VS_OK);
+  md.conf.numThreads = 1;
+
+  for(frame=0; frame<FC_NUM_FRAMES; frame++){
+    LocalMotions lms;
+    double yaw, pitch, roll, rb[9], rf[9];
+    test_bool(vsMotionDetection(&md, &lms, &frames[frame]) == VS_OK);
+    if(frame == 0){ vs_vector_del(&lms); continue; }
+
+    /* The detector reports the motion of the CONTENT, which is the inverse of
+       the camera step -- the same negation fovFitClip applies to its ground
+       truth.  So the map a field's displacement follows is the step's
+       BACKWARD rotation, used directly rather than transposed. */
+    fcStepAngles(frame, f, &yaw, &pitch, &roll);
+    rotation_matrix_backward(yaw, pitch, roll, rb);
+    rf[0]=rb[0]; rf[1]=rb[1]; rf[2]=rb[2];
+    rf[3]=rb[3]; rf[4]=rb[4]; rf[5]=rb[5];
+    rf[6]=rb[6]; rf[7]=rb[7]; rf[8]=rb[8];
+
+    for(j=0; j<vs_vector_size(&lms); j++){
+      LocalMotion* m = LMGet(&lms, j);
+      double px = m->f.x, py = m->f.y;
+      double ax = px - ld.cx, ay = py - ld.cy;
+      double X = rf[0]*ax + rf[1]*ay + rf[2]*f;
+      double Y = rf[3]*ax + rf[4]*ay + rf[5]*f;
+      double Z = rf[6]*ax + rf[7]*ay + rf[8]*f;
+      double wantx = f*X/Z + ld.cx - px;
+      double wanty = f*Y/Z + ld.cy - py;
+      double ex = m->v.x - wantx, ey = m->v.y - wanty;
+      double r  = sqrt(ax*ax + ay*ay) / ld.rho;
+      double ur, ut;                       /* radial and tangential error */
+      if(r < 1e-6) continue;
+      ur = ( ex*ax + ey*ay) / (r*ld.rho);
+      ut = (-ex*ay + ey*ax) / (r*ld.rho);
+      b = (int)(r*5.0); if(b > 4) b = 4;
+      sumR[b] += ur; sumT[b] += ut; sumN[b] += 1;
+      if(sqrt(ex*ex + ey*ey) > 5.0) bad[b] += 1;
+      else { sumRg[b] += ur; sumNg[b] += 1; }
+    }
+    vs_vector_del(&lms);
+  }
+
+  fprintf(stderr, "--- detector error vs radius, %.0f deg clip, no lens ---\n", CLIPFOV);
+  fprintf(stderr, "    r/rho   fields  mean rad   mean tan  | mismatches(>5px)"
+                  "  mean rad excl.\n");
+  for(b=0; b<5; b++){
+    if(sumN[b] < 1){ fprintf(stderr, "  %.1f-%.1f      0       --\n", b/5.0, (b+1)/5.0); continue; }
+    fprintf(stderr, "  %.1f-%.1f %7.0f  %+8.3f  %+9.3f  |  %4.0f (%5.1f%%)      %+8.3f px\n",
+            b/5.0, (b+1)/5.0, sumN[b], sumR[b]/sumN[b], sumT[b]/sumN[b],
+            bad[b], 100.0*bad[b]/sumN[b],
+            sumNg[b] > 0 ? sumRg[b]/sumNg[b] : 0.0);
+  }
+
+  for(b=0; b<5; b++){
+    if(sumNg[b] < 10) continue;
+    /* THE RESULT: among fields the matcher actually matched, the radial error
+       is under half a pixel in every bin at every field of view, with no
+       trend in either.  Block matching is NOT biased by the perspective
+       stretch, so neither the SAD comparison nor the way its result is
+       interpreted needs to change.
+
+       That is what the first-order argument predicts and it is worth stating
+       why: a translation fitted to a displacement field that varies LINEARLY
+       across the block returns the field's value at the block centre, which
+       is exactly the quantity the estimator assumes it was given.  The
+       stretch across a 16 px field at 110 degrees is about 1.3 px of
+       differential, and it cancels rather than accumulating. */
+    test_bool(fabs(sumRg[b]/sumNg[b]) < 0.5);
+  }
+  /* What DOES vary is how often the matcher fails outright, and it climbs
+     from the centre outwards -- which is where the distortion signal lives. */
+  if(sumN[0] > 10 && sumN[4] > 10)
+    test_bool(bad[4]/sumN[4] > bad[0]/sumN[0]);
+
+  vsMotionDetectionCleanup(&md);
+  for(frame=0; frame<FC_NUM_FRAMES; frame++) vsFrameFree(&frames[frame]);
+}
+
+/* Whether the wide-field k error is a measurement bias in the block matcher or
+   contamination in what it returns -- the two have completely different fixes,
+   one of them in the most performance-critical loop in the library and one of
+   them nowhere near it.  Measured, it is contamination. */
+void test_fov_detector_bias(void){
+  fovDetectorBiasAt( 20.0);
+  fovDetectorBiasAt( 70.0);
+  fovDetectorBiasAt(110.0);
+}

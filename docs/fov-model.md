@@ -124,13 +124,66 @@ Two things this does *not* fix, both measured:
 
 - **110° still lands at −0.3763.** That residual error is not the model.
   `test_fov_estimator_exact()` feeds the same estimator correspondences
-  computed straight from the model and recovers −0.2537. What is left is the
-  **detector**: block matching assumes a local translation, and at 110° the
-  perspective term stretches a 16 px field enough to bias the match it
-  returns. Fixing that means changing the matcher.
+  computed straight from the model and recovers −0.2537, so what is left is
+  the **detector** — but not, as it turns out, its arithmetic. See below.
 - **At 70° the good estimate is discarded.** −0.2473 is accurate, but its
   uncertainty (0.0233) exceeds the default `maxUncertainty` of 0.02, so it is
   reported "not determined" and not used. See below.
+
+### The detector is not biased by the stretch — it is contaminated
+
+The obvious suspicion is that block matching, which assumes the mapping is a
+pure translation across the block, must be biased where the perspective term
+stretches it. That would be bad news, because the fix would live in the SAD
+inner loop, the most performance-critical code in the library.
+
+Measured (`test_fov_detector_bias`), it is not what happens. Comparing every
+local motion against the exact displacement the model predicts for that field,
+binned by radius, and separating outright mismatches (> 5 px) from the rest:
+
+| r/ρ | 20° bias / mismatch | 70° bias / mismatch | 110° bias / mismatch |
+| --- | ---: | ---: | ---: |
+| 0.0–0.2 | +0.23 px / 12% | −0.02 px / 13% | −0.16 px / 16% |
+| 0.2–0.4 | +0.00 px / 21% | −0.07 px / 26% | −0.13 px / 26% |
+| 0.4–0.6 | −0.07 px / 31% | −0.02 px / 34% | −0.08 px / 39% |
+| 0.6–0.8 | −0.01 px / 32% | −0.15 px / 35% | −0.09 px / 34% |
+| 0.8–1.0 | −0.41 px / 33% | +0.31 px / 62% | −0.35 px / 54% |
+
+Among fields the matcher actually matched, the radial error is **under half a
+pixel everywhere, with no trend in radius and no trend in field of view**. The
+measurement is unbiased and its interpretation is already correct.
+
+That is what first-order theory predicts, and the reason is worth keeping: a
+translation fitted to a displacement field varying *linearly* across the block
+returns the field's value at the block **centre** — precisely the quantity the
+estimator assumes it was handed. The stretch across a 16 px field at 110° is
+about 1.3 px of differential, and it cancels rather than accumulating.
+
+What varies is the **mismatch rate**, which climbs from ~13% at the centre to
+33–62% in the outermost bin — and the outermost bin is both where the
+distortion signal lives and where there are fewest fields (13–24 against ~300
+mid-frame). The estimator's outlier rejection is global and MAD-based, so it
+sees ~30% contamination overall and cannot tell that it is concentrated where
+it does the most damage.
+
+**So no change to the SAD comparison is required, and none to how its result is
+interpreted.** The lever is outlier rejection. Tightening it
+(`outlierStddevs` 2.5 → 1.5, `outlierPasses` 3 → 6) measurably helps:
+
+| clip FOV | default 2.5/3 | 1.5/6 |
+| ---: | --- | --- |
+| 40° | −0.2405 *(determined)* | −0.2564 *(determined)* |
+| 70° | −0.2473 *(**not** determined, σ 0.0233)* | −0.2549 *(**determined**, σ 0.0112)* |
+| 110° | −0.3763 | −0.3326 |
+
+That alone fixes the 70° case — the estimate stays accurate and its σ halves,
+so it passes the gate on its own without touching `maxUncertainty`. 110°
+improves but does not resolve; with only ~5 usable peripheral fields per frame
+the signal there is thin regardless.
+
+These defaults are **not changed**: they affect every existing user's `k`
+estimate, wide lens or not, and the 40° row shows the accuracy cost is real if
+small. The numbers are recorded so the trade is a decision rather than a guess.
 
 ### On `maxUncertainty`, and why not simply raise it
 

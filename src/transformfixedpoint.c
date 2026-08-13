@@ -612,13 +612,60 @@ int transformPlanar(VSTransformData* td, VSTransform t)
         fovYr = rb[4]*ly + rb[5]*fFov;
         fovZr = rb[7]*ly + rb[8]*fFov;
       }
+      /* Wobble's undistort radius, stepped rather than recomputed.  Its input
+         is the destination pixel itself, so along a row lx grows by exactly
+         Lx = 1<<(16+lsx) per column and r2u = lx^2 + ly^2 is a quadratic in x
+         -- a quadratic is generated exactly by two running adds, so the two
+         64-bit squarings per pixel become two 64-bit additions.  All integer,
+         so this is the same sequence of r2u values to the bit, not an
+         approximation of it.  (The distort stage below cannot use this: its
+         input is x_s, which wobble has already put through a non-linear
+         scaling.) */
+      int64_t r2u = 0, r2uStep = 0, r2uStep2 = 0;
+      if (wobble) {
+        int64_t Lx  = (int64_t)1 << (16 + lsx);
+        int64_t lx0 = (int64_t)iToFp16(0 - c_d_x) * (1 << lsx);
+        int64_t ly0 = (int64_t)iToFp16(y_d1)      * (1 << lsy);
+        r2u       = lx0*lx0 + ly0*ly0;
+        r2uStep   = 2*lx0*Lx + Lx*Lx;
+        r2uStep2  = 2*Lx*Lx;
+      }
+      /* On the plain similarity path (no wobble ahead of it, no fov) the whole
+         backward map is affine in x, so x_s and y_s can be stepped too.  This
+         is exact, not merely close: dx is x_d1<<16, whose low 16 bits are
+         zero, so
+             (zcos_a*(x_d1<<16) + zsin_xy*dy) >> 16
+           = zcos_a*x_d1 + (zsin_xy*dy >> 16)
+         -- the arithmetic shift floors, and it floors the same way whether the
+         first term is inside or outside it.  So consecutive x_s differ by
+         exactly zcos_a and consecutive y_s by exactly -zsin_yx.  And with ex,
+         ey then linear in x, the distort stage's radius is a quadratic in x,
+         steppable by the same two-add scheme as r2u above. */
+      const int plain = (!wobble && fFov <= 0.0);
+      fp16 xsInc = 0, ysInc = 0;
+      int64_t r2d = 0, r2dStep = 0, r2dStep2 = 0;
+      if (plain) {
+        fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+        xsInc = (fp16)((( (int64_t)zcos_a *dx0 + (int64_t)zsin_xy*dy0) >> 16)) + c_tx;
+        ysInc = (fp16)(((-(int64_t)zsin_yx*dx0 + (int64_t)zcos_a *dy0) >> 16)) + c_ty;
+        if (lensOn) {
+          int64_t lx0 = (int64_t)(xsInc - c_s_x) * (1 << lsx);
+          int64_t ly0 = (int64_t)(ysInc - c_s_y) * (1 << lsy);
+          int64_t dlx = (int64_t)zcos_a  * (1 << lsx);
+          int64_t dly = -(int64_t)zsin_yx * (1 << lsy);
+          r2d      = lx0*lx0 + ly0*ly0;
+          r2dStep  = 2*lx0*dlx + dlx*dlx + 2*ly0*dly + dly*dly;
+          r2dStep2 = 2*(dlx*dlx + dly*dly);
+        }
+      }
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
         fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
         fp16 x_s, y_s;
         if (wobble) {
-          int64_t lx = (int64_t)dx * (1 << lsx), ly = (int64_t)dy * (1 << lsy);
-          int32_t g  = vsLensLutFp(lm->gU, lx*lx + ly*ly, lm->idxScaleU);
+          int32_t g = vsLensLutFp(lm->gU, r2u, lm->idxScaleU);
+          r2u      += r2uStep;      /* see the row prologue */
+          r2uStep  += r2uStep2;
           dx = (fp16)(((int64_t)dx * g) >> 16);
           dy = (fp16)(((int64_t)dy * g) >> 16);
         }
@@ -640,14 +687,24 @@ int transformPlanar(VSTransformData* td, VSTransform t)
           invZ = 1.0 / (rb[6]*lx + Zr);
           x_s = fToFp16(fovSx * (rb[0]*lx + Xr) * invZ) + c_s_x;
           y_s = fToFp16(fovSy * (rb[3]*lx + Yr) * invZ) + c_s_y;
+        } else if (plain) {
+          x_s = xsInc;  xsInc += zcos_a;    /* exact; see the row prologue */
+          y_s = ysInc;  ysInc -= zsin_yx;
         } else {
         x_s = (fp16)((((int64_t)zcos_a *dx + (int64_t)zsin_xy*dy) >> 16)) + c_tx;
         y_s = (fp16)(((-(int64_t)zsin_yx*dx + (int64_t)zcos_a *dy) >> 16)) + c_ty;
         }
         if (lensOn) {
           int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
-          int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
-          int64_t r2 = lx*lx + ly*ly;
+          int64_t r2;
+          if (plain) {
+            r2 = r2d;                       /* stepped, not squared */
+            r2d     += r2dStep;
+            r2dStep += r2dStep2;
+          } else {
+            int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
+            r2 = lx*lx + ly*ly;
+          }
           if (r2 > domR2) { x_s = iToFp16(VS_LENS_OUTSIDE_PX); y_s = iToFp16(VS_LENS_OUTSIDE_PX); }
           else {
             int32_t g = vsLensLutFp(lm->gD, r2, lm->idxScaleD);

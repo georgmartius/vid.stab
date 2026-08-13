@@ -402,7 +402,11 @@ int transformPacked(VSTransformData* td, VSTransform t)
      Nothing here is on the fov = 0 path. */
   double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
   double rb[9];
-  if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+  double fovS = 0.0;   /* z*fFov, the invariant numerator factor; see transformPlanar */
+  if (fFov > 0.0) {
+    rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+    fovS = z * fFov;
+  }
 
   /* All channels.  Rows are independent; see transformPlanar. */
 #ifdef USE_OMP
@@ -411,6 +415,14 @@ int transformPacked(VSTransformData* td, VSTransform t)
   for (y = 0; y < td->fiDest.height; y++) {
     int32_t y_d1 = (y - c_d_y);
     int x;
+    /* row-constant half of the projection; see transformPlanar */
+    double fovXr = 0.0, fovYr = 0.0, fovZr = 0.0;
+    if (fFov > 0.0 && !wobble) {
+      double ly = fp16ToF(iToFp16(y_d1));
+      fovXr = rb[1]*ly + rb[2]*fFov;
+      fovYr = rb[4]*ly + rb[5]*fFov;
+      fovZr = rb[7]*ly + rb[8]*fFov;
+    }
     for (x = 0; x < td->fiDest.width; x++) {
       int32_t x_d1 = (x - c_d_x);
       fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
@@ -422,12 +434,17 @@ int transformPacked(VSTransformData* td, VSTransform t)
         dy = (fp16)(((int64_t)dy * g) >> 16);
       }
       if (fFov > 0.0) {
-        double lx = fp16ToF(dx), ly = fp16ToF(dy);
-        double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
-        double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
-        double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
-        x_s = fToFp16(z*fFov*X/Z) + c_s_x;
-        y_s = fToFp16(z*fFov*Y/Z) + c_s_y;
+        double lx = fp16ToF(dx);
+        double Xr = fovXr, Yr = fovYr, Zr = fovZr, invZ;
+        if (wobble) {   /* dy is per-pixel here, so the row hoist does not hold */
+          double ly = fp16ToF(dy);
+          Xr = rb[1]*ly + rb[2]*fFov;
+          Yr = rb[4]*ly + rb[5]*fFov;
+          Zr = rb[7]*ly + rb[8]*fFov;
+        }
+        invZ = 1.0 / (rb[6]*lx + Zr);
+        x_s = fToFp16(fovS * (rb[0]*lx + Xr) * invZ) + c_s_x;
+        y_s = fToFp16(fovS * (rb[3]*lx + Yr) * invZ) + c_s_y;
       } else {
       x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
       y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
@@ -551,6 +568,18 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
     double rb[9];
     if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+    /* Loop invariants of the fov projection, pulled out of the pixel loop.
+       Written out, the source coordinate was z*fFov*X/Z/(1<<lsx) -- two
+       divisions per axis, so four per pixel, three of them by quantities that
+       never change.  Only Z varies, so fold the constants into one factor per
+       axis and take a single reciprocal of Z. */
+    double fovSx = 0.0, fovSy = 0.0, lxScale = 0.0, lyScale = 0.0;
+    if (fFov > 0.0) {
+      lxScale = (double)(1 << lsx);
+      lyScale = (double)(1 << lsy);
+      fovSx   = z * fFov / lxScale;
+      fovSy   = z * fFov / lyScale;
+    }
 
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
@@ -572,6 +601,17 @@ int transformPlanar(VSTransformData* td, VSTransform t)
       // swapping of the loops brought 15% performace gain
       int32_t y_d1 = (y - c_d_y);
       int32_t x;
+      /* The ly half of the fov projection is constant along a row -- but only
+         while dy is, which wobble breaks by rescaling dy per pixel.  Hoist it
+         for the other cases; the values are identical to the per-pixel ones,
+         same operands in the same order, so nothing moves in the output. */
+      double fovXr = 0.0, fovYr = 0.0, fovZr = 0.0;
+      if (fFov > 0.0 && !wobble) {
+        double ly = fp16ToF(iToFp16(y_d1)) * lyScale;
+        fovXr = rb[1]*ly + rb[2]*fFov;
+        fovYr = rb[4]*ly + rb[5]*fFov;
+        fovZr = rb[7]*ly + rb[8]*fFov;
+      }
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
         fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
@@ -589,12 +629,17 @@ int transformPlanar(VSTransformData* td, VSTransform t)
            the int64 intermediate only removes an overflow risk that the
            wobble scaling introduces. */
         if (fFov > 0.0) {
-          double lx = fp16ToF(dx) * (1 << lsx), ly = fp16ToF(dy) * (1 << lsy);
-          double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
-          double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
-          double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
-          x_s = fToFp16(z*fFov*X/Z / (1 << lsx)) + c_s_x;
-          y_s = fToFp16(z*fFov*Y/Z / (1 << lsy)) + c_s_y;
+          double lx = fp16ToF(dx) * lxScale;
+          double Xr = fovXr, Yr = fovYr, Zr = fovZr, invZ;
+          if (wobble) {   /* dy is per-pixel here, so the row hoist does not hold */
+            double ly = fp16ToF(dy) * lyScale;
+            Xr = rb[1]*ly + rb[2]*fFov;
+            Yr = rb[4]*ly + rb[5]*fFov;
+            Zr = rb[7]*ly + rb[8]*fFov;
+          }
+          invZ = 1.0 / (rb[6]*lx + Zr);
+          x_s = fToFp16(fovSx * (rb[0]*lx + Xr) * invZ) + c_s_x;
+          y_s = fToFp16(fovSy * (rb[3]*lx + Yr) * invZ) + c_s_y;
         } else {
         x_s = (fp16)((((int64_t)zcos_a *dx + (int64_t)zsin_xy*dy) >> 16)) + c_tx;
         y_s = (fp16)(((-(int64_t)zsin_yx*dx + (int64_t)zcos_a *dy) >> 16)) + c_ty;

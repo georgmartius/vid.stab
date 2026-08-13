@@ -84,6 +84,9 @@ static VSTransform mk_transform(void) {
 
 typedef int (*trfn)(VSTransformData*, VSTransform);
 
+/* Timed sweeps per cell; the reported figure is the fastest of them. */
+#define BENCH_REPS 3
+
 /* The extra per-pixel work the warp can be asked to do, on top of the plain
    affine backward map.  k and fov are only consulted when the corresponding
    mode is on, so a single struct describes every cell of the matrix. */
@@ -101,7 +104,7 @@ static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
   VSTransformData td;
   VSTransformConfig conf = vsTransformGetDefaultConfig("bench");
   double t0, t1, ms;
-  int i;
+  int i, r;
   unsigned long long chk = 0;
 
   conf.crop           = crop;
@@ -121,21 +124,36 @@ static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
     exit(1);
   }
 
-  /* one warm up pass, not timed */
+  /* One warm up pass, not timed -- and the pass the frame hash is taken from.
+     It has to be this one: with crop=0 (keep border) td->destbuf carries the
+     previous output forward, so out-of-frame destination pixels depend on how
+     many passes have run.  Hashing after exactly one pass from a freshly
+     initialised VSTransformData makes the checksum a property of the warp
+     alone, not of BENCH_REPS or nframes. */
   vsTransformPrepare(&td, &src, &dest);
   fn(&td, t);
   vsTransformFinish(&td);
-
-  t0 = now_s();
-  for (i = 0; i < nframes; i++) {
-    vsTransformPrepare(&td, &src, &dest);
-    fn(&td, t);
-    vsTransformFinish(&td);
-  }
-  t1 = now_s();
-
-  ms  = (t1 - t0) * 1000.0 / nframes;
   chk = frame_hash(&dest, &fi);
+
+  /* Best of BENCH_REPS, not the mean.  Once the warp runs on every core a
+     single sweep is badly contaminated by anything else on the machine --
+     runs of the same binary were seen to differ by 1.5x -- and the fastest
+     sweep is the one least interfered with, which is the number that says
+     what the code costs. */
+  ms = 0.0;
+  for (r = 0; r < BENCH_REPS; r++) {
+    double cand;
+    t0 = now_s();
+    for (i = 0; i < nframes; i++) {
+      vsTransformPrepare(&td, &src, &dest);
+      fn(&td, t);
+      vsTransformFinish(&td);
+    }
+    t1 = now_s();
+    cand = (t1 - t0) * 1000.0 / nframes;
+    if (r == 0 || cand < ms) ms = cand;
+  }
+
   /* name == NULL: the caller formats its own row and only wants the timing */
   if (name)
     printf("%-26s %4dx%-4d  %8.3f ms/frame   [%016llx]\n", name, width, height,

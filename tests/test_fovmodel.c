@@ -535,6 +535,7 @@ void test_fov_model(void){
    reported standard error alongside the estimate.  Not thread safe and does
    not need to be: the tests run these one at a time. */
 static double fovLastSigma = 0;
+static int    fovLastDetermined = 0;
 
 /* Where in the pipeline the rotational model is and is not applied, checked
    rather than assumed.
@@ -592,7 +593,7 @@ static double fovEstimateKf(double clipFov, double trueK, double cfgFov,
 
   ecfg.f = focal_from_fov(cfgFov, fi.width);
   est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
-  fovLastSigma = est.uncertainty;
+  fovLastSigma = est.uncertainty; fovLastDetermined = est.determined;
   fprintf(stderr, "  %-22s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
           label, trueK, est.k, est.uncertainty,
           est.determined ? "DETERMINED (and used)" : "not determined");
@@ -713,7 +714,7 @@ static double fovExactK(double fovDeg, double trueK, double cfgFov,
 
   ecfg.f = focal_from_fov(cfgFov, fi.width);
   est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
-  fovLastSigma = est.uncertainty;
+  fovLastSigma = est.uncertainty; fovLastDetermined = est.determined;
   fprintf(stderr, "  %-26s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
           label, trueK, est.k, est.uncertainty,
           est.determined ? "determined" : "not determined");
@@ -931,4 +932,67 @@ void test_fov_detector_bias(void){
   fovDetectorBiasAt( 20.0);
   fovDetectorBiasAt( 70.0);
   fovDetectorBiasAt(110.0);
+}
+
+/* --- 9. does the confound invent distortion that is not there? ------------ */
+
+/* The question the fov work left open: every measurement of the k/perspective
+   confound so far used strongly barrelled footage (k = -0.25).  If the
+   perspective term displaces the estimate by an amount set mainly by the field
+   of view rather than by the true k, then it displaces a TRUE ZERO too -- and
+   an undistorted lens would be reported as distorted and "corrected".  That
+   would be far more serious than mis-sizing a real distortion, because it
+   would fire on ordinary footage shot on ordinary glass.
+
+   Exact correspondences throughout, so this measures the estimator's model and
+   nothing else.  The 40-70 degree rows are the ones that matter: that is where
+   most real footage sits (a 24-35 mm equivalent lens). */
+void test_fov_estimator_k_sweep(void){
+  static const double KS[]   = {0.0, -0.05, -0.10, -0.25};
+  static const double DFOVS[] = {20.0, 40.0, 70.0};
+  static const double FOVS[] = {20.0, 40.0, 70.0, 110.0};
+  int ik, ifov;
+
+  /* The decisive practical case, through the REAL detector: an undistorted
+     lens on ordinary glass, with fov unset as it is by default. */
+  fprintf(stderr, "--- undistorted lens (k=0), blind, through the detector ---\n");
+  for(ik=0; ik<3; ik++){
+    char lb[48];
+    snprintf(lb, sizeof(lb), "k=0 fov=%.0f blind", DFOVS[ik]);
+    fovEstimateKf(DFOVS[ik], 0.0, 0.0, lb);
+  }
+
+  fprintf(stderr, "--- estimated k vs true k and field of view (exact data) ---\n");
+  for(ik=0; ik<(int)(sizeof(KS)/sizeof(KS[0])); ik++){
+    for(ifov=0; ifov<(int)(sizeof(FOVS)/sizeof(FOVS[0])); ifov++){
+      char lb[48], lt[48];
+      double kb, kt;
+      snprintf(lb, sizeof(lb), "k=%+.2f fov=%3.0f BLIND", KS[ik], FOVS[ifov]);
+      snprintf(lt, sizeof(lt), "k=%+.2f fov=%3.0f told",  KS[ik], FOVS[ifov]);
+      kb = fovExactK(FOVS[ifov], KS[ik], 0.0,        1, lb);
+      kt = fovExactK(FOVS[ifov], KS[ik], FOVS[ifov], 1, lt);
+      fprintf(stderr, "  ==> k=%+.2f fov=%3.0f : blind %+.4f (err %+.4f)"
+                      "  told %+.4f (err %+.4f)\n",
+              KS[ik], FOVS[ifov], kb, kb-KS[ik], kt, kt-KS[ik]);
+
+      /* Told f, the estimator is right at every combination of true k and
+         field of view -- not just on the strongly barrelled clip the earlier
+         tests used. */
+      test_bool(fabs(kt - KS[ik]) < 0.02);
+
+      /* Blind, the bias is POSITIVE in every single cell.  It is not scatter
+         and it is not proportional to the true k: it is a roughly constant
+         offset set by the field of view alone (+0.02 at 20 degrees, +0.08 at
+         40, +0.25 at 70), which is why it displaces a true zero exactly as it
+         displaces -0.25.  Perspective expands the periphery and that is what
+         positive k looks like. */
+      test_bool(kb > KS[ik]);
+    }
+  }
+
+  /* DEFECT MARKER.  An undistorted lens at 40 degrees -- a 50 mm normal lens,
+     the middle of the range most footage is shot at -- is confidently
+     reported as pincushioned and the estimate is used.  Predates the fov work
+     entirely: it needs no fov set, and fires with the default configuration.
+     Delete this note in the same commit that fixes it. */
 }

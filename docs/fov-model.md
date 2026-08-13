@@ -130,6 +130,53 @@ Two things this does *not* fix, both measured:
   uncertainty (0.0233) exceeds the default `maxUncertainty` of 0.02, so it is
   reported "not determined" and not used. See below.
 
+### The confound invents distortion that is not there
+
+Every measurement above used strongly barrelled footage (k = −0.25), which
+leaves open whether the confound merely mis-sizes a real distortion or
+displaces the estimate outright. Swept across true k on exact correspondences
+(`test_fov_estimator_k_sweep`), the answer is the second: **the bias is a
+roughly constant positive offset set by the field of view, almost independent
+of the true k.**
+
+| true k | 20° | 40° | 70° | 110° |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | +0.015 | +0.068 | +0.200 | +0.200 |
+| −0.05 | +0.018 | +0.072 | +0.243 | +0.250 |
+| −0.10 | +0.019 | +0.081 | +0.255 | +0.300 |
+| −0.25 | +0.022 | +0.087 | +0.288 | +0.450 |
+
+(bias, blind; the +0.200 cells are pinned at the `kMax` bracket edge and so are
+rejected for that reason rather than on their merits)
+
+The sign is structural, not incidental: perspective expands the periphery, and
+that is what positive k looks like. Consequently it displaces a true zero
+exactly as it displaces −0.25. Through the real detector, on footage with **no
+distortion at all**:
+
+| clip | true k | blind estimate | verdict |
+| --- | ---: | ---: | --- |
+| 20° (~85 mm) | 0.00 | +0.0218 ± 0.0136 | **determined, and used** |
+| 40° (~50 mm) | 0.00 | +0.0823 ± 0.0136 | **determined, and used** |
+| 70° (~24 mm) | 0.00 | +0.2000 ± 0.0177 | not determined *(bracket edge)* |
+
+So a 50 mm normal lens with zero distortion is confidently reported as
+pincushioned, and the estimate is applied. This predates the `fov` work
+entirely — it needs no `fov` set and fires with the default configuration.
+
+Told `f`, every one of the sixteen combinations above recovers to within 0.0155,
+and k = 0 reads as −0.003 to −0.009, safely under the `|k| > 0.01` guard that
+decides whether an estimate is used at all.
+
+**Why there is no guard against this yet.** The obvious conservative fix —
+distrust a positive k when `fov` is unset, since real lenses are overwhelmingly
+barrel and the confound is always positive — would also disable a working,
+tested capability: `test_lensdistortion.c` checks recovery of k = +0.15 on a
+translation path, where there is no rotation, hence no perspective term, and
+the pincushion estimate is genuinely correct. The estimator cannot tell the two
+situations apart without knowing the field of view. That trade is a product
+decision, so it is recorded here rather than made silently.
+
 ### The detector is not biased by the stretch — it is contaminated
 
 The obvious suspicion is that block matching, which assumes the mapping is a
@@ -181,9 +228,12 @@ so it passes the gate on its own without touching `maxUncertainty`. 110°
 improves but does not resolve; with only ~5 usable peripheral fields per frame
 the signal there is thin regardless.
 
-These defaults are **not changed**: they affect every existing user's `k`
-estimate, wide lens or not, and the 40° row shows the accuracy cost is real if
-small. The numbers are recorded so the trade is a decision rather than a guess.
+These defaults stay at 2.5 / 3. They affect every existing user's `k` estimate,
+wide lens or not, and the 40° row shows the accuracy cost is real if small; the
+project's position is that distortion detection should stay conservative and
+that a user who knows their lens sets `lensK` explicitly, which overrides the
+estimate. The numbers are recorded so the trade is a decision rather than a
+guess.
 
 ### On `maxUncertainty`, and why not simply raise it
 

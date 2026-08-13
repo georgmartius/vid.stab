@@ -91,6 +91,12 @@ typedef struct _vslensplanemap {
      comparisons against INFINITY are unreliable; readers test tDomD < 0.0. */
   double   tDomD;
   double   invRho2;     /* 1/rho^2 in luma-equivalent pixels^2                 */
+  /* Focal length in LUMA pixels for the rotational model, 0 for the
+     similarity one (VSTransformConfig.fov).  Set by lensEnsureMaps rather
+     than by vsLensPlaneMapInit: it is a property of the camera, not of the
+     lens map, and it has to reach vsLensMapBackward so the reference map and
+     the warp loops stay the same map. */
+  double   f;
   int      sxShift;     /* wsub: plane x units -> luma units is << sxShift     */
   int      syShift;     /* hsub                                                */
   int32_t  idxScaleU;   /* fp32: (N-1)/(tMaxU * rho^2), see vsLensLutFp        */

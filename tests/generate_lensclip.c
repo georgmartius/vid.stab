@@ -90,8 +90,13 @@ static void lcIdentityMap(const void* ctx, double xd, double yd,
    transformPacked -- the fixed-point path, which is what these tests
    actually execute; see the note on lcBackwardAffine below), so the two
    conventions agree. */
-static void lcRenderMapped(VSFrame* frame, const VSFrameInfo* fi,
-                           LCPointMap map, const void* ctx){
+/* Which tone the scene shows at a continuous point.  lcPatternTone is the one
+   this file's clip uses; generate_fovclip.c supplies an aperiodic variant for
+   the sequences that have to survive block matching. */
+typedef int (*LCToneFn)(double x, double y);
+
+static void lcRenderMappedTone(VSFrame* frame, const VSFrameInfo* fi,
+                               LCPointMap map, const void* ctx, LCToneFn tone){
   int x, y, i, j;
   for(y=0; y<fi->height; y++){
     for(x=0; x<fi->width; x++){
@@ -103,7 +108,7 @@ static void lcRenderMapped(VSFrame* frame, const VSFrameInfo* fi,
           double ox = x + (i + 0.5)/LC_SS - 0.5;
           double oy = y + (j + 0.5)/LC_SS - 0.5;
           map(ctx, ox, oy, &sx, &sy);
-          lcToneRGB(lcPatternTone(sx, sy), rgb);
+          lcToneRGB(tone(sx, sy), rgb);
           acc[0] += rgb[0]; acc[1] += rgb[1]; acc[2] += rgb[2];
         }
       }
@@ -113,6 +118,11 @@ static void lcRenderMapped(VSFrame* frame, const VSFrameInfo* fi,
                   (uint8_t)((acc[2] + LC_SS*LC_SS/2)/(LC_SS*LC_SS)));
     }
   }
+}
+
+static void lcRenderMapped(VSFrame* frame, const VSFrameInfo* fi,
+                           LCPointMap map, const void* ctx){
+  lcRenderMappedTone(frame, fi, map, ctx, lcPatternTone);
 }
 
 #define LC_NUM_FRAMES 6

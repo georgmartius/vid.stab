@@ -127,6 +127,21 @@ typedef struct _VSTransformConfig {
        VSLensCorrectOff, not lensK = 0.0 (though both give the same output,
        since U_0 and D_0 are the identity). */
     double            lensK;
+    /* Horizontal field of view of the frame, in degrees; 0 (the default)
+     * disables the rotational model and is bit-identical to the behaviour
+     * before it existed.
+     *
+     * With fov > 0 the camera motion is modelled as a rotation about the
+     * optical centre, H = K R K^-1 with f = (width/2)/tan(fov/2), instead of
+     * as a uniform translation.  The VSTransform fields are reused rather
+     * than extended: x and y become yaw and pitch scaled by f, so they stay
+     * in centre-pixels and smoothing, composition, maxShift and the .trf
+     * format all keep working unchanged.  See docs/fov_correction.md.
+     *
+     * The relevant angle is that of the stored, RECTILINEAR frame -- after
+     * any lens correction, and after any crop or anamorphic squeeze -- not
+     * the number on the lens barrel.  A wrong value is worse than 0. */
+    double            fov;
     /* The L1 optimal camera path (VSOptimalL1) has no parameters of its own:
      * it reads its zoom budget off zoom/optZoom and its horizon off smoothing,
      * see vsL1ConfigFromTransformConfig(). */

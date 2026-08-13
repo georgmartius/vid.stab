@@ -85,6 +85,9 @@ VSTransformConfig vsTransformGetDefaultConfig(const char* modName){
   /* Wobble is safe to default on: identity in, identity out. */
   conf.lensCorrection = VSLensCorrectWobble;
   conf.lensK          = 0.0;
+  /* Off: the rotational model needs a number only the user knows, and a wrong
+     one is worse than none.  See VSTransformConfig.fov. */
+  conf.fov            = 0.0;
   return conf;
 }
 
@@ -196,6 +199,14 @@ void lensEnsureMaps(VSTransformData* td){
       td->lensMapK = k;
       return;
     }
+  }
+  /* The camera's focal length, not the lens map's: it is copied onto every
+     plane's map so vsLensMapBackward computes the same map the warp loops
+     do.  Set here rather than in vsLensPlaneMapInit, which knows only about
+     distortion, and harmless when it stays 0. */
+  {
+    double f = focal_from_fov(td->conf.fov, td->fiSrc.width);
+    for(p=0; p<3; p++) td->lensMaps[p].f = f;
   }
   td->lensActive = td->lensMaps[0].active;
   td->lensMapK   = k;
@@ -526,14 +537,63 @@ static int lensFitsAtZoom(const VSLensPlaneMap* lm, const VSTransform* t0,
   return 1;
 }
 
+/* Largest excursion of the destination border under the rotational model,
+   as a factor of the source half-width and half-height, at zoom 0.
+
+   Zoom enters the backward map as a plain scale on the projected coordinate
+   (z = 1 - zoom/100 multiplying f*X/Z), so unlike the lens case there is no
+   fixed point to bisect for: the factor is measured once and inverted.  The
+   border is walked rather than just its corners for the reason spelled out
+   at VS_LENS_ZOOM_SAMPLES_PER_EDGE -- containment is per axis against a
+   rectangle, and the perspective term, like the radial one, can push a point
+   between two corners out while both corners stay in. */
+static double fovBorderExcursion(const VSTransform* t, double f,
+                                 int dw, int dh, int sw, int sh){
+  const int n = VS_LENS_ZOOM_SAMPLES_PER_EDGE;
+  double rb[9], worst = 1.0;
+  int e, j;
+  rotation_matrix_backward(t->x/f, t->y/f, t->alpha, rb);
+  for(e=0; e<4; e++){
+    for(j=0; j<n; j++){
+      double u = (double)j/(n-1);
+      double xd, yd, lx, ly, X, Y, Z, ex, ey;
+      switch(e){
+       case 0: xd = u*(dw-1);       yd = 0;               break;
+       case 1: xd = dw-1;           yd = u*(dh-1);        break;
+       case 2: xd = (1-u)*(dw-1);   yd = dh-1;            break;
+       default:xd = 0;              yd = (1-u)*(dh-1);    break;
+      }
+      lx = xd - dw/2.0; ly = yd - dh/2.0;
+      X = rb[0]*lx + rb[1]*ly + rb[2]*f;
+      Y = rb[3]*lx + rb[4]*ly + rb[5]*f;
+      Z = rb[6]*lx + rb[7]*ly + rb[8]*f;
+      ex = fabs(f*X/Z) / (sw/2.0);
+      ey = fabs(f*Y/Z) / (sh/2.0);
+      if(ex > worst) worst = ex;
+      if(ey > worst) worst = ey;
+    }
+  }
+  return worst;
+}
+
 double vsTransformRequiredZoom(VSTransformData* td, const VSTransform* t){
   int dw = td->fiDest.width, dh = td->fiDest.height;
   int sw = td->fiSrc.width,  sh = td->fiSrc.height;
   double lo, hi;
   int i;
   lensEnsureMaps(td);
-  if(!td->lensActive)
+  if(!td->lensActive){
+    /* The closed form below is a similarity-model approximation that never
+       goes through the map, so it does not track the rotational one and
+       would under-zoom -- black borders, silently.  With fov set, measure
+       instead.  (The same argument says the closed form is only approximate
+       for the similarity model too, but it is what every existing output was
+       computed with, so it stays.) */
+    double f = focal_from_fov(td->conf.fov, td->fiSrc.width);
+    if(f > 0.0)
+      return 100.0*(fovBorderExcursion(t, f, dw, dh, sw, sh) - 1.0);
     return transform_get_required_zoom(t, td->fiSrc.width, td->fiSrc.height);
+  }
   /* Zoom sits inside M, so the required zoom is a fixed point rather than a
      formula.  Overshoot is monotone in zoom, so bisect. */
   lo = 0.0; hi = 60.0;

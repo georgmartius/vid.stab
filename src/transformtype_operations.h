@@ -59,10 +59,46 @@ typedef struct _preparedtransform {
   double zsin_a;
   double c_x;
   double c_y;
+  /* Rotational model (VSTransformConfig.fov).  f <= 0 selects the similarity
+     model and leaves r untouched, which is the default and is what keeps the
+     old behaviour bit-identical rather than merely equivalent. */
+  double f;        /* focal length in pixels */
+  double z;        /* 1 + zoom/100, which zcos_a/zsin_a fold in for f <= 0 */
+  double r[9];     /* the FORWARD rotation; see rotation_matrix_backward */
 } PreparedTransform;
+
+/* Focal length in pixels from a horizontal field of view in degrees, over a
+   frame of the given width.  Returns 0 for fovDeg <= 0, which every consumer
+   reads as "similarity model". */
+VS_API double focal_from_fov(double fovDeg, int width);
+
+/* The rotation of the BACKWARD map: the one a warp loop wants, taking a
+   destination point to the source point it shows, as p_s = K r K^-1 p_d.
+
+   r = Ry(-yaw) . Rx(pitch) . Rz(roll), and both the order and that leading
+   minus are load-bearing:
+
+     - rightmost acts first, so roll is applied before the two terms that
+       read as translation at long focal length.  That is rotate-then-
+       translate, matching the affine the similarity path computes;
+     - Ry takes -yaw because K Ry(w) K^-1 shifts a point by +w f while the
+       affine shifts it by -t.x.
+
+   Get either wrong and the model still looks plausible -- it degenerates to
+   something translation-like -- which is why tests/test_fovmodel.c asserts on
+   the SHAPE of the convergence rather than on one tolerance.
+
+   The forward map is the same thing with r transposed, rotations being
+   orthogonal; prepare_transform_fov stores that transpose. */
+VS_API void rotation_matrix_backward(double yaw, double pitch, double roll,
+                                     double r[9]);
 
 // transforms vector
 VS_API PreparedTransform prepare_transform(const VSTransform* t, const VSFrameInfo* fi);
+/* As prepare_transform, but modelling the motion as a rotation about the
+   optical centre at focal length f.  f <= 0 is exactly prepare_transform. */
+VS_API PreparedTransform prepare_transform_fov(const VSTransform* t,
+                                               const VSFrameInfo* fi, double f);
 // transforms vector (attention, only integer)
 VS_API Vec transform_vec(const PreparedTransform* t, const Vec* v);
 VS_API void transform_vec_double(double *x, double* y, const PreparedTransform* t, const Vec* v);

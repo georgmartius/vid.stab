@@ -59,7 +59,14 @@ int vsLocalmotions2Transforms(VSTransformData* td,
   int useLens = 0;
   if(td->conf.estimateLensDistortion && td->conf.simpleMotionCalculation==0){
     VSLensEstimateConfig lcfg = vsLensEstimateGetDefaultConfig();
-    VSLensEstimate le = vsEstimateLensDistortion(&td->fiSrc, motions, &lcfg);
+    VSLensEstimate le;
+    /* k and the perspective term are confounded -- both expand the periphery
+       -- so the estimator has to know the field of view or it explains one
+       with the other.  Left unset it returned the wrong sign by 70 degrees
+       on synthetic footage, and reported it as determined, because its
+       confidence gate keys on scatter and this is bias. */
+    lcfg.f = focal_from_fov(td->conf.fov, td->fiSrc.width);
+    le = vsEstimateLensDistortion(&td->fiSrc, motions, &lcfg);
     /* |k| below this shifts a corner pixel by well under a pixel, so acting on
        it would only add noise. */
     useLens = le.determined && fabs(le.k) > 0.01;
@@ -82,6 +89,11 @@ int vsLocalmotions2Transforms(VSTransformData* td,
       if(useLens){
         double residual = 0;
         VSLensEstimateConfig lcfg = vsLensEstimateGetDefaultConfig();
+        /* Same model as the estimate above, and as calcTransformQuality uses
+           on the other branch: this is the path a clip with a determined k
+           takes, so without it fov would be silently dropped for exactly the
+           footage that most needs it. */
+        lcfg.f = focal_from_fov(td->conf.fov, td->fiSrc.width);
         trans->ts[i]=vsLensMotionsToTransform(&td->fiSrc, &lens,
                                               VSMLMGet(motions,i), &lcfg, &residual);
         if(f) fprintf(f,"0 %f %f %f %f %i\n#\t\t\t\t\t %f lens\n",
@@ -131,7 +143,16 @@ double calcTransformQuality(VSArray params, void* dat){
   VSTransform t = vsArrayToTransform(params);
   double error=0;
 
-  PreparedTransform pt= prepare_transform(&t, &gd->td->fiSrc);
+  /* The one line that switches the fit from the similarity model to the
+     rotational one.  Nothing else in the optimiser changes: the parameters
+     stay (x, y, alpha, zoom) in centre-pixels, so meanMotions is still a
+     usable seed and the step sizes are still the right size.  The detector
+     side needs no change at all -- it already produces displacements on a
+     spatial grid, and the gradient ACROSS that grid is exactly the signal
+     that tells a rotation from a translation. */
+  PreparedTransform pt= prepare_transform_fov(&t, &gd->td->fiSrc,
+                                              focal_from_fov(gd->td->conf.fov,
+                                                             gd->td->fiSrc.width));
   int num = 1; // we start with 1 to avoid div by zero
   for (int i = 0; i < num_motions; i++) {
     if(gd->missmatches.dat[i]>=0){

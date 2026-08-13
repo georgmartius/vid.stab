@@ -12,14 +12,14 @@
  *  perspective divide leaves a residual that grows as the square of the
  *  distance from the optical centre and as the reciprocal of the focal
  *  length, which is exactly why the similarity model fails on wide glass and
- *  exactly what this clip is built to expose.  See docs/fov_correction.md.
+ *  exactly what this clip is built to expose.  See docs/fov-model.md.
  *
  *  Everything about the scene, the supersampled rendering and the ground
  *  truth being the pattern function itself carries over unchanged from
  *  generate_lensclip.c, whose statics this file reuses; it must be included
  *  after it.  The lens is composed in the same position too, so a clip can
  *  carry barrel distortion and rotation at once -- the pairing the field of
- *  view parameter is only well defined for (docs/fov_correction.md, line 6).
+ *  view parameter is only well defined for.
  */
 
 #define FC_NUM_FRAMES 6
@@ -172,8 +172,8 @@ static void fcPose(int i, double f, double r[9]){
 /* The similarity transform the step from i-1 to i degenerates to at long
    focal length: yaw and pitch scaled into centre-pixels by f, roll straight
    through as alpha.  This is the ground truth the fit is scored against, and
-   it is the same reinterpretation of the VSTransform fields that
-   docs/fov_correction.md proposes for the library itself. */
+   it is the same reinterpretation of the VSTransform fields the library makes
+   itself; see VSTransformConfig.fov. */
 static VSTransform fcStepTransform(int i, double f){
   double yaw, pitch, roll;
   fcStepAngles(i, f, &yaw, &pitch, &roll);

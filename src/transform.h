@@ -128,15 +128,14 @@ typedef struct _VSTransformConfig {
        since U_0 and D_0 are the identity). */
     double            lensK;
     /* Horizontal field of view of the frame, in degrees; 0 (the default)
-     * disables the rotational model and is bit-identical to the behaviour
-     * before it existed.
+     * selects the similarity model.
      *
      * With fov > 0 the camera motion is modelled as a rotation about the
      * optical centre, H = K R K^-1 with f = (width/2)/tan(fov/2), instead of
      * as a uniform translation.  The VSTransform fields are reused rather
      * than extended: x and y become yaw and pitch scaled by f, so they stay
      * in centre-pixels and smoothing, composition, maxShift and the .trf
-     * format all keep working unchanged.  See docs/fov_correction.md.
+     * format all keep working unchanged.  See docs/fov-model.md.
      *
      * The relevant angle is that of the stored, RECTILINEAR frame -- after
      * any lens correction, and after any crop or anamorphic squeeze -- not

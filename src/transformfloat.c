@@ -409,8 +409,8 @@ int _FLT(transformPlanar)(VSTransformData* td, VSTransform t)
        picture, so it is the full-resolution focal length and the homography
        is applied in LUMA units -- the plane's offsets are scaled up by
        sxf/syf going in and back down coming out, exactly as the lens map
-       already does.  Scaling f per plane instead would be the chroma bug
-       class of 9e2f8b7: invisible on 4:2:0, wrong on 4:2:2. */
+       already does.  Scaling f per plane instead would be issue #79's bug
+       class: invisible on 4:2:0, wrong on 4:2:2. */
     double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
     double rb[9];
     if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);

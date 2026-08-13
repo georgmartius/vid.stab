@@ -131,11 +131,10 @@ static int lensSolve4(double A[16], double b[4], double x[4]){
 /* The forward camera map on a CENTRED point: where a source point ends up
    before the lens redistorts it.  Every model site in this file goes through
    this one struct so that the fit, its Jacobian and the residual used for
-   outlier rejection cannot drift apart -- which is exactly how the estimator
-   came to disagree with the transform pass in the first place.
+   outlier rejection cannot drift apart.
 
-   f <= 0 is the similarity, unchanged and bit-identical to what it always
-   was.  f > 0 is the rotational model, reading the same four parameters:
+   f <= 0 is the similarity model.  f > 0 is the rotational one, reading the
+   same four parameters:
    (tx,ty) are yaw and pitch scaled by f, and (c,s) carry roll and zoom as
    z*cos(alpha), z*sin(alpha) -- the same reinterpretation prepare_transform_fov
    makes, so the VSTransform this fit produces means the same thing to the
@@ -372,8 +371,8 @@ VSLensEstimateConfig vsLensEstimateGetDefaultConfig(void){
   c.rejectOutliers = 1;
   c.outlierStddevs = 2.5;
   c.outlierPasses  = 3;
-  /* No field of view: the similarity model, exactly as before.  Set from
-     VSTransformConfig.fov by vsLocalmotions2Transforms. */
+  /* 0 selects the similarity model; set from VSTransformConfig.fov by
+     vsLocalmotions2Transforms. */
   c.f = 0.0;
   return c;
 }

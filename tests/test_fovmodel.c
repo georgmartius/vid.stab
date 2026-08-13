@@ -7,16 +7,16 @@
  *  a genuine camera rotation at a known field of view, so the ground truth is
  *  an exact rotation and not an approximation of one.  Two things are checked.
  *
- *  1. That the rotational model IS the current model in the long lens limit
- *     (test_fov_degenerates_to_similarity).  This is a statement about
+ *  1. That the rotational model IS the similarity model in the long lens
+ *     limit (test_fov_degenerates_to_similarity).  This is a statement about
  *     geometry only, it needs no detector, and it is what licenses fov = 0
- *     staying bit identical to today.
+ *     keeping the similarity path bit identical.
  *
- *  2. That it stops being the current model as the lens widens, by the amount
+ *  2. That it parts from the similarity model as the lens widens, by the amount
  *     the geometry predicts, and that this is visible end to end through real
  *     motion detection and the real fit (test_fov_similarity_gap).
  *
- *  See docs/fov_correction.md.
+ *  See docs/fov-model.md.
  */
 
 /* --- 1. the long lens limit ---------------------------------------------- */
@@ -38,9 +38,8 @@ static void fovRotPoint(double yaw, double pitch, double roll, double f,
 
    The rotation is the one that the similarity transform t degenerates FROM:
    yaw = t.x/f, pitch = t.y/f, roll = t.alpha.  Holding t fixed while f grows
-   is the limit that matters -- the same picture motion, taken through an ever
-   longer lens -- and it is the limit docs/fov_correction.md claims is
-   exact. */
+   is the limit that matters: the same picture motion, taken through an ever
+   longer lens. */
 static double fovMaxModelGap(VSTransform t, double f){
   double worst = 0;
   int i, j;
@@ -174,12 +173,12 @@ static FovErr fovFitClip(double fovDeg, double k, double cfgFov, const char* lab
      50 deg   1.08 px
     110 deg   3.65 px   -- four and a half times the floor
 
-   The wide bound is what fails today and passes once VSTransformConfig.fov
-   is honoured; the narrow bound is what guards against "fixing" it by
-   breaking the common case.  Both are set with roughly 50 percent headroom
-   over the measured values, which is the room detector noise needs and no
-   more -- a tolerance loose enough to swallow the effect would make the test
-   decorative. */
+   All three fit with fov = 0, so this measures the similarity model's own
+   limit; test_fov_model_recovers is where the rotational model closes it.
+   The wide bound asserts the gap is real, the narrow one guards the common
+   case.  Both carry roughly 50 percent headroom over the measured values --
+   the room detector noise needs and no more, since a tolerance loose enough
+   to swallow the effect would make the test decorative. */
 static void test_fov_similarity_gap(void){
   FovErr narrow = fovFitClip( 10.0, 0.0, 0.0, "fov-narrow");
   FovErr mid    = fovFitClip( 50.0, 0.0, 0.0, "fov-mid");
@@ -203,15 +202,12 @@ static void test_fov_similarity_gap(void){
    against 3.65 -- and that is not noise, it is the two effects partly
    cancelling.  Perspective pushes the periphery outward relative to a
    translation; barrel pulls it inward.  Uncorrected wide footage therefore
-   flatters the similarity model, and it follows that correcting the lens
-   alone, without also modelling the field of view, can make the fit WORSE
-   than leaving both wrong.  That is a real caveat for anyone enabling lens
-   correction on wide footage today, and it is an argument for the sequencing
-   docs/fov_correction.md already asks for rather than against it.
+   flatters the similarity model, so correcting the lens alone, without also
+   setting the field of view, can make the fit WORSE than leaving both wrong.
+   Worth knowing before enabling lens correction on wide footage.
 
-   Measurement only, no target asserted: what the number should be once both
-   corrections are applied is the subject of the fov implementation, and
-   pinning it here beforehand would only enshrine today's accident. */
+   Measurement only, no target asserted: the number is an accident of how far
+   the two effects happen to cancel, not a property worth pinning. */
 static void test_fov_with_lens(void){
   FovErr bare = fovFitClip(110.0,  0.0, 0.0, "fov-wide-nolens");
   FovErr lens = fovFitClip(110.0, -0.25, 0.0, "fov-wide-barrel");

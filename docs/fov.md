@@ -1,8 +1,8 @@
 # Field of view, and why wide-angle footage wobbles
 
 Written 2026-08-09, from the discussion in #139 ("Accounting of Field of View
-for 3D deshaking"). This is the background note; the implementation plan lives
-in `fov_correction.md`.
+for 3D deshaking"). This is the background note; `fov-model.md` describes the
+model that was built from it.
 
 ## The symptom
 
@@ -26,8 +26,8 @@ of the glass, it is measurable, and it is correctable — ffmpeg's
 **2. Rectilinear projection non-linearity.** This is the one that surprises
 people: it happens with a **perfect, distortion-free** lens. It is not an
 optical defect at all, it is the geometry of perspective projection, and no
-amount of lens correction removes it. This is the subject of #139 and of the
-plan in `fov_correction.md`.
+amount of lens correction removes it. This is the subject of #139 and of
+`fov-model.md`.
 
 **3. Rolling shutter.** The sensor does not expose all rows at the same
 instant, so camera motion during readout shears and wobbles the frame

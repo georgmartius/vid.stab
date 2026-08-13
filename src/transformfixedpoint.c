@@ -397,10 +397,9 @@ int transformPacked(VSTransformData* td, VSTransform t)
                   ? INT64_MAX : (int64_t)domR2d;
 
   /* Rotational model (VSTransformConfig.fov).  The coordinates are computed
-     in double and handed to the existing fixed-point interpolator, which is
-     the cheap half of the plan in docs/fov_correction.md: a per-pixel divide
-     in 16.16 is unpleasant, interpolation dominates the cost anyway, and
-     nothing here is on the fov = 0 path so no existing output moves. */
+     in double and handed to the fixed-point interpolator: a per-pixel divide
+     in 16.16 is unpleasant and interpolation dominates the cost anyway.
+     Nothing here is on the fov = 0 path. */
   double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
   double rb[9];
   if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);

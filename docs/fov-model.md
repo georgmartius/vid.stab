@@ -6,8 +6,8 @@ uniformly across the frame — and on a long lens that is very nearly true. On
 wide glass it is not, and this document describes the option that fixes it and
 the conditions under which it helps.
 
-Implemented 2026-08-11 for issue #139. The planning document that preceded it
-is `fov_correction.md`; this one describes what was built.
+Implemented 2026-08-11 for issue #139. `fov.md` is the background note on why
+wide-angle footage wobbles in the first place.
 
 ## The geometry
 

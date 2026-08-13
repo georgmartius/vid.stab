@@ -1,10 +1,17 @@
 /* bench_transform.c
  *
- * Timing for the transform stage, in particular the packed (RGB24/BGR24/RGBA)
- * path, whose per-pixel interpolation runs through interpolateN().
+ * Timing for the transform stage: the packed (RGB24/BGR24/RGBA) path, whose
+ * per-pixel interpolation runs through interpolateN(), and the planar path
+ * that ffmpeg actually uses -- the latter across the two axes that add
+ * per-pixel work to the warp, lens correction (off/wobble/full) and the
+ * rotational fov model.
  * Not part of the test suite -- a measurement tool.
  *
  * Usage: bench_transform [width height nframes]
+ *        bench_transform verify
+ *        bench_transform matrix [width height nframes]
+ *
+ * Thread count comes from OMP_NUM_THREADS, as everywhere else in vid.stab.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,18 +84,33 @@ static VSTransform mk_transform(void) {
 
 typedef int (*trfn)(VSTransformData*, VSTransform);
 
-static void bench_t(const char* name, trfn fn, VSPixelFormat pf,
-                    int width, int height, int nframes,
-                    VSTransform t, int crop) {
+/* The extra per-pixel work the warp can be asked to do, on top of the plain
+   affine backward map.  k and fov are only consulted when the corresponding
+   mode is on, so a single struct describes every cell of the matrix. */
+typedef struct {
+  VSLensCorrectMode lens;
+  double            k;     /* barrel is negative; |k| <= 0.01 is treated as off */
+  double            fov;   /* degrees; 0 disables the rotational model         */
+} benchmode;
+
+static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
+                           int width, int height, int nframes,
+                           VSTransform t, int crop, benchmode m) {
   VSFrameInfo fi;
   VSFrame src, dest;
   VSTransformData td;
   VSTransformConfig conf = vsTransformGetDefaultConfig("bench");
-  double t0, t1;
+  double t0, t1, ms;
   int i;
   unsigned long long chk = 0;
 
-  conf.crop = crop;
+  conf.crop           = crop;
+  conf.lensCorrection = m.lens;
+  conf.lensK          = m.k;
+  conf.fov            = m.fov;
+  /* The bench drives the warp directly with a fixed transform, so the zoom
+     the lens would need is never solved for; keep the frame geometry alone
+     and time exactly the loop under test. */
   vsFrameInfoInit(&fi, width, height, pf);
   vsFrameAllocate(&src, &fi);
   vsFrameAllocate(&dest, &fi);
@@ -112,13 +134,27 @@ static void bench_t(const char* name, trfn fn, VSPixelFormat pf,
   }
   t1 = now_s();
 
+  ms  = (t1 - t0) * 1000.0 / nframes;
   chk = frame_hash(&dest, &fi);
-  printf("%-26s %4dx%-4d  %8.3f ms/frame   [%016llx]\n", name, width, height,
-         (t1 - t0) * 1000.0 / nframes, chk);
+  /* name == NULL: the caller formats its own row and only wants the timing */
+  if (name)
+    printf("%-26s %4dx%-4d  %8.3f ms/frame   [%016llx]\n", name, width, height,
+           ms, chk);
+  else
+    printf(" %8.3f   [%016llx]", ms, chk);   /* caller closes the row */
 
   vsTransformDataCleanup(&td);
   vsFrameFree(&src);
   vsFrameFree(&dest);
+  return ms;
+}
+
+/* The plain no-lens, no-fov case, which is what every pre-existing row uses. */
+static void bench_t(const char* name, trfn fn, VSPixelFormat pf,
+                    int width, int height, int nframes,
+                    VSTransform t, int crop) {
+  benchmode m = { VSLensCorrectOff, 0.0, 0.0 };
+  bench_t_mode(name, fn, pf, width, height, nframes, t, crop, m);
 }
 
 /* A set of transforms chosen to hit every branch of the interpolator:
@@ -150,20 +186,64 @@ static void verify(void) {
   }
 }
 
+/* The cost of each optional per-pixel stage, relative to the plain affine warp,
+   on the planar path -- the one ffmpeg runs.  k = -0.15 is a realistic action
+   camera barrel; fov = 90 a realistic wide lens.  Both are on the "this
+   actually costs something" end of their range, deliberately: a mode that is
+   cheap at its worst setting is cheap everywhere. */
+static void matrix(int width, int height, int nframes) {
+  VSTransform t = mk_transform();
+  benchmode modes[5] = {
+    { VSLensCorrectOff,    0.0,   0.0 },
+    { VSLensCorrectWobble, -0.15, 0.0 },
+    { VSLensCorrectFull,   -0.15, 0.0 },
+    { VSLensCorrectOff,    0.0,   90.0 },
+    { VSLensCorrectFull,   -0.15, 90.0 },
+  };
+  const char* names[5] = {
+    "planar lens=off",
+    "planar lens=wobble",
+    "planar lens=full",
+    "planar fov=90",
+    "planar fov=90 lens=full",
+  };
+  double base = 0.0;
+  int i;
+
+  printf("\n-- planar YUV420P, %dx%d, bilinear, %d frames --\n", width, height, nframes);
+  printf("%-26s %9s   %-18s %s\n", "mode", "ms/frame", "frame hash", "vs lens=off");
+  for (i = 0; i < 5; i++) {
+    double ms;
+    printf("%-26s", names[i]);
+    ms = bench_t_mode(NULL, transformPlanar, PF_YUV420P,
+                      width, height, nframes, t, 0, modes[i]);
+    if (i == 0) base = ms;
+    printf("  %5.2fx\n", ms / base);
+  }
+}
+
 int main(int argc, char** argv) {
   int width = 1920, height = 1080, nframes = 20;
   VSTransform t = mk_transform();
+  int arg0 = 1;
 
   if (argc >= 2 && strcmp(argv[1], "verify") == 0) {
     verify();
     return 0;
   }
-  if (argc >= 3) {
-    width  = atoi(argv[1]);
-    height = atoi(argv[2]);
+  if (argc >= 2 && strcmp(argv[1], "matrix") == 0)
+    arg0 = 2;
+  if (argc >= arg0 + 2) {
+    width  = atoi(argv[arg0]);
+    height = atoi(argv[arg0 + 1]);
   }
-  if (argc >= 4)
-    nframes = atoi(argv[3]);
+  if (argc >= arg0 + 3)
+    nframes = atoi(argv[arg0 + 2]);
+
+  if (arg0 == 2) {
+    matrix(width, height, nframes);
+    return 0;
+  }
 
   bench_t("packed RGB24 fixedpoint", transformPacked, PF_RGB24,
           width, height, nframes, t, 0);
@@ -173,5 +253,6 @@ int main(int argc, char** argv) {
           width, height, nframes, t, 0);
   bench_t("planar YUV420 fixedpoint", transformPlanar, PF_YUV420P,
           width, height, nframes, t, 0);
+  matrix(width, height, nframes);
   return 0;
 }

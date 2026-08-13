@@ -713,8 +713,14 @@ int transformPlanar(VSTransformData* td, VSTransform t)
           }
         }
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
-        // inlining the interpolation function would bring 10%
-        //  (but then we cannot use the function pointer anymore...)
+        /* This used to read "inlining the interpolation function would bring
+           10% (but then we cannot use the function pointer anymore...)".  It
+           was tried: calling interpolateBiLin directly for the default type
+           and keeping the pointer for the other three is consistently SLOWER
+           on a modern compiler -- 20.7 -> 23.2 ms/frame at 1080p lens=full,
+           and slower at every thread count.  The indirect call predicts
+           perfectly, while the inlined body costs I-cache and registers in a
+           loop that is already register-hungry.  See docs/simd.md. */
         td->interpolate(dest, x_s, y_s, dat_1,
                         td->src.linesize[plane], sw, sh,
                         td->conf.crop ? black : *dest);

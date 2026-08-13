@@ -20,8 +20,10 @@ the time is. Two kernels dominate it:
 all fields and offsets), so it is the only thing worth writing four times.
 
 The blur (`src/boxblur.c`) has no intrinsics but is parallelised with OpenMP and
-restructured so the compiler can auto-vectorize it; the transform stage uses
-fixed point arithmetic and is not SIMD at all.
+restructured so the compiler can auto-vectorize it. The transform stage has no
+intrinsics either; it is parallelised over destination rows and its backward
+map is stepped rather than recomputed per pixel — see "transform" below, which
+also says what SIMD would be worth there and why it has not been written.
 
 | File | Contents |
 |---|---|
@@ -251,6 +253,103 @@ The rewrite is bit-identical to the original including its edge behaviour, and
 algorithm over ~1200 geometries, with sizes straddling 265/267 so that the
 reciprocal and the division fallback are both exercised. (It used to be a
 timing harness that asserted nothing.)
+
+## transform
+
+The warp had never been parallelised — the one stage in the library that still
+ran on a single core, even after the motion search and the blur had been
+scaled. Every destination row is independent (it writes only its own row and
+reads only the source frame and the read-only lens map; `td->src` and
+`td->destbuf` can never alias, because `vsTransformPrepare` gives an in-place
+caller a private copy), so this was a pragma, not a rewrite.
+
+The other change is arithmetic. Three quantities in the inner loop are
+polynomials in x and were being evaluated from scratch at every pixel:
+
+| | why it is a polynomial in x |
+|---|---|
+| `x_s`, `y_s` | affine on the plain similarity path: `dx` is `x_d1<<16`, whose low bits are zero, so `(zcos_a*dx + zsin_xy*dy)>>16` splits exactly into `zcos_a*x_d1 + (zsin_xy*dy>>16)` |
+| `r2u` | wobble's undistort radius — its input is the destination pixel itself, so it is a quadratic |
+| `r2d` | the distort radius, a quadratic wherever `x_s`/`y_s` are affine: the plain path, but not behind wobble (non-linear) or fov (projective) |
+
+A quadratic is generated exactly by two running additions, so six 64-bit
+multiplies per pixel became six 64-bit adds. All integer, so these are the same
+value sequences *to the bit* — `tests/test_transform_incremental.c` checks all
+three against verbatim copies of the expressions they replace, over every pixel
+of eight geometries including 4:2:2, 4:4:0 and 4:1:1. The asymmetric formats are
+the point: on 4:2:0 both axes subsample equally, so a step constant that
+confused them would still pass.
+
+The fov path separately lost three of its four per-pixel divisions. It computed
+`z*fFov*X/Z/(1<<lsx)` per axis — two divisions each, three of them by
+quantities that never change. Only Z varies, so the constants fold into one
+factor per axis and a single reciprocal of Z serves both.
+
+### Measurements — Ryzen 9 9900X (Zen 5, 12c/24t), GCC 15.2
+
+1080p YUV420P, bilinear, ms/frame, best of three (`bench/bench_transform.c`).
+"before" is the state prior to this work; every frame hash is unchanged
+throughout, so all of it is bit-identical.
+
+| mode | 1 thread before → after | 24 threads before → after | total |
+|---|---|---|---|
+| lens=off | 11.3 → 9.1 | 10.5 → 0.93 | **11.3x** |
+| lens=full | 20.7 → 16.5 | 20.6 → 1.47 | **14.1x** |
+| lens=wobble | 31.3 → 29.2 | 31.0 → 2.44 | **12.8x** |
+| fov=90 | 19.8 → 16.1 | 18.9 → 1.40 | **14.1x** |
+| fov=90 lens=full | 32.5 → 29.3 | 33.4 → 2.60 | **12.5x** |
+
+Relative cost of the optional stages, 1080p / 24 threads: wobble 2.6x the plain
+warp, full 1.6x, fov 1.5x. **Wobble costs more than full**, which looks backwards
+until you count LUT stages: full undistorts once, wobble undistorts *and*
+redistorts. At 4K the ratios compress (2.6x / 1.5x / 1.5x) as the stage moves
+toward memory bound.
+
+### What SIMD would be worth, and why it is not written
+
+`VS_Zero` keeps the identical address arithmetic and makes the interpolation
+nearly free, so benchmarking a mode against its nearest-neighbour twin splits
+the per-pixel cost in two. 1080p, one thread:
+
+| mode | bilinear | nearest | interpolation | addressing |
+|---|---|---|---|---|
+| lens=off | 9.1 | 4.3 | 4.8 | 4.3 |
+| lens=full | 16.5 | 8.7 | 7.8 | 8.7 |
+| lens=wobble | 29.2 | 20.3 | 8.9 | **20.3** |
+
+The two modes are not the same problem. With the lens off the split is about
+even, so a vectorized bilinear kernel would be the thing to write. With wobble
+on, 70% of the time goes on deciding *where* to sample — two dependent LUT
+lookups — and vectorizing the interpolator alone would cap out at ~30%.
+
+Both halves are gathers. The bilinear fetch wants `_mm256_i32gather_epi32`
+twice (two rows x 8 pixels, each 32-bit word carrying both horizontal
+neighbours); the lens stage wants a gather into `gU`/`gD`, which at 1024 x
+int32 = 4 KB sits in L1 and should gather well. A 2-3x on the addressing half
+looks reachable.
+
+It is not written because the scalar work above landed first and changed the
+arithmetic: at 24 threads 1080p now warps in 0.9-2.6 ms/frame, against 4.4 ms
+for motion detection on the same machine, so the transform is no longer the
+stage that decides throughput. The measurements are here so that the case can
+be re-made if it becomes one — at 4K, or on a machine with fewer cores.
+
+There is also a cheaper algorithmic option for wobble specifically, which is
+where the remaining cost is concentrated. Its undistort stage depends only on
+the destination pixel and k — **not on the transform** — so `g` could be
+computed once per (k, plane geometry) and reused for every frame of the clip,
+turning two dependent LUT lookups into one sequential load. At 1080p that is a
+12 MB table (4 bytes/px over luma and chroma) streamed per frame instead of
+recomputed, which trades ~20 ms of compute for a few ms of bandwidth; at 4K the
+table is 48 MB and the trade needs re-measuring before it is believed.
+
+One thing that was tried and rejected: calling `interpolateBiLin` directly
+instead of through `td->interpolate`, which the source had recommended for
+years ("inlining the interpolation function would bring 10%"). Measured, it is
+consistently *slower* — 20.7 → 23.2 ms on lens=full, and slower at both thread
+counts — because the indirect call predicts perfectly while the inlined body
+costs I-cache and registers in a loop that is already register-hungry. The
+comment has been corrected in place.
 
 ## Reproducing
 

@@ -94,6 +94,7 @@ typedef struct {
   VSLensCorrectMode lens;
   double            k;     /* barrel is negative; |k| <= 0.01 is treated as off */
   double            fov;   /* degrees; 0 disables the rotational model         */
+  VSInterpolType    interp;
 } benchmode;
 
 static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
@@ -111,6 +112,7 @@ static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
   conf.lensCorrection = m.lens;
   conf.lensK          = m.k;
   conf.fov            = m.fov;
+  conf.interpolType   = m.interp;
   /* The bench drives the warp directly with a fixed transform, so the zoom
      the lens would need is never solved for; keep the frame geometry alone
      and time exactly the loop under test. */
@@ -171,7 +173,7 @@ static double bench_t_mode(const char* name, trfn fn, VSPixelFormat pf,
 static void bench_t(const char* name, trfn fn, VSPixelFormat pf,
                     int width, int height, int nframes,
                     VSTransform t, int crop) {
-  benchmode m = { VSLensCorrectOff, 0.0, 0.0 };
+  benchmode m = { VSLensCorrectOff, 0.0, 0.0, VS_BiLinear };
   bench_t_mode(name, fn, pf, width, height, nframes, t, crop, m);
 }
 
@@ -211,26 +213,35 @@ static void verify(void) {
    cheap at its worst setting is cheap everywhere. */
 static void matrix(int width, int height, int nframes) {
   VSTransform t = mk_transform();
-  benchmode modes[5] = {
-    { VSLensCorrectOff,    0.0,   0.0 },
-    { VSLensCorrectWobble, -0.15, 0.0 },
-    { VSLensCorrectFull,   -0.15, 0.0 },
-    { VSLensCorrectOff,    0.0,   90.0 },
-    { VSLensCorrectFull,   -0.15, 90.0 },
+  benchmode modes[8] = {
+    { VSLensCorrectOff,    0.0,   0.0,  VS_BiLinear },
+    { VSLensCorrectWobble, -0.15, 0.0,  VS_BiLinear },
+    { VSLensCorrectFull,   -0.15, 0.0,  VS_BiLinear },
+    { VSLensCorrectOff,    0.0,   90.0, VS_BiLinear },
+    { VSLensCorrectFull,   -0.15, 90.0, VS_BiLinear },
+    /* Same address arithmetic, a near-free interpolator: the gap between
+       these and their bilinear twins above is what the interpolation itself
+       costs, i.e. what vectorizing only the interpolator could win. */
+    { VSLensCorrectOff,    0.0,   0.0,  VS_Zero },
+    { VSLensCorrectWobble, -0.15, 0.0,  VS_Zero },
+    { VSLensCorrectFull,   -0.15, 0.0,  VS_Zero },
   };
-  const char* names[5] = {
+  const char* names[8] = {
     "planar lens=off",
     "planar lens=wobble",
     "planar lens=full",
     "planar fov=90",
     "planar fov=90 lens=full",
+    "  nearest lens=off",
+    "  nearest lens=wobble",
+    "  nearest lens=full",
   };
   double base = 0.0;
   int i;
 
   printf("\n-- planar YUV420P, %dx%d, bilinear, %d frames --\n", width, height, nframes);
   printf("%-26s %9s   %-18s %s\n", "mode", "ms/frame", "frame hash", "vs lens=off");
-  for (i = 0; i < 5; i++) {
+  for (i = 0; i < 8; i++) {
     double ms;
     printf("%-26s", names[i]);
     ms = bench_t_mode(NULL, transformPlanar, PF_YUV420P,

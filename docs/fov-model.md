@@ -94,6 +94,32 @@ model error. Told the field of view, the 110° clip is fitted *better than that
 floor* — the perspective term is removed essentially completely, and what is
 left is measurement noise.
 
+## In short
+
+If you set `fov` correctly, two things get fixed at once:
+
+1. **The camera motion is measured correctly.** On a 110° clip the worst
+   per-frame error drops from 3.65 px to 0.43 px.
+2. **The lens distortion `k` is estimated correctly.** Told the field of view,
+   the estimator recovers `k` to within 0.02 for every distortion strength
+   tested, from a strong barrel of −0.25 down to a lens with none at all.
+
+If you leave `fov` at 0 on wide footage, both go wrong — and the second goes
+wrong quietly, because the estimator reports high confidence in a number that
+is simply biased.
+
+The k recovery holds through the real detector up to about **70°**, which
+covers everything from a telephoto to a 24 mm wide lens — that is, most
+footage. Beyond that it degrades, and the limit there is the detector, not the
+model: at 110° the estimator gets `k` right when handed exact measurements, and
+wrong when handed the detector's, because too many of the measurements at the
+edge of a very wide frame are simply mismatched.
+
+One wrinkle at the top of that range: at 70° the recovered `k` is accurate
+(−0.2473 against a true −0.25) but its uncertainty just exceeds the confidence
+threshold, so it is reported "not determined" and not applied. Accurate, but
+discarded.
+
 ### Interaction with lens distortion estimation
 
 `k` is estimated from the local motions before the transforms are fitted, and
@@ -299,6 +325,40 @@ two partly cancel.
 The consequence is worth stating plainly: **correcting the lens alone, without
 also setting `fov`, can make the fit worse than leaving both uncorrected.** If
 you enable lens correction on wide footage, set `fov` too.
+
+## Seeing it
+
+    tests --dumpFovClip
+    pnmtopng testout/fovclip/sheet.ppm > sheet.png
+
+The camera yaws 3° at a 110° field of view. The sheet is two rows:
+
+**Top row** — `base` | `yawed` | `undone with fov=0` | `undone with fov=110`.
+Panels 3 and 4 undo the yaw with the *exact opposite rotation*; the only
+difference between them is which model the warp uses. Panel 4 should reproduce
+panel 1. Panel 3 cannot.
+
+**Bottom row** — the difference of each undo against the base, at 4× gain,
+sitting directly under the panel it belongs to.
+
+That difference is the whole argument in one picture. Under `fov=0` it blazes
+across the frame, brightest towards the left and right edges and fading to
+nothing at the centre — which is exactly the signature of the term the
+similarity model omits, growing with the square of the distance from the
+optical centre. Under `fov=110` it is essentially black.
+
+Numerically, mean absolute difference over the central half of the frame:
+**14.58 with `fov=0`, 1.26 with `fov=110`** — and 1.26 out of 255 is
+interpolation residue, not model error.
+
+The individual frames are written alongside it (`1_base.ppm` … `6_diff_*.ppm`)
+for closer inspection.
+
+One artefact to ignore: a saturated strip down one edge of *both* difference
+images. Yawing the camera brings scene in from beyond the source frame on one
+side; with cropping on, that region is border fill in the warped frames but
+real scene in the base. It says nothing about either model, which is why the
+numbers above are measured over the central half only.
 
 ## Implementation notes
 

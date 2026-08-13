@@ -351,43 +351,139 @@ static void test_fov_warp_against_reference(void){
 
 /* --- the figure ----------------------------------------------------------- */
 
-/* Three panels of the same camera pose: the base scene, then frame 5 at 110
-   degrees and at 10 degrees.  The two moved panels carry identical centre
-   motion by construction, so everything that differs between them -- the
-   outer cells sliding further than the inner ones -- is the perspective term
-   the similarity model has no way to express.  Asserts nothing; reached only
-   via --dumpFovClip. */
+/* Renders one frame of the scene under a single pure YAW at focal length f.
+
+   Pure yaw, and not the clip's three-axis path, for a reason that matters to
+   the figure: the exact inverse of one rotation about one axis is that
+   rotation negated, so the corrective transform below is exact rather than a
+   small-angle approximation.  With three axes the inverse is not of the same
+   Euler form, and the figure would carry a fraction of a pixel of error that
+   has nothing to do with what it is illustrating. */
+static void fcRenderYaw(VSFrame* out, const VSFrameInfo* fi,
+                        double yaw, double f, double k){
+  FCMapCtx ctx;
+  ctx.f       = f;
+  ctx.ld      = vsLensDistortionInit(fi, k);
+  ctx.useLens = (k != 0.0);
+  fcRotation(yaw, 0.0, 0.0, ctx.r);
+  vsFrameAllocate(out, fi);
+  lcRenderMappedTone(out, fi, fcRotMap, &ctx, fcPatternTone);
+}
+
+/* Warps src by t through the shipping (fixed point, packed) loop, with the
+   model selected by cfgFov. */
+static void fcWarp(VSFrame* dst, const VSFrame* src, const VSFrameInfo* fi,
+                   VSTransform t, double cfgFov){
+  VSTransformConfig cfg = vsTransformGetDefaultConfig("fov-figure");
+  VSTransformData td;
+  cfg.fov            = cfgFov;
+  cfg.lensCorrection = VSLensCorrectOff;
+  cfg.interpolType   = VS_BiLinear;
+  cfg.crop           = VSCropBorder;
+  cfg.optZoom        = 0;
+  test_bool(vsTransformDataInit(&td, &cfg, fi, fi) == VS_OK);
+  vsFrameAllocate(dst, fi);
+  test_bool(vsTransformPrepare(&td, src, dst) == VS_OK);
+  test_bool(transformPacked(&td, t) == VS_OK);
+  test_bool(vsTransformFinish(&td) == VS_OK);
+  vsTransformDataCleanup(&td);
+}
+
+/* |a-b| per channel times gain, so a one or two pixel misregistration is
+   actually visible rather than a dark smudge. */
+static double fcDiff(VSFrame* dst, const VSFrame* a, const VSFrame* b,
+                     const VSFrameInfo* fi, int gain){
+  double sum = 0; int n = 0;
+  int x, y;
+  vsFrameAllocate(dst, fi);
+  for(y=0; y<fi->height; y++)
+    for(x=0; x<fi->width; x++){
+      uint8_t ar,ag,ab, br,bg,bb;
+      int dr, dg, db;
+      getPixelRGB(a, fi, x, y, &ar,&ag,&ab);
+      getPixelRGB(b, fi, x, y, &br,&bg,&bb);
+      dr = abs((int)ar-(int)br)*gain; if(dr>255) dr=255;
+      dg = abs((int)ag-(int)bg)*gain; if(dg>255) dg=255;
+      db = abs((int)ab-(int)bb)*gain; if(db>255) db=255;
+      setPixelRGB(dst, fi, x, y, (uint8_t)dr, (uint8_t)dg, (uint8_t)db);
+      /* Averaged over the middle half of the frame only.  The yaw brings
+         content in from beyond the source on one side, and with crop on that
+         region is border fill in the warped frames but real scene in the
+         base, so a difference there says nothing about either model. */
+      if(x > fi->width/4 && x < 3*fi->width/4 &&
+         y > fi->height/4 && y < 3*fi->height/4){
+        sum += (abs((int)ar-(int)br) + abs((int)ag-(int)bg) +
+                abs((int)ab-(int)bb))/3.0;
+        n++;
+      }
+    }
+  return n > 0 ? sum/n : 0.0;
+}
+
+/* The figure, built to the same shape as the lens clip's: something correct,
+   something wrong, and the correction of it.
+
+   The camera yaws 3 degrees at a 110 degree field of view.  Panel 2 is what
+   that looks like.  Panels 3 and 4 undo it with the exact opposite rotation,
+   the ONLY difference between them being which model the warp uses -- the
+   similarity one (fov = 0, what vid.stab did before) and the rotational one
+   (fov = 110).  Panel 4 should reproduce panel 1; panel 3 cannot, and the
+   difference images below them show by how much and, more usefully, where.
+
+   Asserts nothing; reached only via --dumpFovClip. */
 void fcDumpClip(void){
+  const double FOV = 110.0, YAWDEG = 3.0;
   VSFrameInfo fi, fiSheet;
-  VSFrame sheet, wide[FC_NUM_FRAMES], narrow[FC_NUM_FRAMES];
+  VSFrame base, moved, fixedSim, fixedRot, dSim, dRot, sheet;
+  double f = fcFocal(FOV), yaw = YAWDEG*M_PI/180.0;
+  VSTransform undo = null_transform();
+  double mSim, mRot;
   const int gutter = 8;
-  int i;
 
-  fcGenerateClip(wide,   &fi, PF_RGB24, 110.0, 0.0, FC_NUM_FRAMES);
-  fcGenerateClip(narrow, &fi, PF_RGB24,  10.0, 0.0, FC_NUM_FRAMES);
+  test_bool(vsFrameInfoInit(&fi, LC_WIDTH, LC_HEIGHT, PF_RGB24) != 0);
+  fcRenderYaw(&base,  &fi, 0.0, f, 0.0);
+  fcRenderYaw(&moved, &fi, yaw, f, 0.0);
 
-  for(i=0; i<FC_NUM_FRAMES; i++){
-    char name[64];
-    snprintf(name, sizeof(name), "fovclip/wide_%03i.ppm", i);
-    test_bool(storePPMImage(testOut(name), &wide[i], &fi));
-    snprintf(name, sizeof(name), "fovclip/narrow_%03i.ppm", i);
-    test_bool(storePPMImage(testOut(name), &narrow[i], &fi));
-  }
+  /* x = yaw*f is the reinterpretation the library itself makes; negated, this
+     is the exact inverse rotation. */
+  undo.x = -yaw*f;
+  fcWarp(&fixedSim, &moved, &fi, undo, 0.0);
+  fcWarp(&fixedRot, &moved, &fi, undo, FOV);
+  mSim = fcDiff(&dSim, &fixedSim, &base, &fi, 4);
+  mRot = fcDiff(&dRot, &fixedRot, &base, &fi, 4);
 
-  test_bool(vsFrameInfoInit(&fiSheet, 3*LC_WIDTH + 2*gutter, LC_HEIGHT,
-                            PF_RGB24) != 0);
+  test_bool(storePPMImage(testOut("fovclip/1_base.ppm"),          &base,     &fi));
+  test_bool(storePPMImage(testOut("fovclip/2_yawed.ppm"),         &moved,    &fi));
+  test_bool(storePPMImage(testOut("fovclip/3_undone_fov0.ppm"),   &fixedSim, &fi));
+  test_bool(storePPMImage(testOut("fovclip/4_undone_fov110.ppm"), &fixedRot, &fi));
+  test_bool(storePPMImage(testOut("fovclip/5_diff_fov0.ppm"),     &dSim,     &fi));
+  test_bool(storePPMImage(testOut("fovclip/6_diff_fov110.ppm"),   &dRot,     &fi));
+
+  test_bool(vsFrameInfoInit(&fiSheet, 4*LC_WIDTH + 3*gutter,
+                            2*LC_HEIGHT + gutter, PF_RGB24) != 0);
   vsFrameAllocate(&sheet, &fiSheet);
   fillFrameRGB(&sheet, &fiSheet, 128, 128, 128);
-  lcBlit(&sheet, &fiSheet, 0,                     0, &wide[0],   &fi);
-  lcBlit(&sheet, &fiSheet, LC_WIDTH + gutter,     0, &wide[5],   &fi);
-  lcBlit(&sheet, &fiSheet, 2*(LC_WIDTH + gutter), 0, &narrow[5], &fi);
+  lcBlit(&sheet, &fiSheet, 0,                     0, &base,     &fi);
+  lcBlit(&sheet, &fiSheet, LC_WIDTH + gutter,     0, &moved,    &fi);
+  lcBlit(&sheet, &fiSheet, 2*(LC_WIDTH + gutter), 0, &fixedSim, &fi);
+  lcBlit(&sheet, &fiSheet, 3*(LC_WIDTH + gutter), 0, &fixedRot, &fi);
+  lcBlit(&sheet, &fiSheet, 2*(LC_WIDTH + gutter), LC_HEIGHT + gutter, &dSim, &fi);
+  lcBlit(&sheet, &fiSheet, 3*(LC_WIDTH + gutter), LC_HEIGHT + gutter, &dRot, &fi);
   test_bool(storePPMImage(testOut("fovclip/sheet.ppm"), &sheet, &fiSheet));
-  vsFrameFree(&sheet);
 
-  for(i=0; i<FC_NUM_FRAMES; i++){ vsFrameFree(&wide[i]); vsFrameFree(&narrow[i]); }
-  fprintf(stderr, "dumped fov clip PPMs to %s/fovclip "
-                  "(base | 110 deg | 10 deg sheet.ppm, same centre motion)\n",
-          TEST_OUTPUT_DIR);
+  vsFrameFree(&sheet);    vsFrameFree(&base);     vsFrameFree(&moved);
+  vsFrameFree(&fixedSim); vsFrameFree(&fixedRot);
+  vsFrameFree(&dSim);     vsFrameFree(&dRot);
+
+  fprintf(stderr,
+    "dumped fov figure to %s/fovclip\n"
+    "  sheet top row:    base | yawed %.0f deg at fov %.0f | undone with fov=0"
+    " | undone with fov=%.0f\n"
+    "  sheet bottom row: difference against base for those two undos, 4x gain\n"
+    "  mean abs difference over the central half: fov=0 %.2f, fov=%.0f %.2f\n"
+    "  (the saturated strip down one edge of both is scene that rotated in\n"
+    "   from outside the source frame -- border fill, not a model error)\n",
+    TEST_OUTPUT_DIR, YAWDEG, FOV, FOV, mSim, FOV, mRot);
 }
 
 /* The point of the whole exercise: told the field of view, the same fit on

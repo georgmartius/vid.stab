@@ -342,7 +342,7 @@ static void interpolateNall(uint8_t *dest, fp16 x, fp16 y,
  */
 int transformPacked(VSTransformData* td, VSTransform t)
 {
-  int x = 0, y = 0;
+  int y = 0;
   uint8_t *D_1, *D_2;
 
   lensEnsureMaps(td);
@@ -404,9 +404,13 @@ int transformPacked(VSTransformData* td, VSTransform t)
   double rb[9];
   if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
 
-  /* All channels */
+  /* All channels.  Rows are independent; see transformPlanar. */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
   for (y = 0; y < td->fiDest.height; y++) {
     int32_t y_d1 = (y - c_d_y);
+    int x;
     for (x = 0; x < td->fiDest.width; x++) {
       int32_t x_d1 = (x - c_d_x);
       fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
@@ -467,7 +471,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
  */
 int transformPlanar(VSTransformData* td, VSTransform t)
 {
-  int32_t x = 0, y = 0;
+  int32_t y = 0;
   uint8_t *dat_1, *dat_2;
 
   lensEnsureMaps(td);
@@ -556,9 +560,18 @@ int transformPlanar(VSTransformData* td, VSTransform t)
      *  t the translation, and M the rotation and scaling matrix
      *      p_s = M^{-1}(p_d - c_d - t) + c_s
      */
+    /* Destination rows are independent: each writes its own row and reads only
+       the source frame and the read-only lens map.  The non-crop path reads
+       *dest, but only the very pixel it is about to write.  This is the whole
+       of the stage's parallelism and it was not being used -- unlike motion
+       detection and the blur, the transform ran on one core. */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
     for (y = 0; y < dh; y++) {
       // swapping of the loops brought 15% performace gain
       int32_t y_d1 = (y - c_d_y);
+      int32_t x;
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
         fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);

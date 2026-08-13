@@ -531,6 +531,11 @@ void test_fov_model(void){
 
 /* --- 5. the lens estimator is blind to all of this ------------------------ */
 
+/* Set by the two estimator helpers below so the calibration study can read the
+   reported standard error alongside the estimate.  Not thread safe and does
+   not need to be: the tests run these one at a time. */
+static double fovLastSigma = 0;
+
 /* Where in the pipeline the rotational model is and is not applied, checked
    rather than assumed.
 
@@ -587,6 +592,7 @@ static double fovEstimateKf(double clipFov, double trueK, double cfgFov,
 
   ecfg.f = focal_from_fov(cfgFov, fi.width);
   est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
+  fovLastSigma = est.uncertainty;
   fprintf(stderr, "  %-22s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
           label, trueK, est.k, est.uncertainty,
           est.determined ? "DETERMINED (and used)" : "not determined");
@@ -707,6 +713,7 @@ static double fovExactK(double fovDeg, double trueK, double cfgFov,
 
   ecfg.f = focal_from_fov(cfgFov, fi.width);
   est = vsEstimateLensDistortion(&fi, &mlms, &ecfg);
+  fovLastSigma = est.uncertainty;
   fprintf(stderr, "  %-26s true k=%+.2f -> k=%+.4f +- %.4f  %s\n",
           label, trueK, est.k, est.uncertainty,
           est.determined ? "determined" : "not determined");
@@ -738,4 +745,68 @@ void test_fov_estimator_exact(void){
      returns the wrong sign.  That is the cleanest possible statement that the
      old behaviour was a misspecified model and not noise. */
   test_bool(kblind > 0.0);
+}
+
+/* --- 7. is the confidence gate calibrated under the rotational model? ------ */
+
+/* maxUncertainty (default 0.02) gates whether an estimate is used at all.  It
+   came from 71360a0, which introduced uncertainty = residual/sqrt(N*curvature)
+   and calibrated it once: 0.0029 predicted against 0.0049 actual under 0.5 px
+   noise, versus 0.47 for the unidentifiable case it had to reject.  0.02 is a
+   round number in the middle of that gap, not a tuned one.
+
+   The criterion that commit established is the one applied here: the reported
+   standard error must BOUND the actual error.  Where it does, raising the
+   threshold trades away nothing but coverage; where it does not, raising the
+   threshold admits estimates whose error nobody measured.  Printed as a ratio
+   so the two regimes are visible at a glance. */
+void test_fov_uncertainty_calibration(void){
+  static const double FOVS[] = {20.0, 40.0, 70.0, 90.0, 110.0};
+  const double K = -0.25;
+  double sPrev = 0;
+  int i;
+
+  fprintf(stderr, "--- does the reported sigma bound the actual error? ---\n");
+  fprintf(stderr, "    (told f throughout; ratio > 1 means sigma UNDER-predicts)\n");
+  for(i=0; i<(int)(sizeof(FOVS)/sizeof(FOVS[0])); i++){
+    double kEx, sEx, kDet, sDet;
+    char lbl[32];
+    snprintf(lbl, sizeof(lbl), "%.0f exact", FOVS[i]);
+    kEx = fovExactK(FOVS[i], K, FOVS[i], 1, lbl);
+    sEx = fovLastSigma;
+    snprintf(lbl, sizeof(lbl), "%.0f detector", FOVS[i]);
+    kDet = fovEstimateKf(FOVS[i], K, FOVS[i], lbl);
+    sDet = fovLastSigma;
+    fprintf(stderr, "  fov %3.0f | exact: sigma %.4f err %.4f ratio %5.2f"
+                    " | detector: sigma %.4f err %.4f ratio %5.2f\n",
+            FOVS[i], sEx, fabs(kEx-K), fabs(kEx-K)/(sEx>0?sEx:1e-9),
+            sDet, fabs(kDet-K), fabs(kDet-K)/(sDet>0?sDet:1e-9));
+
+    /* The reported sigma grows with the field of view -- 0.011 at 20 degrees
+       to 0.042 at 110 -- so the gate does get harder to pass as the lens
+       widens.  That is the honest part. */
+    if(i > 0) test_bool(sDet > 0.5*sPrev);
+    sPrev = sDet;
+
+    if(FOVS[i] <= 70.0){
+      /* Up to 70 degrees the estimate is good and sigma bounds it.  These are
+         the cases a higher threshold would legitimately admit. */
+      test_bool(fabs(kDet - K) < 0.02);
+      test_bool(sDet < 0.05);
+    } else {
+      /* At 90 and above the error jumps by an order of magnitude, to 0.12,
+         while sigma barely doubles.  It is detector bias, and a standard
+         error computed from scatter cannot see bias at any threshold.
+
+         This pair is the answer to "why not raise maxUncertainty to 0.05":
+         these estimates have sigma below 0.05, so 0.05 would call them
+         determined and apply them -- a k off by 0.12, which is 21 px of
+         residual distortion at the corner of a 640x480 frame.  0.02 rejects
+         them, but by luck rather than by design: nothing about 0.02 was
+         chosen with this regime in mind. */
+      test_bool(fabs(kDet - K) > 0.10);
+      test_bool(sDet < 0.05);
+      test_bool(sDet > 0.02);
+    }
+  }
 }

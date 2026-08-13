@@ -130,8 +130,61 @@ Two things this does *not* fix, both measured:
   returns. Fixing that means changing the matcher.
 - **At 70° the good estimate is discarded.** −0.2473 is accurate, but its
   uncertainty (0.0233) exceeds the default `maxUncertainty` of 0.02, so it is
-  reported "not determined" and not used. The gate is tuned for the narrow
-  case; a wide clip legitimately has more scatter.
+  reported "not determined" and not used. See below.
+
+### On `maxUncertainty`, and why not simply raise it
+
+`maxUncertainty` (0.02) gates whether an estimate is used at all. It dates from
+`71360a0`, which replaced a raw-curvature test with a least-squares standard
+error, `uncertainty = residual/sqrt(N·curvature)`. Its calibration then was
+0.0029 predicted against 0.0049 actual under 0.5 px noise, versus 0.47 for the
+unidentifiable case it had to reject. **0.02 is a round number in the middle of
+a three-orders-of-magnitude gap, not a tuned one** — nothing was ever measured
+near it.
+
+Whether it can be raised depends on whether that standard error still bounds
+the actual error under the rotational model. Measured, with `f` supplied
+throughout and true k = −0.25 (`test_fov_uncertainty_calibration`):
+
+| clip FOV | σ reported | actual error | ratio |
+| ---: | ---: | ---: | ---: |
+| 20° | 0.0112 | 0.0122 | 1.09 |
+| 40° | 0.0133 | 0.0095 | 0.72 |
+| 70° | 0.0233 | 0.0027 | 0.11 |
+| 90° | 0.0286 | **0.1203** | **4.20** |
+| 110° | 0.0417 | **0.1263** | **3.03** |
+
+There is a sharp break between 70° and 90°. Below it σ bounds the error and the
+gate is merely conservative. At and above it the error jumps by an order of
+magnitude while σ barely doubles — because that error is detector *bias*, and a
+standard error computed from scatter cannot see bias at any threshold.
+
+**σ does scale with field of view** — 0.011 to 0.042, roughly fourfold from 20°
+to 110° — so one could scale the threshold with `fov`. But that is exactly
+backwards: the regime needing the larger allowance is the regime where σ stops
+being trustworthy.
+
+**The risk of 0.05 specifically.** Every row above has σ < 0.05, so 0.05 calls
+all of them determined, including the 90° and 110° estimates that are wrong by
+0.12. Applied, a k of −0.37 against a true −0.25 leaves **≈21 px of residual
+distortion at the corner** of a 640×480 frame — better than the 69 px of
+leaving it uncorrected, but not what "determined" ought to promise. What 0.05
+buys is the accurate 70° case (error 0.0027, currently discarded).
+
+The two are separated by 0.005 of σ on a single synthetic clip. Tuning a
+threshold into that gap is curve-fitting, not calibration.
+
+Two observations that matter more than the number:
+
+- **The gate is doing less protective work than it looks.** The blind wide-FOV
+  failure (k = +0.20, error 0.45) has σ = 0.0109 — *below* 0.02. It is rejected
+  only by the separate `pinned` check, because its minimum lands on the `kMax`
+  bracket edge. On footage whose blind minimum falls just inside the bracket,
+  it would be reported determined and used, at any threshold.
+- **Raising the threshold does not touch that case** (`pinned` is independent),
+  so 0.05 is not the danger it might appear — the danger is already present at
+  0.02, and lives in the `pinned` check being the thing that happens to catch
+  it.
 
 ### A caveat about barrel distortion
 

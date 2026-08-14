@@ -9,8 +9,9 @@ void test_motionDetect(TestData* testdata){
   fprintf(stderr,"MotionDetect:\n");
   int threads=1;
   int single_time=0;
-  int loglevel=vs_log_level;
 #ifdef USE_OMP
+  /* only the thread sweep mutes the log, so only it needs the old level */
+  int loglevel=vs_log_level;
   int numthreads=omp_get_max_threads();
   for(threads = 1; threads <= numthreads; threads++){
 #endif

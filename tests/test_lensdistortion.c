@@ -89,7 +89,10 @@ static void test_lensdistortion_domain(void){
     VSLensDistortion ld = vsLensDistortionInit(&fi, -0.9);
     double r = 0.999*ld.rho;
     test_bool(vsLensDistortPoint(&ld, ld.cx + r, ld.cy, &ux, &uy) == VS_OK);
-    test_bool(!isnan(ux) && !isnan(uy));
+    /* A range check, not isnan(): the library is built with -ffast-math, under
+       which isnan() is allowed to fold to 0 and prove nothing.  A comparison
+       is still evaluated, and a NaN would fail it. */
+    test_bool(fabs(ux - ld.cx) <= 2.0*ld.rho && fabs(uy - ld.cy) <= 2.0*ld.rho);
   }
 }
 

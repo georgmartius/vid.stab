@@ -251,7 +251,6 @@ void test_transform_baseline(void){
       VSFrame planarFixed, planarFloat, packedFixed, packedFloat;
       uint32_t gf, pf;
       TBDiff dPlanar, dPacked;
-      double packedTol;
 
       vsFrameAllocate(&planarFixed, &fi);
       vsFrameAllocate(&planarFloat, &fi);

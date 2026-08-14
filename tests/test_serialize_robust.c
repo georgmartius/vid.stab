@@ -99,6 +99,8 @@ int test_serialize_robust(){
   sr_free_mlms(&mlms);
   fclose(f);
   fprintf(stderr,"** binary file round trip OKAY\n");
+  fprintf(stderr,"** the deliberately damaged files below make the library log"
+                 " \"Error: ...\": that is what is being tested\n");
 
   /* ---- 2. truncation at the first 0x1A (Ctrl-Z), as an MSVCRT text-mode
        handle would do: must not produce bogus (null) localmotions ---- */

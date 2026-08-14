@@ -96,8 +96,12 @@ void test_compareImg_performance(const TestData* testdata){
   /* Sized from the macro rather than from numruns: the latter makes these
      variable length arrays, which MSVC does not implement. */
   int diffsC[NUMCMP];
+#if defined(USE_SSE2) || defined(USE_SSE2_ASM)
+  /* only the vectorised builds have a second implementation to time */
   int diffsO[NUMCMP];
-  int timeC, timeO;
+  int timeO;
+#endif
+  int timeC;
   timeC=runcompare(compareSubImg_thr, testdata->frames[0], testdata->frames[1],
                    f, testdata->fi, diffsC, 0, numruns);
   fprintf(stderr,"***C        time for %i runs: %i ms ****\n", numruns, timeC);

@@ -51,8 +51,12 @@ int vsLensUndistortPoint(const VSLensDistortion* ld,
   /* squared radius in units of rho */
   double r2 = (dx*dx + dy*dy) / (ld->rho * ld->rho);
   double denom = 1.0 + ld->k * r2;
-  /* only reachable for pincushion strong enough to fold the plane onto itself */
-  if(denom <= 0) return VS_ERROR;
+  /* only reachable for pincushion strong enough to fold the plane onto itself.
+     The outputs are still written (with the point left where it was) so that
+     callers never inherit an indeterminate value from a failed call -- they
+     are expected to check the return code, but a defined output also keeps
+     -Wmaybe-uninitialized quiet once this gets inlined. */
+  if(denom <= 0){ *xo = xi; *yo = yi; return VS_ERROR; }
   *xo = ld->cx + dx/denom;
   *yo = ld->cy + dy/denom;
   return VS_OK;
@@ -65,7 +69,8 @@ int vsLensDistortPoint(const VSLensDistortion* ld,
   double r2 = (dx*dx + dy*dy) / (ld->rho * ld->rho);
   double disc = 1.0 - 4.0 * ld->k * r2;
   double scale;
-  if(disc < 0) return VS_ERROR;
+  /* outputs written on the failure path too, as in vsLensUndistortPoint */
+  if(disc < 0){ *xo = xi; *yo = yi; return VS_ERROR; }
   /* Rationalised root of k*r_u*r_d^2 - r_d + r_u = 0.  Written as
      2/(1+sqrt(disc)) rather than (1-sqrt(disc))/(2*k*r_u^2) so that it stays
      accurate for small k and is exactly 1 at k=0, with no special case. */
@@ -148,8 +153,12 @@ typedef struct {
 
 static void lensFwdInit(LensFwd* w, double f, double tx, double ty,
                         double c, double s){
+  int i;
   w->f = f; w->c = c; w->s = s; w->tx = tx; w->ty = ty;
   w->z = 1.0;
+  /* identity by default: lensFwdApply reads rf only when f > 0, but filling it
+     in either way keeps the struct fully defined (and the compiler quiet) */
+  for(i=0; i<9; i++) w->rf[i] = (i%4 == 0) ? 1.0 : 0.0;
   if(f > 0.0){
     double b[9];
     w->z = sqrt(c*c + s*s);

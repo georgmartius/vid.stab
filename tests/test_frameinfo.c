@@ -40,6 +40,8 @@ void test_frameinfo(void){
   fprintf(stderr,"********** frameinfo dimension validation:\n");
 
   fprintf(stderr,"* subsampled formats must reject incompatible dimensions\n");
+  fprintf(stderr,"  (the library's \"Error: invalid frame dimensions\" lines"
+                 " below are the expected result)\n");
   // this is issue #43: odd height with 4:2:0
   test_bool(vsFrameInfoInit(&fi, 640, 481, PF_YUV420P) == 0);
   test_bool(vsFrameInfoInit(&fi, 641, 480, PF_YUV420P) == 0);

@@ -18,6 +18,14 @@ int test_vsvector_bounds(){
   VSVector v;
   int payload = 42;
   void* old;
+  /* Every rejected call below logs "Error: ..." from the library -- that IS the
+     behaviour under test, so the log is muted here rather than left to look
+     like a failing test.  Raise it again (or just delete these two lines) when
+     one of the test_bool()s below fails and the message would help. */
+  int logLevelSaved = vs_log_level;
+  fprintf(stderr,"** library error logging muted: the calls below are"
+                 " SUPPOSED to be rejected\n");
+  vs_log_level = -1;
 
   /* ---- 1. an implausible position is rejected, not turned into an
        allocation. INT_MAX-1 is what a corrupt frame index in a .trf can
@@ -68,5 +76,6 @@ int test_vsvector_bounds(){
     fprintf(stderr,"** set_dup rejects without leaking OKAY\n\n");
   }
 
+  vs_log_level = logLevelSaved;
   return 1;
 }

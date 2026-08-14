@@ -13,8 +13,7 @@ void test_contrastImg(const TestData* testdata){
   /* Sized from the macro rather than from numruns: the latter makes these
      variable length arrays, which MSVC does not implement. */
   double contrastC[NUMCNTR];
-  double contrastOpt[NUMCNTR];
-  int timeC, timeOpt;
+  int timeC;
   fprintf(stderr,"********** Michelson Contrast (with SSE2):\n");
   {
     int start = timeOfDayinMS();
@@ -25,8 +24,12 @@ void test_contrastImg(const TestData* testdata){
     int end = timeOfDayinMS();
     timeC=end-start;
     fprintf(stderr,"***C    time for %i runs: %i ms ****\n", numruns, timeC);
+    fprintf(stderr,"***C    contrast: %3.2f ****\n", contrastC[0]);
   }
 #ifdef USE_SSE2
+  /* only the SSE2 build has anything to compare the C results against */
+  double contrastOpt[NUMCNTR];
+  int timeOpt;
   {
     int start = timeOfDayinMS();
     for(i=0; i<numruns; i++){

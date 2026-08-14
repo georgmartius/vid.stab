@@ -60,6 +60,7 @@
 #include "test_lenscorrect_roundtrip.c"
 #include "test_fovmodel.c"
 #include "test_transform_baseline.c"
+#include "test_transform_incremental.c"
 #ifdef VS_HAVE_LPSOLVER
 #include "test_campathopt.c"
 #endif
@@ -207,6 +208,13 @@ int main(int argc, char** argv){
   if(all || contains(argv,argc,"--testTRIPOD", "virtual tripod mode")){
     UNIT(test_tripod_transforms());
     UNIT(test_tripod_detection());
+  }
+
+  if(all || contains(argv,argc,"--testINC", "incremental warp recurrences")){
+    UNIT(test_transform_incremental_affine());
+    UNIT(test_transform_incremental_r2u());
+    UNIT(test_transform_incremental_r2d());
+    UNIT(test_transform_incremental_range());
   }
 
   if(all || contains(argv,argc,"--testLENS", "barrel distortion model and estimation")){

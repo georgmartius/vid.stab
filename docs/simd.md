@@ -20,8 +20,10 @@ the time is. Two kernels dominate it:
 all fields and offsets), so it is the only thing worth writing four times.
 
 The blur (`src/boxblur.c`) has no intrinsics but is parallelised with OpenMP and
-restructured so the compiler can auto-vectorize it; the transform stage uses
-fixed point arithmetic and is not SIMD at all.
+restructured so the compiler can auto-vectorize it. The transform stage has no
+intrinsics either; it is parallelised over destination rows and its backward
+map is stepped rather than recomputed per pixel — see "transform" below, which
+also says what SIMD would be worth there and why it has not been written.
 
 | File | Contents |
 |---|---|
@@ -251,6 +253,143 @@ The rewrite is bit-identical to the original including its edge behaviour, and
 algorithm over ~1200 geometries, with sizes straddling 265/267 so that the
 reciprocal and the division fallback are both exercised. (It used to be a
 timing harness that asserted nothing.)
+
+## transform
+
+The warp had never been parallelised — the one stage in the library that still
+ran on a single core, even after the motion search and the blur had been
+scaled. Every destination row is independent (it writes only its own row and
+reads only the source frame and the read-only lens map; `td->src` and
+`td->destbuf` can never alias, because `vsTransformPrepare` gives an in-place
+caller a private copy), so this was a pragma, not a rewrite.
+
+The other change is arithmetic. Three quantities in the inner loop are
+polynomials in x and were being evaluated from scratch at every pixel:
+
+| | why it is a polynomial in x |
+|---|---|
+| `x_s`, `y_s` | affine on the plain similarity path: `dx` is `x_d1<<16`, whose low bits are zero, so `(zcos_a*dx + zsin_xy*dy)>>16` splits exactly into `zcos_a*x_d1 + (zsin_xy*dy>>16)` |
+| `r2u` | wobble's undistort radius — its input is the destination pixel itself, so it is a quadratic |
+| `r2d` | the distort radius, a quadratic wherever `x_s`/`y_s` are affine: the plain path, but not behind wobble (non-linear) or fov (projective) |
+
+A quadratic is generated exactly by two running additions, so six 64-bit
+multiplies per pixel became six 64-bit adds. All integer, so these are the same
+value sequences *to the bit* — `tests/test_transform_incremental.c` checks all
+three against verbatim copies of the expressions they replace, over every pixel
+of eight geometries including 4:2:2, 4:4:0 and 4:1:1. The asymmetric formats are
+the point: on 4:2:0 both axes subsample equally, so a step constant that
+confused them would still pass.
+
+The fov path separately lost three of its four per-pixel divisions. It computed
+`z*fFov*X/Z/(1<<lsx)` per axis — two divisions each, three of them by
+quantities that never change. Only Z varies, so the constants fold into one
+factor per axis and a single reciprocal of Z serves both.
+
+### Measurements — Ryzen 9 9900X (Zen 5, 12c/24t), GCC 15.2
+
+YUV420P, bilinear, ms/frame, best of three (`bench/bench_transform.c`).
+"before" is the state prior to this work; every frame hash is unchanged
+throughout, so all of it is bit-identical.
+
+1080p:
+
+| mode | 1 thread before → after | 24 threads before → after | total |
+|---|---|---|---|
+| lens=off | 11.3 → 8.9 | 10.5 → 0.96 | **10.9x** |
+| lens=full | 20.7 → 16.5 | 20.6 → 1.55 | **13.3x** |
+| lens=wobble | 31.3 → 29.3 | 31.0 → 2.54 | **12.2x** |
+| fov=90 | 19.8 → 16.2 | 18.9 → 1.62 | **11.7x** |
+| fov=90 lens=full | 32.5 → 29.5 | 33.4 → 2.82 | **11.8x** |
+
+After, by thread count — 12 threads is one per physical core, 24 adds SMT:
+
+| mode | 1080p 1 / 12 / 24 | 4K 1 / 12 / 24 |
+|---|---|---|
+| lens=off | 8.9 / 1.00 / 0.96 | 41.6 / 4.34 / 3.95 |
+| lens=full | 16.5 / 1.59 / 1.55 | 69.4 / 6.25 / 6.34 |
+| lens=wobble | 29.3 / 2.85 / 2.54 | 119.5 / 10.93 / 10.02 |
+| fov=90 | 16.2 / 1.60 / 1.62 | 66.4 / 6.27 / 5.49 |
+| fov=90 lens=full | 29.5 / 2.82 / 2.82 | 120.9 / 11.95 / 11.16 |
+
+SMT buys almost nothing: 12 threads is within ~10% of 24 everywhere, and at 4K
+`lens=full` and `fov=90` are inside the noise of each other. The stage is
+bandwidth bound well before it runs out of cores, so on a 12-core part expect
+essentially the 24-thread column.
+
+Relative cost of the optional stages, 1080p / 24 threads: wobble 2.7x the plain
+warp, full 1.6x, fov 1.7x. **Wobble costs more than full**, which looks backwards
+until you count LUT stages: full undistorts once, wobble undistorts *and*
+redistorts. At 4K the ratios are much the same (2.5x / 1.6x / 1.4x).
+
+### What SIMD would be worth, and why it is not written
+
+`VS_Zero` keeps the identical address arithmetic and makes the interpolation
+nearly free, so benchmarking a mode against its nearest-neighbour twin splits
+the per-pixel cost in two. 1080p, one thread:
+
+| mode | bilinear | nearest | interpolation | addressing |
+|---|---|---|---|---|
+| lens=off | 9.1 | 4.3 | 4.8 | 4.3 |
+| lens=full | 16.5 | 8.7 | 7.8 | 8.7 |
+| lens=wobble | 29.2 | 20.3 | 8.9 | **20.3** |
+
+The two modes are not the same problem. With the lens off the split is about
+even, so a vectorized bilinear kernel would be the thing to write. With wobble
+on, 70% of the time goes on deciding *where* to sample — two dependent LUT
+lookups — and vectorizing the interpolator alone would cap out at ~30%.
+
+Both halves are gathers. The bilinear fetch wants `_mm256_i32gather_epi32`
+twice (two rows x 8 pixels, each 32-bit word carrying both horizontal
+neighbours); the lens stage wants a gather into `gU`/`gD`, which at 1024 x
+int32 = 4 KB sits in L1 and should gather well. A 2-3x on the addressing half
+looks reachable.
+
+It is not written because the scalar work above landed first and changed the
+arithmetic: at 24 threads 1080p now warps in 0.9-2.6 ms/frame, against 4.4 ms
+for motion detection on the same machine, so the transform is no longer the
+stage that decides throughput. The measurements are here so that the case can
+be re-made if it becomes one — at 4K, or on a machine with fewer cores.
+
+### Caching wobble's undistort scale — measured, and not worth it
+
+Wobble's undistort scale `g` depends on the destination pixel and k but **not**
+on the per-frame transform, so it can be computed once for a clip and looked up
+thereafter: two running adds and a `gU` lookup become one sequential int32
+load. This was built behind `VIDSTAB_WOBBLE_CACHE=1` and measured against the
+identical frame hash, then removed. Wobble row only, ms/frame:
+
+| | 1 thread | 12 threads | 24 threads |
+|---|---|---|---|
+| 1080p, no cache | 30.7 | 2.86 | 2.54 |
+| 1080p, cached | 25.8 | 2.42 | 2.12 |
+| | −16% | −16% | −17% |
+| 4K, no cache | 123.8 | 11.74 | 10.11 |
+| 4K, cached | 104.0 | 9.95 | 9.25 |
+| | −16% | −15% | −8% |
+
+So ~16%, falling to 8% at 4K on all cores where the table stops fitting
+anywhere useful. In absolute terms on a multi-core machine that is 0.4 ms at
+1080p and 0.9 ms at 4K, and it takes wobble from 2.5x the plain warp to 2.25x.
+
+The price is a resident table of 4 bytes per destination pixel — 12 MB at
+1080p, 50 MB at 4K — plus a lifecycle to get wrong: invalidate on k, mode or
+geometry change, and per-instance storage, which means a field in a public
+struct and an SOVERSION bump. Not worth it for 16%, so it is not in the tree.
+
+Two things to note if this is ever revisited. It scales the wrong way — the
+benefit shrinks exactly where the stage is most expensive, because a 50 MB
+table streamed per frame is competing for the bandwidth the warp already
+wants. And it only addresses the *undistort* half; the distort half depends on
+the transform and cannot be cached at all, which is why the ceiling here is far
+below the full addressing cost in the table above.
+
+One thing that was tried and rejected: calling `interpolateBiLin` directly
+instead of through `td->interpolate`, which the source had recommended for
+years ("inlining the interpolation function would bring 10%"). Measured, it is
+consistently *slower* — 20.7 → 23.2 ms on lens=full, and slower at both thread
+counts — because the indirect call predicts perfectly while the inlined body
+costs I-cache and registers in a loop that is already register-hungry. The
+comment has been corrected in place.
 
 ## Reproducing
 

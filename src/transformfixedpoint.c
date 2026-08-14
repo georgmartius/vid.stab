@@ -342,7 +342,7 @@ static void interpolateNall(uint8_t *dest, fp16 x, fp16 y,
  */
 int transformPacked(VSTransformData* td, VSTransform t)
 {
-  int x = 0, y = 0;
+  int y = 0;
   uint8_t *D_1, *D_2;
 
   lensEnsureMaps(td);
@@ -402,11 +402,27 @@ int transformPacked(VSTransformData* td, VSTransform t)
      Nothing here is on the fov = 0 path. */
   double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
   double rb[9];
-  if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+  double fovS = 0.0;   /* z*fFov, the invariant numerator factor; see transformPlanar */
+  if (fFov > 0.0) {
+    rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+    fovS = z * fFov;
+  }
 
-  /* All channels */
+  /* All channels.  Rows are independent; see transformPlanar. */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
   for (y = 0; y < td->fiDest.height; y++) {
     int32_t y_d1 = (y - c_d_y);
+    int x;
+    /* row-constant half of the projection; see transformPlanar */
+    double fovXr = 0.0, fovYr = 0.0, fovZr = 0.0;
+    if (fFov > 0.0 && !wobble) {
+      double ly = fp16ToF(iToFp16(y_d1));
+      fovXr = rb[1]*ly + rb[2]*fFov;
+      fovYr = rb[4]*ly + rb[5]*fFov;
+      fovZr = rb[7]*ly + rb[8]*fFov;
+    }
     for (x = 0; x < td->fiDest.width; x++) {
       int32_t x_d1 = (x - c_d_x);
       fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
@@ -418,12 +434,17 @@ int transformPacked(VSTransformData* td, VSTransform t)
         dy = (fp16)(((int64_t)dy * g) >> 16);
       }
       if (fFov > 0.0) {
-        double lx = fp16ToF(dx), ly = fp16ToF(dy);
-        double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
-        double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
-        double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
-        x_s = fToFp16(z*fFov*X/Z) + c_s_x;
-        y_s = fToFp16(z*fFov*Y/Z) + c_s_y;
+        double lx = fp16ToF(dx);
+        double Xr = fovXr, Yr = fovYr, Zr = fovZr, invZ;
+        if (wobble) {   /* dy is per-pixel here, so the row hoist does not hold */
+          double ly = fp16ToF(dy);
+          Xr = rb[1]*ly + rb[2]*fFov;
+          Yr = rb[4]*ly + rb[5]*fFov;
+          Zr = rb[7]*ly + rb[8]*fFov;
+        }
+        invZ = 1.0 / (rb[6]*lx + Zr);
+        x_s = fToFp16(fovS * (rb[0]*lx + Xr) * invZ) + c_s_x;
+        y_s = fToFp16(fovS * (rb[3]*lx + Yr) * invZ) + c_s_y;
       } else {
       x_s = (fp16)((((int64_t)zcos_a*dx + (int64_t)zsin_a*dy) >> 16)) + c_tx;
       y_s = (fp16)(((-(int64_t)zsin_a*dx + (int64_t)zcos_a*dy) >> 16)) + c_ty;
@@ -467,7 +488,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
  */
 int transformPlanar(VSTransformData* td, VSTransform t)
 {
-  int32_t x = 0, y = 0;
+  int32_t y = 0;
   uint8_t *dat_1, *dat_2;
 
   lensEnsureMaps(td);
@@ -547,6 +568,18 @@ int transformPlanar(VSTransformData* td, VSTransform t)
     double fFov = focal_from_fov(td->conf.fov, td->fiSrc.width);
     double rb[9];
     if (fFov > 0.0) rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
+    /* Loop invariants of the fov projection, pulled out of the pixel loop.
+       Written out, the source coordinate was z*fFov*X/Z/(1<<lsx) -- two
+       divisions per axis, so four per pixel, three of them by quantities that
+       never change.  Only Z varies, so fold the constants into one factor per
+       axis and take a single reciprocal of Z. */
+    double fovSx = 0.0, fovSy = 0.0, lxScale = 0.0, lyScale = 0.0;
+    if (fFov > 0.0) {
+      lxScale = (double)(1 << lsx);
+      lyScale = (double)(1 << lsy);
+      fovSx   = z * fFov / lxScale;
+      fovSy   = z * fFov / lyScale;
+    }
 
     /* for each pixel in the destination image we calc the source
      * coordinate and make an interpolation:
@@ -556,16 +589,83 @@ int transformPlanar(VSTransformData* td, VSTransform t)
      *  t the translation, and M the rotation and scaling matrix
      *      p_s = M^{-1}(p_d - c_d - t) + c_s
      */
+    /* Destination rows are independent: each writes its own row and reads only
+       the source frame and the read-only lens map.  The non-crop path reads
+       *dest, but only the very pixel it is about to write.  This is the whole
+       of the stage's parallelism and it was not being used -- unlike motion
+       detection and the blur, the transform ran on one core. */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
     for (y = 0; y < dh; y++) {
       // swapping of the loops brought 15% performace gain
       int32_t y_d1 = (y - c_d_y);
+      int32_t x;
+      /* The ly half of the fov projection is constant along a row -- but only
+         while dy is, which wobble breaks by rescaling dy per pixel.  Hoist it
+         for the other cases; the values are identical to the per-pixel ones,
+         same operands in the same order, so nothing moves in the output. */
+      double fovXr = 0.0, fovYr = 0.0, fovZr = 0.0;
+      if (fFov > 0.0 && !wobble) {
+        double ly = fp16ToF(iToFp16(y_d1)) * lyScale;
+        fovXr = rb[1]*ly + rb[2]*fFov;
+        fovYr = rb[4]*ly + rb[5]*fFov;
+        fovZr = rb[7]*ly + rb[8]*fFov;
+      }
+      /* Wobble's undistort radius, stepped rather than recomputed.  Its input
+         is the destination pixel itself, so along a row lx grows by exactly
+         Lx = 1<<(16+lsx) per column and r2u = lx^2 + ly^2 is a quadratic in x
+         -- a quadratic is generated exactly by two running adds, so the two
+         64-bit squarings per pixel become two 64-bit additions.  All integer,
+         so this is the same sequence of r2u values to the bit, not an
+         approximation of it.  (The distort stage below cannot use this: its
+         input is x_s, which wobble has already put through a non-linear
+         scaling.) */
+      int64_t r2u = 0, r2uStep = 0, r2uStep2 = 0;
+      if (wobble) {
+        int64_t Lx  = (int64_t)1 << (16 + lsx);
+        int64_t lx0 = (int64_t)iToFp16(0 - c_d_x) * (1 << lsx);
+        int64_t ly0 = (int64_t)iToFp16(y_d1)      * (1 << lsy);
+        r2u       = lx0*lx0 + ly0*ly0;
+        r2uStep   = 2*lx0*Lx + Lx*Lx;
+        r2uStep2  = 2*Lx*Lx;
+      }
+      /* On the plain similarity path (no wobble ahead of it, no fov) the whole
+         backward map is affine in x, so x_s and y_s can be stepped too.  This
+         is exact, not merely close: dx is x_d1<<16, whose low 16 bits are
+         zero, so
+             (zcos_a*(x_d1<<16) + zsin_xy*dy) >> 16
+           = zcos_a*x_d1 + (zsin_xy*dy >> 16)
+         -- the arithmetic shift floors, and it floors the same way whether the
+         first term is inside or outside it.  So consecutive x_s differ by
+         exactly zcos_a and consecutive y_s by exactly -zsin_yx.  And with ex,
+         ey then linear in x, the distort stage's radius is a quadratic in x,
+         steppable by the same two-add scheme as r2u above. */
+      const int plain = (!wobble && fFov <= 0.0);
+      fp16 xsInc = 0, ysInc = 0;
+      int64_t r2d = 0, r2dStep = 0, r2dStep2 = 0;
+      if (plain) {
+        fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+        xsInc = (fp16)((( (int64_t)zcos_a *dx0 + (int64_t)zsin_xy*dy0) >> 16)) + c_tx;
+        ysInc = (fp16)(((-(int64_t)zsin_yx*dx0 + (int64_t)zcos_a *dy0) >> 16)) + c_ty;
+        if (lensOn) {
+          int64_t lx0 = (int64_t)(xsInc - c_s_x) * (1 << lsx);
+          int64_t ly0 = (int64_t)(ysInc - c_s_y) * (1 << lsy);
+          int64_t dlx = (int64_t)zcos_a  * (1 << lsx);
+          int64_t dly = -(int64_t)zsin_yx * (1 << lsy);
+          r2d      = lx0*lx0 + ly0*ly0;
+          r2dStep  = 2*lx0*dlx + dlx*dlx + 2*ly0*dly + dly*dly;
+          r2dStep2 = 2*(dlx*dlx + dly*dly);
+        }
+      }
       for (x = 0; x < dw; x++) {
         int32_t x_d1 = (x - c_d_x);
         fp16 dx = iToFp16(x_d1), dy = iToFp16(y_d1);
         fp16 x_s, y_s;
         if (wobble) {
-          int64_t lx = (int64_t)dx * (1 << lsx), ly = (int64_t)dy * (1 << lsy);
-          int32_t g  = vsLensLutFp(lm->gU, lx*lx + ly*ly, lm->idxScaleU);
+          int32_t g = vsLensLutFp(lm->gU, r2u, lm->idxScaleU);
+          r2u      += r2uStep;      /* see the row prologue */
+          r2uStep  += r2uStep2;
           dx = (fp16)(((int64_t)dx * g) >> 16);
           dy = (fp16)(((int64_t)dy * g) >> 16);
         }
@@ -576,20 +676,35 @@ int transformPlanar(VSTransformData* td, VSTransform t)
            the int64 intermediate only removes an overflow risk that the
            wobble scaling introduces. */
         if (fFov > 0.0) {
-          double lx = fp16ToF(dx) * (1 << lsx), ly = fp16ToF(dy) * (1 << lsy);
-          double X = rb[0]*lx + rb[1]*ly + rb[2]*fFov;
-          double Y = rb[3]*lx + rb[4]*ly + rb[5]*fFov;
-          double Z = rb[6]*lx + rb[7]*ly + rb[8]*fFov;
-          x_s = fToFp16(z*fFov*X/Z / (1 << lsx)) + c_s_x;
-          y_s = fToFp16(z*fFov*Y/Z / (1 << lsy)) + c_s_y;
+          double lx = fp16ToF(dx) * lxScale;
+          double Xr = fovXr, Yr = fovYr, Zr = fovZr, invZ;
+          if (wobble) {   /* dy is per-pixel here, so the row hoist does not hold */
+            double ly = fp16ToF(dy) * lyScale;
+            Xr = rb[1]*ly + rb[2]*fFov;
+            Yr = rb[4]*ly + rb[5]*fFov;
+            Zr = rb[7]*ly + rb[8]*fFov;
+          }
+          invZ = 1.0 / (rb[6]*lx + Zr);
+          x_s = fToFp16(fovSx * (rb[0]*lx + Xr) * invZ) + c_s_x;
+          y_s = fToFp16(fovSy * (rb[3]*lx + Yr) * invZ) + c_s_y;
+        } else if (plain) {
+          x_s = xsInc;  xsInc += zcos_a;    /* exact; see the row prologue */
+          y_s = ysInc;  ysInc -= zsin_yx;
         } else {
         x_s = (fp16)((((int64_t)zcos_a *dx + (int64_t)zsin_xy*dy) >> 16)) + c_tx;
         y_s = (fp16)(((-(int64_t)zsin_yx*dx + (int64_t)zcos_a *dy) >> 16)) + c_ty;
         }
         if (lensOn) {
           int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
-          int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
-          int64_t r2 = lx*lx + ly*ly;
+          int64_t r2;
+          if (plain) {
+            r2 = r2d;                       /* stepped, not squared */
+            r2d     += r2dStep;
+            r2dStep += r2dStep2;
+          } else {
+            int64_t lx = ex * (1 << lsx), ly = ey * (1 << lsy);
+            r2 = lx*lx + ly*ly;
+          }
           if (r2 > domR2) { x_s = iToFp16(VS_LENS_OUTSIDE_PX); y_s = iToFp16(VS_LENS_OUTSIDE_PX); }
           else {
             int32_t g = vsLensLutFp(lm->gD, r2, lm->idxScaleD);
@@ -598,8 +713,14 @@ int transformPlanar(VSTransformData* td, VSTransform t)
           }
         }
         uint8_t *dest = &dat_2[x + y * td->destbuf.linesize[plane]];
-        // inlining the interpolation function would bring 10%
-        //  (but then we cannot use the function pointer anymore...)
+        /* This used to read "inlining the interpolation function would bring
+           10% (but then we cannot use the function pointer anymore...)".  It
+           was tried: calling interpolateBiLin directly for the default type
+           and keeping the pointer for the other three is consistently SLOWER
+           on a modern compiler -- 20.7 -> 23.2 ms/frame at 1080p lens=full,
+           and slower at every thread count.  The indirect call predicts
+           perfectly, while the inlined body costs I-cache and registers in a
+           loop that is already register-hungry.  See docs/simd.md. */
         td->interpolate(dest, x_s, y_s, dat_1,
                         td->src.linesize[plane], sw, sh,
                         td->conf.crop ? black : *dest);

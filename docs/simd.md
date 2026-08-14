@@ -287,23 +287,39 @@ factor per axis and a single reciprocal of Z serves both.
 
 ### Measurements — Ryzen 9 9900X (Zen 5, 12c/24t), GCC 15.2
 
-1080p YUV420P, bilinear, ms/frame, best of three (`bench/bench_transform.c`).
+YUV420P, bilinear, ms/frame, best of three (`bench/bench_transform.c`).
 "before" is the state prior to this work; every frame hash is unchanged
 throughout, so all of it is bit-identical.
 
+1080p:
+
 | mode | 1 thread before → after | 24 threads before → after | total |
 |---|---|---|---|
-| lens=off | 11.3 → 9.1 | 10.5 → 0.93 | **11.3x** |
-| lens=full | 20.7 → 16.5 | 20.6 → 1.47 | **14.1x** |
-| lens=wobble | 31.3 → 29.2 | 31.0 → 2.44 | **12.8x** |
-| fov=90 | 19.8 → 16.1 | 18.9 → 1.40 | **14.1x** |
-| fov=90 lens=full | 32.5 → 29.3 | 33.4 → 2.60 | **12.5x** |
+| lens=off | 11.3 → 8.9 | 10.5 → 0.96 | **10.9x** |
+| lens=full | 20.7 → 16.5 | 20.6 → 1.55 | **13.3x** |
+| lens=wobble | 31.3 → 29.3 | 31.0 → 2.54 | **12.2x** |
+| fov=90 | 19.8 → 16.2 | 18.9 → 1.62 | **11.7x** |
+| fov=90 lens=full | 32.5 → 29.5 | 33.4 → 2.82 | **11.8x** |
 
-Relative cost of the optional stages, 1080p / 24 threads: wobble 2.6x the plain
-warp, full 1.6x, fov 1.5x. **Wobble costs more than full**, which looks backwards
+After, by thread count — 12 threads is one per physical core, 24 adds SMT:
+
+| mode | 1080p 1 / 12 / 24 | 4K 1 / 12 / 24 |
+|---|---|---|
+| lens=off | 8.9 / 1.00 / 0.96 | 41.6 / 4.34 / 3.95 |
+| lens=full | 16.5 / 1.59 / 1.55 | 69.4 / 6.25 / 6.34 |
+| lens=wobble | 29.3 / 2.85 / 2.54 | 119.5 / 10.93 / 10.02 |
+| fov=90 | 16.2 / 1.60 / 1.62 | 66.4 / 6.27 / 5.49 |
+| fov=90 lens=full | 29.5 / 2.82 / 2.82 | 120.9 / 11.95 / 11.16 |
+
+SMT buys almost nothing: 12 threads is within ~10% of 24 everywhere, and at 4K
+`lens=full` and `fov=90` are inside the noise of each other. The stage is
+bandwidth bound well before it runs out of cores, so on a 12-core part expect
+essentially the 24-thread column.
+
+Relative cost of the optional stages, 1080p / 24 threads: wobble 2.7x the plain
+warp, full 1.6x, fov 1.7x. **Wobble costs more than full**, which looks backwards
 until you count LUT stages: full undistorts once, wobble undistorts *and*
-redistorts. At 4K the ratios compress (2.6x / 1.5x / 1.5x) as the stage moves
-toward memory bound.
+redistorts. At 4K the ratios are much the same (2.5x / 1.6x / 1.4x).
 
 ### What SIMD would be worth, and why it is not written
 
@@ -334,14 +350,38 @@ for motion detection on the same machine, so the transform is no longer the
 stage that decides throughput. The measurements are here so that the case can
 be re-made if it becomes one — at 4K, or on a machine with fewer cores.
 
-There is also a cheaper algorithmic option for wobble specifically, which is
-where the remaining cost is concentrated. Its undistort stage depends only on
-the destination pixel and k — **not on the transform** — so `g` could be
-computed once per (k, plane geometry) and reused for every frame of the clip,
-turning two dependent LUT lookups into one sequential load. At 1080p that is a
-12 MB table (4 bytes/px over luma and chroma) streamed per frame instead of
-recomputed, which trades ~20 ms of compute for a few ms of bandwidth; at 4K the
-table is 48 MB and the trade needs re-measuring before it is believed.
+### Caching wobble's undistort scale — measured, and not worth it
+
+Wobble's undistort scale `g` depends on the destination pixel and k but **not**
+on the per-frame transform, so it can be computed once for a clip and looked up
+thereafter: two running adds and a `gU` lookup become one sequential int32
+load. This was built behind `VIDSTAB_WOBBLE_CACHE=1` and measured against the
+identical frame hash, then removed. Wobble row only, ms/frame:
+
+| | 1 thread | 12 threads | 24 threads |
+|---|---|---|---|
+| 1080p, no cache | 30.7 | 2.86 | 2.54 |
+| 1080p, cached | 25.8 | 2.42 | 2.12 |
+| | −16% | −16% | −17% |
+| 4K, no cache | 123.8 | 11.74 | 10.11 |
+| 4K, cached | 104.0 | 9.95 | 9.25 |
+| | −16% | −15% | −8% |
+
+So ~16%, falling to 8% at 4K on all cores where the table stops fitting
+anywhere useful. In absolute terms on a multi-core machine that is 0.4 ms at
+1080p and 0.9 ms at 4K, and it takes wobble from 2.5x the plain warp to 2.25x.
+
+The price is a resident table of 4 bytes per destination pixel — 12 MB at
+1080p, 50 MB at 4K — plus a lifecycle to get wrong: invalidate on k, mode or
+geometry change, and per-instance storage, which means a field in a public
+struct and an SOVERSION bump. Not worth it for 16%, so it is not in the tree.
+
+Two things to note if this is ever revisited. It scales the wrong way — the
+benefit shrinks exactly where the stage is most expensive, because a 50 MB
+table streamed per frame is competing for the bandwidth the warp already
+wants. And it only addresses the *undistort* half; the distort half depends on
+the transform and cannot be cached at all, which is why the ceiling here is far
+below the full addressing cost in the table above.
 
 One thing that was tried and rejected: calling `interpolateBiLin` directly
 instead of through `td->interpolate`, which the source had recommended for

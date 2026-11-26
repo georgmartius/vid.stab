@@ -600,6 +600,22 @@ static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
 }
 #endif
 
+static inline uint8_t bilin_interior_fp(fp16 xs, fp16 ys,
+                                        const uint8_t *img, ptrdiff_t ls)
+{
+  int32_t ix_f = xs >> 16;
+  int32_t iy_f = ys >> 16;
+  int32_t xf = xs & 0xFFFF;
+  int32_t yf = ys & 0xFFFF;
+  const uint8_t *rf = img + (ptrdiff_t)iy_f * ls + ix_f;
+  const uint8_t *rc = rf + ls;
+  int32_t t1 = (((int32_t)rc[0] << 16) + ((int32_t)rc[1] - (int32_t)rc[0]) * xf) >> 8;
+  int32_t t2 = (((int32_t)rf[0] << 16) + ((int32_t)rf[1] - (int32_t)rf[0]) * xf) >> 8;
+  int32_t s  = t1 * (yf >> 8) + t2 * ((65536 - yf) >> 8);
+  int32_t res = s >> 16;
+  return (res < 255) ? (uint8_t)(res + 1) : 255;
+}
+
 int transformPlanar(VSTransformData* td, VSTransform t)
 {
   int32_t y = 0;
@@ -829,6 +845,147 @@ int transformPlanar(VSTransformData* td, VSTransform t)
             interp(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
                    crop ? black : dest_row[x]);
             xs += zcos_a; ys += dys;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (lensOn && fFov <= 0.0 && td->conf.interpolType == VS_BiLinear && sw >= 2 && sh >= 2) {
+      const ptrdiff_t src_ls = td->src.linesize[plane];
+      const ptrdiff_t dst_ls = td->destbuf.linesize[plane];
+      const fp16 dys = -zsin_yx;
+      const int crop = td->conf.crop;
+      const int32_t *gU = lm->gU;
+      const int32_t *gD = lm->gD;
+      const int32_t idxScaleU = lm->idxScaleU;
+      const int32_t idxScaleD = lm->idxScaleD;
+      const uint32_t maxIx = (uint32_t)(sw - 2);
+      const uint32_t maxIy = (uint32_t)(sh - 2);
+      if (!wobble) {
+        /* Full lens correction, plain affine + distort LUT + bilinear */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (y = 0; y < dh; y++) {
+          int32_t y_d1 = (y - c_d_y);
+          fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+          fp16 xsInc = (fp16)((( (int64_t)zcos_a * dx0 + (int64_t)zsin_xy * dy0) >> 16)) + c_tx;
+          fp16 ysInc = (fp16)(((-(int64_t)zsin_yx * dx0 + (int64_t)zcos_a * dy0) >> 16)) + c_ty;
+          int64_t lx0 = (int64_t)(xsInc - c_s_x) << lsx;
+          int64_t ly0 = (int64_t)(ysInc - c_s_y) << lsy;
+          int64_t dlx = (int64_t)zcos_a << lsx;
+          int64_t dly = (int64_t)dys << lsy;
+          int64_t r2d      = lx0*lx0 + ly0*ly0;
+          int64_t r2dStep  = 2*lx0*dlx + dlx*dlx + 2*ly0*dly + dly*dly;
+          int64_t r2dStep2 = 2*(dlx*dlx + dly*dly);
+          uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+          int32_t x;
+          for (x = 0; x < dw; x++) {
+            fp16 x_s, y_s;
+            int64_t ex = xsInc - c_s_x, ey = ysInc - c_s_y;
+            xsInc += zcos_a;
+            ysInc += dys;
+            int64_t r2 = r2d;
+            r2d     += r2dStep;
+            r2dStep += r2dStep2;
+            if (unlikely(r2 > domR2)) {
+              x_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              y_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                     crop ? black : dest_row[x]);
+            } else {
+              int32_t g = vsLensLutFp(gD, r2, idxScaleD);
+              x_s = (fp16)(c_s_x + ((ex * g) >> 16));
+              y_s = (fp16)(c_s_y + ((ey * g) >> 16));
+              if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+                dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+              } else {
+                interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                       crop ? black : dest_row[x]);
+              }
+            }
+          }
+        }
+      } else {
+        /* Wobble lens correction, undistort LUT + affine + distort LUT + bilinear */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (y = 0; y < dh; y++) {
+          int32_t y_d1 = (y - c_d_y);
+          fp16 dy_raw = iToFp16(y_d1);
+          int64_t Lx  = (int64_t)1 << (16 + lsx);
+          int64_t lx0 = (int64_t)iToFp16(0 - c_d_x) << lsx;
+          int64_t ly0 = (int64_t)dy_raw << lsy;
+          int64_t r2u      = lx0*lx0 + ly0*ly0;
+          int64_t r2uStep  = 2*lx0*Lx + Lx*Lx;
+          int64_t r2uStep2 = 2*Lx*Lx;
+          fp16 dx_raw = iToFp16(0 - c_d_x);
+          uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+          int32_t x;
+          for (x = 0; x < dw; x++) {
+            int32_t gu = vsLensLutFp(gU, r2u, idxScaleU);
+            r2u     += r2uStep;
+            r2uStep += r2uStep2;
+            fp16 dx = (fp16)(((int64_t)dx_raw * gu) >> 16);
+            fp16 dy = (fp16)(((int64_t)dy_raw * gu) >> 16);
+            dx_raw += 65536;
+            fp16 x_s = (fp16)((((int64_t)zcos_a  * dx + (int64_t)zsin_xy * dy) >> 16)) + c_tx;
+            fp16 y_s = (fp16)(((-(int64_t)zsin_yx * dx + (int64_t)zcos_a  * dy) >> 16)) + c_ty;
+            int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
+            int64_t lx = ex << lsx, ly = ey << lsy;
+            int64_t r2 = lx*lx + ly*ly;
+            if (unlikely(r2 > domR2)) {
+              x_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              y_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                     crop ? black : dest_row[x]);
+            } else {
+              int32_t gd = vsLensLutFp(gD, r2, idxScaleD);
+              x_s = (fp16)(c_s_x + ((ex * gd) >> 16));
+              y_s = (fp16)(c_s_y + ((ey * gd) >> 16));
+              if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+                dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+              } else {
+                interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                       crop ? black : dest_row[x]);
+              }
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!lensOn && fFov > 0.0 && td->conf.interpolType == VS_BiLinear && sw >= 2 && sh >= 2) {
+      const ptrdiff_t src_ls = td->src.linesize[plane];
+      const ptrdiff_t dst_ls = td->destbuf.linesize[plane];
+      const int crop = td->conf.crop;
+      const uint32_t maxIx = (uint32_t)(sw - 2);
+      const uint32_t maxIy = (uint32_t)(sh - 2);
+      const double r0 = rb[0], r3 = rb[3], r6 = rb[6];
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+      for (y = 0; y < dh; y++) {
+        int32_t y_d1 = (y - c_d_y);
+        double ly = fp16ToF(iToFp16(y_d1)) * lyScale;
+        double fovXr = rb[1]*ly + rb[2]*fFov;
+        double fovYr = rb[4]*ly + rb[5]*fFov;
+        double fovZr = rb[7]*ly + rb[8]*fFov;
+        uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+        int32_t x;
+        for (x = 0; x < dw; x++) {
+          double lx = (double)(x - c_d_x) * lxScale;
+          double invZ = 1.0 / (r6 * lx + fovZr);
+          fp16 x_s = fToFp16(fovSx * (r0 * lx + fovXr) * invZ) + c_s_x;
+          fp16 y_s = fToFp16(fovSy * (r3 * lx + fovYr) * invZ) + c_s_y;
+          if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+            dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+          } else {
+            interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
           }
         }
       }

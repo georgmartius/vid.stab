@@ -345,6 +345,35 @@ static void interpolateNall(uint8_t *dest, fp16 x, fp16 y,
  * Preconditions:
  *  The frame must be in Packed format
  */
+/* Narrow [x0, x1) to the integer x where lo <= v0 + x * step <= hi. */
+static inline void clip_linear_range(int64_t v0, int64_t step,
+                                     int64_t lo, int64_t hi,
+                                     int32_t *x0, int32_t *x1)
+{
+  if (*x0 >= *x1 || hi < lo) {
+    *x0 = *x1;
+    return;
+  }
+  if (step == 0) {
+    if (v0 < lo || v0 > hi)
+      *x0 = *x1;
+    return;
+  }
+  int64_t nx0, nx1;
+  if (step > 0) {
+    nx0 = (lo > v0) ? (lo - v0 + step - 1) / step : 0;
+    if (hi < v0) { *x0 = *x1; return; }
+    nx1 = (hi - v0) / step + 1;
+  } else {
+    int64_t astep = -step;
+    nx0 = (v0 > hi) ? (v0 - hi + astep - 1) / astep : 0;
+    if (v0 < lo) { *x0 = *x1; return; }
+    nx1 = (v0 - lo) / astep + 1;
+  }
+  if (nx0 > *x0) *x0 = (nx0 > *x1) ? *x1 : (int32_t)nx0;
+  if (nx1 < *x1) *x1 = (nx1 < *x0) ? *x0 : (int32_t)nx1;
+}
+
 int transformPacked(VSTransformData* td, VSTransform t)
 {
   int y = 0;
@@ -411,6 +440,93 @@ int transformPacked(VSTransformData* td, VSTransform t)
   if (fFov > 0.0) {
     rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
     fovS = z * fFov;
+  }
+
+  if (!lensOn && fFov <= 0.0 && (channels == 3 || channels == 4)) {
+    const int dw = td->fiDest.width;
+    const int dh = td->fiDest.height;
+    const int sw = td->fiSrc.width;
+    const int sh = td->fiSrc.height;
+    const ptrdiff_t src_ls = td->src.linesize[0];
+    const ptrdiff_t dst_ls = td->destbuf.linesize[0];
+    const fp16 dys = -zsin_a;
+    const char crop = (char)td->conf.crop;
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (y = 0; y < dh; y++) {
+      int32_t y_d1 = (y - c_d_y);
+      fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+      fp16 xs0 = (fp16)((((int64_t)zcos_a * dx0 + (int64_t)zsin_a * dy0) >> 16)) + c_tx;
+      fp16 ys0 = (fp16)(((-(int64_t)zsin_a * dx0 + (int64_t)zcos_a * dy0) >> 16)) + c_ty;
+      uint8_t *dest_row = D_2 + (ptrdiff_t)y * dst_ls;
+      int32_t x0 = 0, x1 = dw;
+      clip_linear_range(xs0, zcos_a, 0, ((int64_t)(sw - 1) << 16) - 1, &x0, &x1);
+      clip_linear_range(ys0, dys,    0, ((int64_t)(sh - 1) << 16) - 1, &x0, &x1);
+      fp16 xs = xs0, ys = ys0;
+      int x;
+      for (x = 0; x < x0; x++) {
+        interpolateNall(dest_row + x * channels, xs, ys, D_1, (int)src_ls,
+                        sw, sh, (uint8_t)channels, crop);
+        xs += zcos_a; ys += dys;
+      }
+      if (channels == 3) {
+        uint8_t *dst = dest_row + x * 3;
+        for (; x < x1; x++, dst += 3) {
+          int32_t ix_f = xs >> 16;
+          int32_t iy_f = ys >> 16;
+          int32_t xf   = xs & 0xFFFF;
+          int32_t yf   = ys & 0xFFFF;
+          int32_t yf8  = yf >> 8;
+          int32_t yc8  = (65536 - yf) >> 8;
+          const uint8_t *rf = D_1 + (ptrdiff_t)iy_f * src_ls + ix_f * 3;
+          const uint8_t *rc = rf + src_ls;
+          int32_t t1, t2, res;
+          t1 = (((int32_t)rc[0] << 16) + ((int32_t)rc[3] - (int32_t)rc[0]) * xf) >> 8;
+          t2 = (((int32_t)rf[0] << 16) + ((int32_t)rf[3] - (int32_t)rf[0]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[0] = (res < 255) ? (uint8_t)res : 255;
+
+          t1 = (((int32_t)rc[1] << 16) + ((int32_t)rc[4] - (int32_t)rc[1]) * xf) >> 8;
+          t2 = (((int32_t)rf[1] << 16) + ((int32_t)rf[4] - (int32_t)rf[1]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[1] = (res < 255) ? (uint8_t)res : 255;
+
+          t1 = (((int32_t)rc[2] << 16) + ((int32_t)rc[5] - (int32_t)rc[2]) * xf) >> 8;
+          t2 = (((int32_t)rf[2] << 16) + ((int32_t)rf[5] - (int32_t)rf[2]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[2] = (res < 255) ? (uint8_t)res : 255;
+
+          xs += zcos_a; ys += dys;
+        }
+      } else {
+        uint8_t *dst = dest_row + x * 4;
+        for (; x < x1; x++, dst += 4) {
+          int32_t ix_f = xs >> 16;
+          int32_t iy_f = ys >> 16;
+          int32_t xf   = xs & 0xFFFF;
+          int32_t yf   = ys & 0xFFFF;
+          int32_t yf8  = yf >> 8;
+          int32_t yc8  = (65536 - yf) >> 8;
+          const uint8_t *rf = D_1 + (ptrdiff_t)iy_f * src_ls + ix_f * 4;
+          const uint8_t *rc = rf + src_ls;
+          int32_t t1, t2, res;
+          for (int k = 0; k < 4; k++) {
+            t1 = (((int32_t)rc[k] << 16) + ((int32_t)rc[4 + k] - (int32_t)rc[k]) * xf) >> 8;
+            t2 = (((int32_t)rf[k] << 16) + ((int32_t)rf[4 + k] - (int32_t)rf[k]) * xf) >> 8;
+            res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+            dst[k] = (res < 255) ? (uint8_t)res : 255;
+          }
+          xs += zcos_a; ys += dys;
+        }
+      }
+      for (; x < dw; x++) {
+        interpolateNall(dest_row + x * channels, xs, ys, D_1, (int)src_ls,
+                        sw, sh, (uint8_t)channels, crop);
+        xs += zcos_a; ys += dys;
+      }
+    }
+    return VS_OK;
   }
 
   /* All channels.  Rows are independent; see transformPlanar. */
@@ -492,34 +608,6 @@ int transformPacked(VSTransformData* td, VSTransform t)
  *
  */
 
-/* Narrow [x0, x1) to the integer x where lo <= v0 + x * step <= hi. */
-static inline void clip_linear_range(int64_t v0, int64_t step,
-                                     int64_t lo, int64_t hi,
-                                     int32_t *x0, int32_t *x1)
-{
-  if (*x0 >= *x1 || hi < lo) {
-    *x0 = *x1;
-    return;
-  }
-  if (step == 0) {
-    if (v0 < lo || v0 > hi)
-      *x0 = *x1;
-    return;
-  }
-  int64_t nx0, nx1;
-  if (step > 0) {
-    nx0 = (lo > v0) ? (lo - v0 + step - 1) / step : 0;
-    if (hi < v0) { *x0 = *x1; return; }
-    nx1 = (hi - v0) / step + 1;
-  } else {
-    int64_t astep = -step;
-    nx0 = (v0 > hi) ? (v0 - hi + astep - 1) / astep : 0;
-    if (v0 < lo) { *x0 = *x1; return; }
-    nx1 = (v0 - lo) / astep + 1;
-  }
-  if (nx0 > *x0) *x0 = (nx0 > *x1) ? *x1 : (int32_t)nx0;
-  if (nx1 < *x1) *x1 = (nx1 < *x0) ? *x0 : (int32_t)nx1;
-}
 
 #ifdef VS_HAVE_SSE2
 /* Exact 4-row parallel bicub_kernel for shared horizontal fraction tx in [0, 65535]. */

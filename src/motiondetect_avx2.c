@@ -62,56 +62,132 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
                                     int bytesPerPixel, int d_x, int d_y,
                                     unsigned int treshold) {
   int j;
-  int s2 = field->size / 2;
-  int rowBytes = field->size * bytesPerPixel;
+  const int fsize = field->size;
+  const int s2 = fsize / 2;
+  const int rowBytes = fsize * bytesPerPixel;
   unsigned int sum = 0;
-  unsigned char* p1;
-  unsigned char* p2;
-  /* field->size is a multiple of 16 (vsMotionDetectInit), so rowBytes is too:
-     a row is a whole number of 32 byte blocks plus at most one 16 byte tail. */
-  int mainBytes = rowBytes & ~31;
-  int hasTail   = rowBytes & 16;
-  __m256i acc = _mm256_setzero_si256();
-  __m128i accTail = _mm_setzero_si128();
+  const unsigned char* p1 = I1 + (field->x - s2) * bytesPerPixel + (field->y - s2) * linesize1;
+  const unsigned char* p2 = I2 + (field->x - s2 + d_x) * bytesPerPixel + (field->y - s2 + d_y) * linesize2;
 
-  p1 = I1 + (field->x - s2) * bytesPerPixel + (field->y - s2) * linesize1;
-  p2 = I2 + (field->x - s2 + d_x) * bytesPerPixel + (field->y - s2 + d_y) * linesize2;
-
-  for (j = 0; j < field->size; j++) {
-    int k;
-    for (k = 0; k < mainBytes; k += 32) {
-      __m256i a = _mm256_loadu_si256((__m256i const*)(p1 + k));
-      __m256i b = _mm256_loadu_si256((__m256i const*)(p2 + k));
+  /* Fast specialized path for 32-byte rows (e.g. 1080p fine fields):
+     4 rows per iteration, checking threshold every 4 rows. */
+  if (rowBytes == 32) {
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    const int f4 = fsize & ~3;
+    for (j = 0; j < f4; j += 4) {
+      __m256i a0 = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b0 = _mm256_loadu_si256((__m256i const*)(p2));
+      __m256i a1 = _mm256_loadu_si256((__m256i const*)(p1 + linesize1));
+      __m256i b1 = _mm256_loadu_si256((__m256i const*)(p2 + linesize2));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(a0, b0));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(a1, b1));
+      p1 += linesize1 * 2;
+      p2 += linesize2 * 2;
+      __m256i a2 = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b2 = _mm256_loadu_si256((__m256i const*)(p2));
+      __m256i a3 = _mm256_loadu_si256((__m256i const*)(p1 + linesize1));
+      __m256i b3 = _mm256_loadu_si256((__m256i const*)(p2 + linesize2));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(a2, b2));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(a3, b3));
+      p1 += linesize1 * 2;
+      p2 += linesize2 * 2;
+      sum = hsum_sad256(_mm256_add_epi64(acc0, acc1), _mm_setzero_si128());
+      if (sum > treshold)
+        return sum;
+    }
+    __m256i acc = _mm256_add_epi64(acc0, acc1);
+    for (; j < fsize; j++) {
+      __m256i a = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b = _mm256_loadu_si256((__m256i const*)(p2));
       acc = _mm256_add_epi64(acc, _mm256_sad_epu8(a, b));
+      p1 += linesize1;
+      p2 += linesize2;
     }
-    if (hasTail) {
-      /* The 16 byte remainder goes into its own 128 bit accumulator rather
-         than being widened into `acc`.  Widening cost a vpxor + vinserti128
-         on every row, and rows are frequently 16 (mod 32) bytes -- the field
-         size is a multiple of 16 but not of 32, so 720p (80) and 1080p (112)
-         both take this path once per row, where that overhead landed on a
-         third and a quarter of the row respectively. */
-      __m128i a = _mm_loadu_si128((__m128i const*)(p1 + mainBytes));
-      __m128i b = _mm_loadu_si128((__m128i const*)(p2 + mainBytes));
-      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(a, b));
-    }
+    return hsum_sad256(acc, _mm_setzero_si128());
+  }
 
-    /* Early exit: this candidate is already worse than the best match so far.
-       The contract (see tests/test_simd_equivalence.c) is only that the value
-       returned by an early exit is greater than the threshold, not that it
-       equals the full sum, so checking every VS_AVX2_CHECK_ROWS rows instead
-       of every row is allowed and the argmin the caller computes is
-       unchanged. */
-    if ((j & (VS_AVX2_CHECK_ROWS - 1)) == (VS_AVX2_CHECK_ROWS - 1)) {
+  /* Fast specialized path for 48-byte rows (e.g. 4K fine fields):
+     2 rows per iteration, checking threshold every 2 rows. */
+  if (rowBytes == 48) {
+    __m256i acc = _mm256_setzero_si256();
+    __m128i accTail = _mm_setzero_si128();
+    const int f2 = fsize & ~1;
+    for (j = 0; j < f2; j += 2) {
+      __m256i a0 = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b0 = _mm256_loadu_si256((__m256i const*)(p2));
+      __m128i t0a = _mm_loadu_si128((__m128i const*)(p1 + 32));
+      __m128i t0b = _mm_loadu_si128((__m128i const*)(p2 + 32));
+      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a0, b0));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(t0a, t0b));
+      p1 += linesize1;
+      p2 += linesize2;
+      __m256i a1 = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b1 = _mm256_loadu_si256((__m256i const*)(p2));
+      __m128i t1a = _mm_loadu_si128((__m128i const*)(p1 + 32));
+      __m128i t1b = _mm_loadu_si128((__m128i const*)(p2 + 32));
+      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a1, b1));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(t1a, t1b));
+      p1 += linesize1;
+      p2 += linesize2;
       sum = hsum_sad256(acc, accTail);
       if (sum > treshold)
         return sum;
     }
-    p1 += linesize1;
-    p2 += linesize2;
+    for (; j < fsize; j++) {
+      __m256i a = _mm256_loadu_si256((__m256i const*)(p1));
+      __m256i b = _mm256_loadu_si256((__m256i const*)(p2));
+      __m128i ta = _mm_loadu_si128((__m128i const*)(p1 + 32));
+      __m128i tb = _mm_loadu_si128((__m128i const*)(p2 + 32));
+      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a, b));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(ta, tb));
+      p1 += linesize1;
+      p2 += linesize2;
+    }
+    return hsum_sad256(acc, accTail);
   }
 
-  return hsum_sad256(acc, accTail);
+  /* General path: 64-byte unrolled dual-accumulator loop + optional 32B/16B tail. */
+  {
+    const int main64    = rowBytes & ~63;
+    const int has32     = rowBytes & 32;
+    const int has16     = rowBytes & 16;
+    const int off16     = rowBytes & ~31;
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    __m128i accTail = _mm_setzero_si128();
+
+    for (j = 0; j < fsize; j++) {
+      int k;
+      for (k = 0; k < main64; k += 64) {
+        __m256i a0 = _mm256_loadu_si256((__m256i const*)(p1 + k));
+        __m256i b0 = _mm256_loadu_si256((__m256i const*)(p2 + k));
+        __m256i a1 = _mm256_loadu_si256((__m256i const*)(p1 + k + 32));
+        __m256i b1 = _mm256_loadu_si256((__m256i const*)(p2 + k + 32));
+        acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(a0, b0));
+        acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(a1, b1));
+      }
+      if (has32) {
+        __m256i a = _mm256_loadu_si256((__m256i const*)(p1 + main64));
+        __m256i b = _mm256_loadu_si256((__m256i const*)(p2 + main64));
+        acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(a, b));
+      }
+      if (has16) {
+        __m128i a = _mm_loadu_si128((__m128i const*)(p1 + off16));
+        __m128i b = _mm_loadu_si128((__m128i const*)(p2 + off16));
+        accTail = _mm_add_epi64(accTail, _mm_sad_epu8(a, b));
+      }
+
+      if ((j & 1) == 1) {
+        sum = hsum_sad256(_mm256_add_epi64(acc0, acc1), accTail);
+        if (sum > treshold)
+          return sum;
+      }
+      p1 += linesize1;
+      p2 += linesize2;
+    }
+    return hsum_sad256(_mm256_add_epi64(acc0, acc1), accTail);
+  }
 }
 
 double contrastSubImg1_avx2(unsigned char* const I, const Field* field,

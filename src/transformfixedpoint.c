@@ -610,15 +610,7 @@ int transformPacked(VSTransformData* td, VSTransform t)
 
 
 #ifdef VS_HAVE_SSE2
-/* Exact 4-row parallel bicub_kernel for shared horizontal fraction tx in [0, 65535]. */
-static inline __m128i mul_i16x4_u16_sse2(__m128i c16, __m128i thi_vec, __m128i tlo_mask, __m128i zero)
-{
-  __m128i c_dup = _mm_unpacklo_epi16(c16, c16);
-  __m128i prod  = _mm_madd_epi16(c_dup, thi_vec);
-  __m128i c32   = _mm_srai_epi32(_mm_unpacklo_epi16(zero, c16), 16);
-  return _mm_add_epi32(prod, _mm_and_si128(c32, tlo_mask));
-}
-
+/* Exact 4-row parallel bicub_kernel using single-instruction pmaddwd. */
 static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
                                           const uint8_t *img, ptrdiff_t ls)
 {
@@ -628,6 +620,16 @@ static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
   const uint8_t *r1 = r0 + ls;
   const uint8_t *r2 = r1 + ls;
   const uint8_t *r3 = r2 + ls;
+  int32_t tx = x & 0xFFFF;
+  if (unlikely(tx == 0xFFFF)) {
+    short v1 = bicub_kernel(tx, r0[0], r0[1], r0[2], r0[3]);
+    short v2 = bicub_kernel(tx, r1[0], r1[1], r1[2], r1[3]);
+    short v3 = bicub_kernel(tx, r2[0], r2[1], r2[2], r2[3]);
+    short v4 = bicub_kernel(tx, r3[0], r3[1], r3[2], r3[3]);
+    short res = bicub_kernel(y & 0xFFFF, v1, v2, v3, v4);
+    return (res >= 0) ? ((res < 255) ? (uint8_t)res : 255) : 0;
+  }
+
   uint32_t p0, p1, p2, p3;
   memcpy(&p0, r0, 4);
   memcpy(&p1, r1, 4);
@@ -637,27 +639,25 @@ static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
   __m128i zero = _mm_setzero_si128();
   __m128i v01 = _mm_unpacklo_epi8(_mm_cvtsi32_si128((int)p0), _mm_cvtsi32_si128((int)p1));
   __m128i v23 = _mm_unpacklo_epi8(_mm_cvtsi32_si128((int)p2), _mm_cvtsi32_si128((int)p3));
-  /* v01 = [p0_0,p1_0, p0_1,p1_1, p0_2,p1_2, p0_3,p1_3] (uint8)
-     v23 = [p2_0,p3_0, p2_1,p3_1, p2_2,p3_2, p2_3,p3_3] (uint8) */
   __m128i m = _mm_unpacklo_epi16(v01, v23);
-  /* m = [col0(4B), col1(4B), col2(4B), col3(4B)] */
-  __m128i m_lo = _mm_unpacklo_epi8(m, zero); /* [col0(4xi16), col1(4xi16)] */
-  __m128i m_hi = _mm_unpackhi_epi8(m, zero); /* [col2(4xi16), col3(4xi16)] */
+  __m128i m_lo = _mm_unpacklo_epi8(m, zero);
+  __m128i m_hi = _mm_unpackhi_epi8(m, zero);
   __m128i a0 = m_lo;
   __m128i a1 = _mm_srli_si128(m_lo, 8);
   __m128i a2 = m_hi;
   __m128i a3 = _mm_srli_si128(m_hi, 8);
 
-  int32_t tx = x & 0xFFFF;
-  __m128i thi_vec  = _mm_set1_epi16((short)(tx >> 1));
-  __m128i tlo_mask = _mm_set1_epi32(-(tx & 1));
-  __m128i half     = _mm_set1_epi32(fp16_0_5);
+  /* tx < 65535 => both ta and tb fit in signed int16 [0..32767] and ta+tb == tx */
+  int32_t ta = tx >> 1;
+  int32_t tb = tx - ta;
+  __m128i vt   = _mm_set1_epi32((tb << 16) | ta);
+  __m128i half = _mm_set1_epi32(fp16_0_5);
 
   /* k3 = -a0 + 3*a1 - 3*a2 + a3 */
   __m128i d12 = _mm_sub_epi16(a1, a2);
   __m128i k3  = _mm_add_epi16(_mm_sub_epi16(a3, a0),
                               _mm_add_epi16(_mm_add_epi16(d12, d12), d12));
-  __m128i p3_32 = _mm_srai_epi32(_mm_add_epi32(mul_i16x4_u16_sse2(k3, thi_vec, tlo_mask, zero), half), 16);
+  __m128i p3_32 = _mm_srai_epi32(_mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi16(k3, k3), vt), half), 16);
   __m128i p3_16 = _mm_packs_epi32(p3_32, p3_32);
 
   /* k2 = 2*a0 - 5*a1 + 4*a2 - a3 + p3 */
@@ -667,15 +667,14 @@ static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
   __m128i k2   = _mm_add_epi16(_mm_sub_epi16(_mm_add_epi16(a0_2, a2_4),
                                              _mm_add_epi16(_mm_add_epi16(a1_4, a1), a3)),
                                p3_16);
-  __m128i p2_32 = _mm_srai_epi32(_mm_add_epi32(mul_i16x4_u16_sse2(k2, thi_vec, tlo_mask, zero), half), 16);
+  __m128i p2_32 = _mm_srai_epi32(_mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi16(k2, k2), vt), half), 16);
   __m128i p2_16 = _mm_packs_epi32(p2_32, p2_32);
 
   /* k1 = -a0 + a2 + p2 */
   __m128i k1 = _mm_add_epi16(_mm_sub_epi16(a2, a0), p2_16);
-  __m128i p1_32 = mul_i16x4_u16_sse2(k1, thi_vec, tlo_mask, zero);
+  __m128i p1_32 = _mm_madd_epi16(_mm_unpacklo_epi16(k1, k1), vt);
 
-  /* v = (((2*a1 << 16) + p1_32) >> 1) + fp16_0_5 >> 16 */
-  __m128i a1_32 = _mm_unpacklo_epi16(zero, _mm_add_epi16(a1, a1)); /* (2*a1) << 16 */
+  __m128i a1_32 = _mm_unpacklo_epi16(zero, _mm_add_epi16(a1, a1));
   __m128i v_32  = _mm_srai_epi32(_mm_add_epi32(_mm_srai_epi32(_mm_add_epi32(a1_32, p1_32), 1), half), 16);
   __m128i v_16  = _mm_packs_epi32(v_32, v_32);
 

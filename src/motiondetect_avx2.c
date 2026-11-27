@@ -108,43 +108,106 @@ unsigned int compareSubImg_thr_avx2(unsigned char* const I1, unsigned char* cons
   }
 
   /* Fast specialized path for 48-byte rows (e.g. 4K fine fields):
-     2 rows per iteration, checking threshold every 2 rows. */
+     4 rows per iteration, dual accumulators, threshold check every 4 rows. */
   if (rowBytes == 48) {
-    __m256i acc = _mm256_setzero_si256();
-    __m128i accTail = _mm_setzero_si128();
-    const int f2 = fsize & ~1;
-    for (j = 0; j < f2; j += 2) {
-      __m256i a0 = _mm256_loadu_si256((__m256i const*)(p1));
-      __m256i b0 = _mm256_loadu_si256((__m256i const*)(p2));
-      __m128i t0a = _mm_loadu_si128((__m128i const*)(p1 + 32));
-      __m128i t0b = _mm_loadu_si128((__m128i const*)(p2 + 32));
-      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a0, b0));
-      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(t0a, t0b));
-      p1 += linesize1;
-      p2 += linesize2;
-      __m256i a1 = _mm256_loadu_si256((__m256i const*)(p1));
-      __m256i b1 = _mm256_loadu_si256((__m256i const*)(p2));
-      __m128i t1a = _mm_loadu_si128((__m128i const*)(p1 + 32));
-      __m128i t1b = _mm_loadu_si128((__m128i const*)(p2 + 32));
-      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a1, b1));
-      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(t1a, t1b));
-      p1 += linesize1;
-      p2 += linesize2;
-      sum = hsum_sad256(acc, accTail);
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    __m128i tacc0 = _mm_setzero_si128();
+    __m128i tacc1 = _mm_setzero_si128();
+    const int f4 = fsize & ~3;
+    for (j = 0; j < f4; j += 4) {
+      const unsigned char *q1 = p1 + linesize1, *q2 = p2 + linesize2;
+      acc0  = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)p1),
+                                                     _mm256_loadu_si256((__m256i const*)p2)));
+      tacc0 = _mm_add_epi64(tacc0, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(p1 + 32)),
+                                                _mm_loadu_si128((__m128i const*)(p2 + 32))));
+      acc1  = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)q1),
+                                                     _mm256_loadu_si256((__m256i const*)q2)));
+      tacc1 = _mm_add_epi64(tacc1, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(q1 + 32)),
+                                                _mm_loadu_si128((__m128i const*)(q2 + 32))));
+      p1 += linesize1 * 2;
+      p2 += linesize2 * 2;
+      q1 = p1 + linesize1; q2 = p2 + linesize2;
+      acc0  = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)p1),
+                                                     _mm256_loadu_si256((__m256i const*)p2)));
+      tacc0 = _mm_add_epi64(tacc0, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(p1 + 32)),
+                                                _mm_loadu_si128((__m128i const*)(p2 + 32))));
+      acc1  = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)q1),
+                                                     _mm256_loadu_si256((__m256i const*)q2)));
+      tacc1 = _mm_add_epi64(tacc1, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(q1 + 32)),
+                                                _mm_loadu_si128((__m128i const*)(q2 + 32))));
+      p1 += linesize1 * 2;
+      p2 += linesize2 * 2;
+      sum = hsum_sad256(_mm256_add_epi64(acc0, acc1), _mm_add_epi64(tacc0, tacc1));
       if (sum > treshold)
         return sum;
     }
+    __m256i acc = _mm256_add_epi64(acc0, acc1);
+    __m128i accTail = _mm_add_epi64(tacc0, tacc1);
     for (; j < fsize; j++) {
-      __m256i a = _mm256_loadu_si256((__m256i const*)(p1));
-      __m256i b = _mm256_loadu_si256((__m256i const*)(p2));
-      __m128i ta = _mm_loadu_si128((__m128i const*)(p1 + 32));
-      __m128i tb = _mm_loadu_si128((__m128i const*)(p2 + 32));
-      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(a, b));
-      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(ta, tb));
+      acc     = _mm256_add_epi64(acc, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)p1),
+                                                      _mm256_loadu_si256((__m256i const*)p2)));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(p1 + 32)),
+                                                    _mm_loadu_si128((__m128i const*)(p2 + 32))));
       p1 += linesize1;
       p2 += linesize2;
     }
     return hsum_sad256(acc, accTail);
+  }
+
+  /* Fast specialized path for 112-byte rows (1080p coarse fields: 3*32 + 16). */
+  if (rowBytes == 112) {
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    __m128i accTail = _mm_setzero_si128();
+    for (j = 0; j < fsize; j++) {
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2))));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 32)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 32))));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 64)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 64))));
+      accTail = _mm_add_epi64(accTail, _mm_sad_epu8(_mm_loadu_si128((__m128i const*)(p1 + 96)),
+                                                    _mm_loadu_si128((__m128i const*)(p2 + 96))));
+      p1 += linesize1;
+      p2 += linesize2;
+      if ((j & 1) == 1) {
+        sum = hsum_sad256(_mm256_add_epi64(acc0, acc1), accTail);
+        if (sum > treshold)
+          return sum;
+      }
+    }
+    return hsum_sad256(_mm256_add_epi64(acc0, acc1), accTail);
+  }
+
+  /* Fast specialized path for 224-byte rows (4K coarse fields: 7*32). */
+  if (rowBytes == 224) {
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    for (j = 0; j < fsize; j++) {
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2))));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 32)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 32))));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 64)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 64))));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 96)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 96))));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 128)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 128))));
+      acc1 = _mm256_add_epi64(acc1, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 160)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 160))));
+      acc0 = _mm256_add_epi64(acc0, _mm256_sad_epu8(_mm256_loadu_si256((__m256i const*)(p1 + 192)),
+                                                    _mm256_loadu_si256((__m256i const*)(p2 + 192))));
+      p1 += linesize1;
+      p2 += linesize2;
+      if ((j & 1) == 1) {
+        sum = hsum_sad256(_mm256_add_epi64(acc0, acc1), _mm_setzero_si128());
+        if (sum > treshold)
+          return sum;
+      }
+    }
+    return hsum_sad256(_mm256_add_epi64(acc0, acc1), _mm_setzero_si128());
   }
 
   /* General path: 64-byte unrolled dual-accumulator loop + optional 32B/16B tail. */

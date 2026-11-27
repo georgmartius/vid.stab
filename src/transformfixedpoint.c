@@ -30,6 +30,11 @@
 #include "transform.h"
 #include "transform_internal.h"
 #include "transformtype_operations.h"
+#include <stddef.h>
+#include <string.h>
+#ifdef VS_HAVE_SSE2
+#include <emmintrin.h>
+#endif
 
 //#include <math.h>
 //#include <libgen.h>
@@ -340,6 +345,35 @@ static void interpolateNall(uint8_t *dest, fp16 x, fp16 y,
  * Preconditions:
  *  The frame must be in Packed format
  */
+/* Narrow [x0, x1) to the integer x where lo <= v0 + x * step <= hi. */
+static inline void clip_linear_range(int64_t v0, int64_t step,
+                                     int64_t lo, int64_t hi,
+                                     int32_t *x0, int32_t *x1)
+{
+  if (*x0 >= *x1 || hi < lo) {
+    *x0 = *x1;
+    return;
+  }
+  if (step == 0) {
+    if (v0 < lo || v0 > hi)
+      *x0 = *x1;
+    return;
+  }
+  int64_t nx0, nx1;
+  if (step > 0) {
+    nx0 = (lo > v0) ? (lo - v0 + step - 1) / step : 0;
+    if (hi < v0) { *x0 = *x1; return; }
+    nx1 = (hi - v0) / step + 1;
+  } else {
+    int64_t astep = -step;
+    nx0 = (v0 > hi) ? (v0 - hi + astep - 1) / astep : 0;
+    if (v0 < lo) { *x0 = *x1; return; }
+    nx1 = (v0 - lo) / astep + 1;
+  }
+  if (nx0 > *x0) *x0 = (nx0 > *x1) ? *x1 : (int32_t)nx0;
+  if (nx1 < *x1) *x1 = (nx1 < *x0) ? *x0 : (int32_t)nx1;
+}
+
 int transformPacked(VSTransformData* td, VSTransform t)
 {
   int y = 0;
@@ -406,6 +440,93 @@ int transformPacked(VSTransformData* td, VSTransform t)
   if (fFov > 0.0) {
     rotation_matrix_backward(t.x/fFov, t.y/fFov, t.alpha, rb);
     fovS = z * fFov;
+  }
+
+  if (!lensOn && fFov <= 0.0 && (channels == 3 || channels == 4)) {
+    const int dw = td->fiDest.width;
+    const int dh = td->fiDest.height;
+    const int sw = td->fiSrc.width;
+    const int sh = td->fiSrc.height;
+    const ptrdiff_t src_ls = td->src.linesize[0];
+    const ptrdiff_t dst_ls = td->destbuf.linesize[0];
+    const fp16 dys = -zsin_a;
+    const char crop = (char)td->conf.crop;
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (y = 0; y < dh; y++) {
+      int32_t y_d1 = (y - c_d_y);
+      fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+      fp16 xs0 = (fp16)((((int64_t)zcos_a * dx0 + (int64_t)zsin_a * dy0) >> 16)) + c_tx;
+      fp16 ys0 = (fp16)(((-(int64_t)zsin_a * dx0 + (int64_t)zcos_a * dy0) >> 16)) + c_ty;
+      uint8_t *dest_row = D_2 + (ptrdiff_t)y * dst_ls;
+      int32_t x0 = 0, x1 = dw;
+      clip_linear_range(xs0, zcos_a, 0, ((int64_t)(sw - 1) << 16) - 1, &x0, &x1);
+      clip_linear_range(ys0, dys,    0, ((int64_t)(sh - 1) << 16) - 1, &x0, &x1);
+      fp16 xs = xs0, ys = ys0;
+      int x;
+      for (x = 0; x < x0; x++) {
+        interpolateNall(dest_row + x * channels, xs, ys, D_1, (int)src_ls,
+                        sw, sh, (uint8_t)channels, crop);
+        xs += zcos_a; ys += dys;
+      }
+      if (channels == 3) {
+        uint8_t *dst = dest_row + x * 3;
+        for (; x < x1; x++, dst += 3) {
+          int32_t ix_f = xs >> 16;
+          int32_t iy_f = ys >> 16;
+          int32_t xf   = xs & 0xFFFF;
+          int32_t yf   = ys & 0xFFFF;
+          int32_t yf8  = yf >> 8;
+          int32_t yc8  = (65536 - yf) >> 8;
+          const uint8_t *rf = D_1 + (ptrdiff_t)iy_f * src_ls + ix_f * 3;
+          const uint8_t *rc = rf + src_ls;
+          int32_t t1, t2, res;
+          t1 = (((int32_t)rc[0] << 16) + ((int32_t)rc[3] - (int32_t)rc[0]) * xf) >> 8;
+          t2 = (((int32_t)rf[0] << 16) + ((int32_t)rf[3] - (int32_t)rf[0]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[0] = (res < 255) ? (uint8_t)res : 255;
+
+          t1 = (((int32_t)rc[1] << 16) + ((int32_t)rc[4] - (int32_t)rc[1]) * xf) >> 8;
+          t2 = (((int32_t)rf[1] << 16) + ((int32_t)rf[4] - (int32_t)rf[1]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[1] = (res < 255) ? (uint8_t)res : 255;
+
+          t1 = (((int32_t)rc[2] << 16) + ((int32_t)rc[5] - (int32_t)rc[2]) * xf) >> 8;
+          t2 = (((int32_t)rf[2] << 16) + ((int32_t)rf[5] - (int32_t)rf[2]) * xf) >> 8;
+          res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+          dst[2] = (res < 255) ? (uint8_t)res : 255;
+
+          xs += zcos_a; ys += dys;
+        }
+      } else {
+        uint8_t *dst = dest_row + x * 4;
+        for (; x < x1; x++, dst += 4) {
+          int32_t ix_f = xs >> 16;
+          int32_t iy_f = ys >> 16;
+          int32_t xf   = xs & 0xFFFF;
+          int32_t yf   = ys & 0xFFFF;
+          int32_t yf8  = yf >> 8;
+          int32_t yc8  = (65536 - yf) >> 8;
+          const uint8_t *rf = D_1 + (ptrdiff_t)iy_f * src_ls + ix_f * 4;
+          const uint8_t *rc = rf + src_ls;
+          int32_t t1, t2, res;
+          for (int k = 0; k < 4; k++) {
+            t1 = (((int32_t)rc[k] << 16) + ((int32_t)rc[4 + k] - (int32_t)rc[k]) * xf) >> 8;
+            t2 = (((int32_t)rf[k] << 16) + ((int32_t)rf[4 + k] - (int32_t)rf[k]) * xf) >> 8;
+            res = (t1 * yf8 + t2 * yc8 + fp16_0_5) >> 16;
+            dst[k] = (res < 255) ? (uint8_t)res : 255;
+          }
+          xs += zcos_a; ys += dys;
+        }
+      }
+      for (; x < dw; x++) {
+        interpolateNall(dest_row + x * channels, xs, ys, D_1, (int)src_ls,
+                        sw, sh, (uint8_t)channels, crop);
+        xs += zcos_a; ys += dys;
+      }
+    }
+    return VS_OK;
   }
 
   /* All channels.  Rows are independent; see transformPlanar. */
@@ -486,6 +607,102 @@ int transformPacked(VSTransformData* td, VSTransform t)
  *  for angle and zoom we use val<<16
  *
  */
+
+
+#ifdef VS_HAVE_SSE2
+/* Exact 4-row parallel bicub_kernel using single-instruction pmaddwd. */
+static inline uint8_t bicub_interior_sse2(fp16 x, fp16 y,
+                                          const uint8_t *img, ptrdiff_t ls)
+{
+  int32_t ix_f = fp16ToI(x);
+  int32_t iy_f = fp16ToI(y);
+  const uint8_t *r0 = img + (ptrdiff_t)(iy_f - 1) * ls + (ix_f - 1);
+  const uint8_t *r1 = r0 + ls;
+  const uint8_t *r2 = r1 + ls;
+  const uint8_t *r3 = r2 + ls;
+  int32_t tx = x & 0xFFFF;
+  if (unlikely(tx == 0xFFFF)) {
+    short v1 = bicub_kernel(tx, r0[0], r0[1], r0[2], r0[3]);
+    short v2 = bicub_kernel(tx, r1[0], r1[1], r1[2], r1[3]);
+    short v3 = bicub_kernel(tx, r2[0], r2[1], r2[2], r2[3]);
+    short v4 = bicub_kernel(tx, r3[0], r3[1], r3[2], r3[3]);
+    short res = bicub_kernel(y & 0xFFFF, v1, v2, v3, v4);
+    return (res >= 0) ? ((res < 255) ? (uint8_t)res : 255) : 0;
+  }
+
+  uint32_t p0, p1, p2, p3;
+  memcpy(&p0, r0, 4);
+  memcpy(&p1, r1, 4);
+  memcpy(&p2, r2, 4);
+  memcpy(&p3, r3, 4);
+
+  __m128i zero = _mm_setzero_si128();
+  __m128i v01 = _mm_unpacklo_epi8(_mm_cvtsi32_si128((int)p0), _mm_cvtsi32_si128((int)p1));
+  __m128i v23 = _mm_unpacklo_epi8(_mm_cvtsi32_si128((int)p2), _mm_cvtsi32_si128((int)p3));
+  __m128i m = _mm_unpacklo_epi16(v01, v23);
+  __m128i m_lo = _mm_unpacklo_epi8(m, zero);
+  __m128i m_hi = _mm_unpackhi_epi8(m, zero);
+  __m128i a0 = m_lo;
+  __m128i a1 = _mm_srli_si128(m_lo, 8);
+  __m128i a2 = m_hi;
+  __m128i a3 = _mm_srli_si128(m_hi, 8);
+
+  /* tx < 65535 => both ta and tb fit in signed int16 [0..32767] and ta+tb == tx */
+  int32_t ta = tx >> 1;
+  int32_t tb = tx - ta;
+  __m128i vt   = _mm_set1_epi32((tb << 16) | ta);
+  __m128i half = _mm_set1_epi32(fp16_0_5);
+
+  /* k3 = -a0 + 3*a1 - 3*a2 + a3 */
+  __m128i d12 = _mm_sub_epi16(a1, a2);
+  __m128i k3  = _mm_add_epi16(_mm_sub_epi16(a3, a0),
+                              _mm_add_epi16(_mm_add_epi16(d12, d12), d12));
+  __m128i p3_32 = _mm_srai_epi32(_mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi16(k3, k3), vt), half), 16);
+  __m128i p3_16 = _mm_packs_epi32(p3_32, p3_32);
+
+  /* k2 = 2*a0 - 5*a1 + 4*a2 - a3 + p3 */
+  __m128i a0_2 = _mm_add_epi16(a0, a0);
+  __m128i a1_4 = _mm_slli_epi16(a1, 2);
+  __m128i a2_4 = _mm_slli_epi16(a2, 2);
+  __m128i k2   = _mm_add_epi16(_mm_sub_epi16(_mm_add_epi16(a0_2, a2_4),
+                                             _mm_add_epi16(_mm_add_epi16(a1_4, a1), a3)),
+                               p3_16);
+  __m128i p2_32 = _mm_srai_epi32(_mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi16(k2, k2), vt), half), 16);
+  __m128i p2_16 = _mm_packs_epi32(p2_32, p2_32);
+
+  /* k1 = -a0 + a2 + p2 */
+  __m128i k1 = _mm_add_epi16(_mm_sub_epi16(a2, a0), p2_16);
+  __m128i p1_32 = _mm_madd_epi16(_mm_unpacklo_epi16(k1, k1), vt);
+
+  __m128i a1_32 = _mm_unpacklo_epi16(zero, _mm_add_epi16(a1, a1));
+  __m128i v_32  = _mm_srai_epi32(_mm_add_epi32(_mm_srai_epi32(_mm_add_epi32(a1_32, p1_32), 1), half), 16);
+  __m128i v_16  = _mm_packs_epi32(v_32, v_32);
+
+  short v1 = (short)_mm_extract_epi16(v_16, 0);
+  short v2 = (short)_mm_extract_epi16(v_16, 1);
+  short v3 = (short)_mm_extract_epi16(v_16, 2);
+  short v4 = (short)_mm_extract_epi16(v_16, 3);
+  short res = bicub_kernel(y & 0xFFFF, v1, v2, v3, v4);
+  return (res >= 0) ? ((res < 255) ? (uint8_t)res : 255) : 0;
+}
+#endif
+
+static inline uint8_t bilin_interior_fp(fp16 xs, fp16 ys,
+                                        const uint8_t *img, ptrdiff_t ls)
+{
+  int32_t ix_f = xs >> 16;
+  int32_t iy_f = ys >> 16;
+  int32_t xf = xs & 0xFFFF;
+  int32_t yf = ys & 0xFFFF;
+  const uint8_t *rf = img + (ptrdiff_t)iy_f * ls + ix_f;
+  const uint8_t *rc = rf + ls;
+  int32_t t1 = (((int32_t)rc[0] << 16) + ((int32_t)rc[1] - (int32_t)rc[0]) * xf) >> 8;
+  int32_t t2 = (((int32_t)rf[0] << 16) + ((int32_t)rf[1] - (int32_t)rf[0]) * xf) >> 8;
+  int32_t s  = t1 * (yf >> 8) + t2 * ((65536 - yf) >> 8);
+  int32_t res = s >> 16;
+  return (res < 255) ? (uint8_t)(res + 1) : 255;
+}
+
 int transformPlanar(VSTransformData* td, VSTransform t)
 {
   int32_t y = 0;
@@ -594,6 +811,274 @@ int transformPlanar(VSTransformData* td, VSTransform t)
        *dest, but only the very pixel it is about to write.  This is the whole
        of the stage's parallelism and it was not being used -- unlike motion
        detection and the blur, the transform ran on one core. */
+    if (!lensOn && fFov <= 0.0) {
+      const ptrdiff_t src_ls = td->src.linesize[plane];
+      const ptrdiff_t dst_ls = td->destbuf.linesize[plane];
+      const fp16 dys = -zsin_yx;
+      const int crop = td->conf.crop;
+      const VSInterpolType itype = td->conf.interpolType;
+      const vsInterpolateFun interp = td->interpolate;
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+      for (y = 0; y < dh; y++) {
+        int32_t y_d1 = (y - c_d_y);
+        fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+        fp16 xs0 = (fp16)((( (int64_t)zcos_a * dx0 + (int64_t)zsin_xy * dy0) >> 16)) + c_tx;
+        fp16 ys0 = (fp16)(((-(int64_t)zsin_yx * dx0 + (int64_t)zcos_a * dy0) >> 16)) + c_ty;
+        uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+        int32_t x;
+
+        if (itype == VS_BiLinear) {
+          int32_t x0 = 0, x1 = dw;
+          clip_linear_range(xs0, zcos_a, 0, ((int64_t)(sw - 1) << 16) - 1, &x0, &x1);
+          clip_linear_range(ys0, dys,    0, ((int64_t)(sh - 1) << 16) - 1, &x0, &x1);
+          fp16 xs = xs0, ys = ys0;
+          for (x = 0; x < x0; x++) {
+            interpolateBiLinBorder(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < x1; x++) {
+            int32_t ix_f = xs >> 16;
+            int32_t iy_f = ys >> 16;
+            int32_t xf = xs & 0xFFFF;
+            int32_t yf = ys & 0xFFFF;
+            const uint8_t *rf = dat_1 + (ptrdiff_t)iy_f * src_ls + ix_f;
+            const uint8_t *rc = rf + src_ls;
+            int32_t t1 = (((int32_t)rc[0] << 16) + ((int32_t)rc[1] - (int32_t)rc[0]) * xf) >> 8;
+            int32_t t2 = (((int32_t)rf[0] << 16) + ((int32_t)rf[1] - (int32_t)rf[0]) * xf) >> 8;
+            int32_t s  = t1 * (yf >> 8) + t2 * ((65536 - yf) >> 8);
+            int32_t res = s >> 16;
+            dest_row[x] = (res < 255) ? (uint8_t)(res + 1) : 255;
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < dw; x++) {
+            interpolateBiLinBorder(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+        } else if (itype == VS_BiCubic) {
+          int32_t x0 = 0, x1 = dw;
+          clip_linear_range(xs0, zcos_a, (int64_t)1 << 16, ((int64_t)(sw - 2) << 16) - 1, &x0, &x1);
+          clip_linear_range(ys0, dys,    (int64_t)1 << 16, ((int64_t)(sh - 2) << 16) - 1, &x0, &x1);
+          fp16 xs = xs0, ys = ys0;
+          for (x = 0; x < x0; x++) {
+            interpolateBiLinBorder(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < x1; x++) {
+#ifdef VS_HAVE_SSE2
+            dest_row[x] = bicub_interior_sse2(xs, ys, dat_1, src_ls);
+#else
+            interpolateBiCub(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh, black);
+#endif
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < dw; x++) {
+            interpolateBiLinBorder(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+        } else if (itype == VS_Linear) {
+          int32_t x0 = 0, x1 = dw;
+          clip_linear_range(xs0, zcos_a, 0, ((int64_t)(sw - 1) << 16) - 1, &x0, &x1);
+          clip_linear_range(ys0 + fp16_0_5, dys, 0, ((int64_t)sh << 16) - 1, &x0, &x1);
+          fp16 xs = xs0, ys = ys0;
+          for (x = 0; x < x0; x++) {
+            interpolateLin(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                           crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < x1; x++) {
+            int32_t ix_f = xs >> 16;
+            int32_t y_n  = fp16ToIRound(ys);
+            int32_t xf   = xs & 0xFFFF;
+            const uint8_t *rf = dat_1 + (ptrdiff_t)y_n * src_ls + ix_f;
+            int32_t res = (((int32_t)rf[0] << 16) + ((int32_t)rf[1] - (int32_t)rf[0]) * xf) >> 16;
+            dest_row[x] = (res < 255) ? (uint8_t)res : 255;
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < dw; x++) {
+            interpolateLin(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                           crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+        } else if (itype == VS_Zero) {
+          int32_t x0 = 0, x1 = dw;
+          clip_linear_range(xs0 + fp16_0_5, zcos_a, 0, ((int64_t)sw << 16) - 1, &x0, &x1);
+          clip_linear_range(ys0 + fp16_0_5, dys,    0, ((int64_t)sh << 16) - 1, &x0, &x1);
+          fp16 xs = xs0, ys = ys0;
+          for (x = 0; x < x0; x++) {
+            interpolateZero(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                            crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < x1; x++) {
+            int32_t ix_n = fp16ToIRound(xs);
+            int32_t iy_n = fp16ToIRound(ys);
+            dest_row[x] = dat_1[(ptrdiff_t)iy_n * src_ls + ix_n];
+            xs += zcos_a; ys += dys;
+          }
+          for (; x < dw; x++) {
+            interpolateZero(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                            crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+        } else {
+          fp16 xs = xs0, ys = ys0;
+          for (x = 0; x < dw; x++) {
+            interp(&dest_row[x], xs, ys, dat_1, (int)src_ls, sw, sh,
+                   crop ? black : dest_row[x]);
+            xs += zcos_a; ys += dys;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (lensOn && fFov <= 0.0 && td->conf.interpolType == VS_BiLinear && sw >= 2 && sh >= 2) {
+      const ptrdiff_t src_ls = td->src.linesize[plane];
+      const ptrdiff_t dst_ls = td->destbuf.linesize[plane];
+      const fp16 dys = -zsin_yx;
+      const int crop = td->conf.crop;
+      const int32_t *gU = lm->gU;
+      const int32_t *gD = lm->gD;
+      const int32_t idxScaleU = lm->idxScaleU;
+      const int32_t idxScaleD = lm->idxScaleD;
+      const uint32_t maxIx = (uint32_t)(sw - 2);
+      const uint32_t maxIy = (uint32_t)(sh - 2);
+      if (!wobble) {
+        /* Full lens correction, plain affine + distort LUT + bilinear */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (y = 0; y < dh; y++) {
+          int32_t y_d1 = (y - c_d_y);
+          fp16 dx0 = iToFp16(0 - c_d_x), dy0 = iToFp16(y_d1);
+          fp16 xsInc = (fp16)((( (int64_t)zcos_a * dx0 + (int64_t)zsin_xy * dy0) >> 16)) + c_tx;
+          fp16 ysInc = (fp16)(((-(int64_t)zsin_yx * dx0 + (int64_t)zcos_a * dy0) >> 16)) + c_ty;
+          int64_t lx0 = (int64_t)(xsInc - c_s_x) << lsx;
+          int64_t ly0 = (int64_t)(ysInc - c_s_y) << lsy;
+          int64_t dlx = (int64_t)zcos_a << lsx;
+          int64_t dly = (int64_t)dys << lsy;
+          int64_t r2d      = lx0*lx0 + ly0*ly0;
+          int64_t r2dStep  = 2*lx0*dlx + dlx*dlx + 2*ly0*dly + dly*dly;
+          int64_t r2dStep2 = 2*(dlx*dlx + dly*dly);
+          uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+          int32_t x;
+          for (x = 0; x < dw; x++) {
+            fp16 x_s, y_s;
+            int64_t ex = xsInc - c_s_x, ey = ysInc - c_s_y;
+            xsInc += zcos_a;
+            ysInc += dys;
+            int64_t r2 = r2d;
+            r2d     += r2dStep;
+            r2dStep += r2dStep2;
+            if (unlikely(r2 > domR2)) {
+              x_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              y_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                     crop ? black : dest_row[x]);
+            } else {
+              int32_t g = vsLensLutFp(gD, r2, idxScaleD);
+              x_s = (fp16)(c_s_x + ((ex * g) >> 16));
+              y_s = (fp16)(c_s_y + ((ey * g) >> 16));
+              if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+                dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+              } else {
+                interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                       crop ? black : dest_row[x]);
+              }
+            }
+          }
+        }
+      } else {
+        /* Wobble lens correction, undistort LUT + affine + distort LUT + bilinear */
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (y = 0; y < dh; y++) {
+          int32_t y_d1 = (y - c_d_y);
+          fp16 dy_raw = iToFp16(y_d1);
+          int64_t Lx  = (int64_t)1 << (16 + lsx);
+          int64_t lx0 = (int64_t)iToFp16(0 - c_d_x) << lsx;
+          int64_t ly0 = (int64_t)dy_raw << lsy;
+          int64_t r2u      = lx0*lx0 + ly0*ly0;
+          int64_t r2uStep  = 2*lx0*Lx + Lx*Lx;
+          int64_t r2uStep2 = 2*Lx*Lx;
+          fp16 dx_raw = iToFp16(0 - c_d_x);
+          uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+          int32_t x;
+          for (x = 0; x < dw; x++) {
+            int32_t gu = vsLensLutFp(gU, r2u, idxScaleU);
+            r2u     += r2uStep;
+            r2uStep += r2uStep2;
+            fp16 dx = (fp16)(((int64_t)dx_raw * gu) >> 16);
+            fp16 dy = (fp16)(((int64_t)dy_raw * gu) >> 16);
+            dx_raw += 65536;
+            fp16 x_s = (fp16)((((int64_t)zcos_a  * dx + (int64_t)zsin_xy * dy) >> 16)) + c_tx;
+            fp16 y_s = (fp16)(((-(int64_t)zsin_yx * dx + (int64_t)zcos_a  * dy) >> 16)) + c_ty;
+            int64_t ex = x_s - c_s_x, ey = y_s - c_s_y;
+            int64_t lx = ex << lsx, ly = ey << lsy;
+            int64_t r2 = lx*lx + ly*ly;
+            if (unlikely(r2 > domR2)) {
+              x_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              y_s = iToFp16(VS_LENS_OUTSIDE_PX);
+              interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                     crop ? black : dest_row[x]);
+            } else {
+              int32_t gd = vsLensLutFp(gD, r2, idxScaleD);
+              x_s = (fp16)(c_s_x + ((ex * gd) >> 16));
+              y_s = (fp16)(c_s_y + ((ey * gd) >> 16));
+              if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+                dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+              } else {
+                interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                       crop ? black : dest_row[x]);
+              }
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!lensOn && fFov > 0.0 && td->conf.interpolType == VS_BiLinear && sw >= 2 && sh >= 2) {
+      const ptrdiff_t src_ls = td->src.linesize[plane];
+      const ptrdiff_t dst_ls = td->destbuf.linesize[plane];
+      const int crop = td->conf.crop;
+      const uint32_t maxIx = (uint32_t)(sw - 2);
+      const uint32_t maxIy = (uint32_t)(sh - 2);
+      const double r0 = rb[0], r3 = rb[3], r6 = rb[6];
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+      for (y = 0; y < dh; y++) {
+        int32_t y_d1 = (y - c_d_y);
+        double ly = fp16ToF(iToFp16(y_d1)) * lyScale;
+        double fovXr = rb[1]*ly + rb[2]*fFov;
+        double fovYr = rb[4]*ly + rb[5]*fFov;
+        double fovZr = rb[7]*ly + rb[8]*fFov;
+        uint8_t *dest_row = dat_2 + (ptrdiff_t)y * dst_ls;
+        int32_t x;
+        for (x = 0; x < dw; x++) {
+          double lx = (double)(x - c_d_x) * lxScale;
+          double invZ = 1.0 / (r6 * lx + fovZr);
+          fp16 x_s = fToFp16(fovSx * (r0 * lx + fovXr) * invZ) + c_s_x;
+          fp16 y_s = fToFp16(fovSy * (r3 * lx + fovYr) * invZ) + c_s_y;
+          if (likely((uint32_t)(x_s >> 16) <= maxIx && (uint32_t)(y_s >> 16) <= maxIy)) {
+            dest_row[x] = bilin_interior_fp(x_s, y_s, dat_1, src_ls);
+          } else {
+            interpolateBiLinBorder(&dest_row[x], x_s, y_s, dat_1, (int)src_ls, sw, sh,
+                                   crop ? black : dest_row[x]);
+          }
+        }
+      }
+      continue;
+    }
+
 #ifdef USE_OMP
 #pragma omp parallel for schedule(static)
 #endif

@@ -26,6 +26,9 @@
 
 #include "boxblur.h"
 #include "vidstabdefines.h"
+#ifdef VS_HAVE_SSE2
+#include <emmintrin.h>
+#endif
 
 
 void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
@@ -88,6 +91,26 @@ static VSReciprocal vs_reciprocal(int size, uint32_t acc_max){
 static uint32_t vs_boxblur_accmax(int size){
   return 255u * (uint32_t)(2*(size/2)+1);
 }
+
+#ifdef VS_HAVE_SSE2
+typedef struct { uint16_t mul; int shift; int valid; } VSReciprocal16;
+
+static VSReciprocal16 vs_reciprocal16(int size, uint32_t acc_max){
+  VSReciprocal16 r = { 0, 0, 0 };
+  int s;
+  if(size <= 0 || acc_max > 0xFFFFu) return r;
+  for(s = 15; s >= 0; s--){
+    uint64_t pow2 = (uint64_t)1 << (16 + s);
+    uint64_t mul  = (pow2 + (uint64_t)size - 1) / (uint64_t)size;
+    uint64_t e    = mul * (uint64_t)size - pow2;
+    if(mul > 0xFFFFu) continue;
+    if((uint64_t)acc_max * e >= pow2) continue;
+    r.mul = (uint16_t)mul; r.shift = s; r.valid = 1;
+    return r;
+  }
+  return r;
+}
+#endif
 
 /*
   The algorithm:
@@ -192,31 +215,89 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
 
   int j;
   int size2 = size/2; // size of one side of the kernel without center
-  /* one integer division per pixel sits in the middle of the serial running
-     sum here; the exact reciprocal removes it (see vs_reciprocal) */
   const VSReciprocal rec = vs_reciprocal(size, vs_boxblur_accmax(size));
-  /* Every row is an independent accumulator chain, so this parallelises with
-     no sharing at all.  (It used to be commented out as "no speedup"; that no
-     longer holds -- at 1080p the two boxblur passes are several ms of purely
-     serial work per frame, which is a large part of the frame time once the
-     motion search itself runs on all cores.) */
+  const int can_split = (width > 2 * size2 + 1);
+
+  if (rec.valid && can_split) {
+    const uint32_t mul = rec.mul;
+    const int shift = rec.shift;
+    const int mid_end = width - size2 - 1;
+    const int h4 = height & ~3;
+#ifdef USE_OMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (j = 0; j < h4; j += 4) {
+      int i, k;
+      const unsigned char *s0 = src + (size_t)j * src_strive;
+      const unsigned char *s1 = s0 + src_strive;
+      const unsigned char *s2 = s1 + src_strive;
+      const unsigned char *s3 = s2 + src_strive;
+      const unsigned char *e0 = s0, *e1 = s1, *e2 = s2, *e3 = s3;
+      unsigned char *d0 = dest + (size_t)j * dest_strive;
+      unsigned char *d1 = d0 + dest_strive;
+      unsigned char *d2 = d1 + dest_strive;
+      unsigned char *d3 = d2 + dest_strive;
+      uint32_t a0 = (uint32_t)(*s0) * (uint32_t)(size2 + 1);
+      uint32_t a1 = (uint32_t)(*s1) * (uint32_t)(size2 + 1);
+      uint32_t a2 = (uint32_t)(*s2) * (uint32_t)(size2 + 1);
+      uint32_t a3 = (uint32_t)(*s3) * (uint32_t)(size2 + 1);
+      for (k = 0; k < size2; k++) {
+        a0 += *e0++; a1 += *e1++; a2 += *e2++; a3 += *e3++;
+      }
+      for (i = 0; i <= size2; i++) {
+        a0 += *e0++ - *s0; d0[i] = (unsigned char)((a0 * mul) >> shift);
+        a1 += *e1++ - *s1; d1[i] = (unsigned char)((a1 * mul) >> shift);
+        a2 += *e2++ - *s2; d2[i] = (unsigned char)((a2 * mul) >> shift);
+        a3 += *e3++ - *s3; d3[i] = (unsigned char)((a3 * mul) >> shift);
+      }
+      for (; i < mid_end; i++) {
+        a0 += *e0++ - *s0++; d0[i] = (unsigned char)((a0 * mul) >> shift);
+        a1 += *e1++ - *s1++; d1[i] = (unsigned char)((a1 * mul) >> shift);
+        a2 += *e2++ - *s2++; d2[i] = (unsigned char)((a2 * mul) >> shift);
+        a3 += *e3++ - *s3++; d3[i] = (unsigned char)((a3 * mul) >> shift);
+      }
+      for (; i < width; i++) {
+        a0 += *e0 - *s0++; d0[i] = (unsigned char)((a0 * mul) >> shift);
+        a1 += *e1 - *s1++; d1[i] = (unsigned char)((a1 * mul) >> shift);
+        a2 += *e2 - *s2++; d2[i] = (unsigned char)((a2 * mul) >> shift);
+        a3 += *e3 - *s3++; d3[i] = (unsigned char)((a3 * mul) >> shift);
+      }
+    }
+    for (j = h4; j < height; j++) {
+      int i, k;
+      const unsigned char *s = src + (size_t)j * src_strive;
+      const unsigned char *e = s;
+      unsigned char *d = dest + (size_t)j * dest_strive;
+      uint32_t a = (uint32_t)(*s) * (uint32_t)(size2 + 1);
+      for (k = 0; k < size2; k++) a += *e++;
+      for (i = 0; i <= size2; i++) {
+        a += *e++ - *s; d[i] = (unsigned char)((a * mul) >> shift);
+      }
+      for (; i < mid_end; i++) {
+        a += *e++ - *s++; d[i] = (unsigned char)((a * mul) >> shift);
+      }
+      for (; i < width; i++) {
+        a += *e - *s++; d[i] = (unsigned char)((a * mul) >> shift);
+      }
+    }
+    return;
+  }
+
 #ifdef USE_OMP
 #pragma omp parallel for schedule(static)
 #endif
   for(j=0; j< height; j++){
     int i,k;
     unsigned int acc;
-    const unsigned char *start, *end; // start and end of kernel
-    unsigned char *current;     // current destination pixel
-    start = end = src + j*src_strive;
-    current = dest + j*dest_strive;
-    // initialize accumulator
-    acc= (*start)*(size2+1); // left half of kernel with first pixel
-    for(k=0; k<size2; k++){  // right half of kernel
+    const unsigned char *start, *end;
+    unsigned char *current;
+    start = end = src + (size_t)j*src_strive;
+    current = dest + (size_t)j*dest_strive;
+    acc= (*start)*(size2+1);
+    for(k=0; k<size2; k++){
       acc+=(*end);
       end++;
     }
-    // go through the image
     if(rec.valid){
       for(i=0; i< width; i++){
         acc = acc + (*end) - (*start);
@@ -237,53 +318,19 @@ void boxblur_hori_C(unsigned char* dest, const unsigned char* src,
   }
 }
 
-/* The loops are inside out: the accumulators for *all* columns are held in one
-   array and the image is walked row by row, so memory is read and written
-   sequentially and the per-row inner loops auto-vectorize.  The recurrence is
-     acc(-1) = src[0][i]*(size2+1) + sum over rows 0..size2-1
-     acc(j)  = acc(j-1) + src[endRow(j)][i] - src[startRow(j)][i]
-   with  endRow(j)   = min(j + size2, height - 1)
-         startRow(j) = max(0, j - size2 - 1) */
 void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
         int width, int height, int dest_strive, int src_strive, int size){
 
-  int i,j,k;
-  int size2 = size/2; // size of one side of the kernel without center
-  uint32_t* acc;
-  /* without this the output loop below cannot vectorize at all: `acc[i]/size`
-     has a runtime divisor and there is no SIMD integer divide (see
-     vs_reciprocal for why this is exact) */
-  const VSReciprocal rec = vs_reciprocal(size, vs_boxblur_accmax(size));
+  int size2 = size/2;
+  const uint32_t acc_max = vs_boxblur_accmax(size);
+  const VSReciprocal rec = vs_reciprocal(size, acc_max);
+#ifdef VS_HAVE_SSE2
+  const VSReciprocal16 rec16 = vs_reciprocal16(size, acc_max);
+#endif
 
   if(width <= 0 || height <= 0)
     return;
 
-  acc = (uint32_t*)vs_malloc((size_t)width * sizeof(uint32_t));
-  if(acc == NULL){ // fall back to the in-place column walk rather than fail
-    for(i=0; i< width; i++){
-      const unsigned char *start, *end;
-      unsigned char *current;
-      uint32_t a;
-      start = end = src + i;
-      current = dest + i;
-      a = (uint32_t)(*start)*(uint32_t)(size2+1);
-      for(k=0; k<size2; k++){ a+=(*end); end+=src_strive; }
-      for(j=0; j< height; j++){
-        a = a - (*start) + (*end);
-        if(j > size2) start+=src_strive;
-        if(j < height - size2 - 1) end+=src_strive;
-        *current = rec.valid ? (unsigned char)((a * rec.mul) >> rec.shift)
-                             : (unsigned char)(a/(uint32_t)size);
-        current+=dest_strive;
-      }
-    }
-    return;
-  }
-
-  /* Columns are independent of each other, so the work is split into blocks of
-     columns.  Threads touch disjoint ranges of acc[] and of every row, so no
-     synchronisation and no per-thread buffer is needed.  The block width keeps
-     one block's accumulators plus the two source rows comfortably in L1. */
   {
     const int BLOCK = 512;
     int nblocks = (width + BLOCK - 1) / BLOCK;
@@ -294,39 +341,93 @@ void boxblur_vert_C(unsigned char* dest, const unsigned char* src,
     for(cb=0; cb<nblocks; cb++){
       int c0 = cb*BLOCK;
       int c1 = c0 + BLOCK; if(c1 > width) c1 = width;
+      int len = c1 - c0;
       int ii, jj, kk;
 
-      // initialize accumulators: left half of the kernel with the first row ...
-      for(ii=c0; ii<c1; ii++)
-        acc[ii] = (uint32_t)src[ii] * (uint32_t)(size2+1);
-      // ... plus rows 0 .. size2-1 for the right half
-      for(kk=0; kk<size2; kk++){
-        const unsigned char* row = src + (kk < height ? kk : height-1)*src_strive;
-        for(ii=c0; ii<c1; ii++)
-          acc[ii] += row[ii];
+#ifdef VS_HAVE_SSE2
+      if (rec16.valid) {
+        uint16_t acc16[512];
+        const __m128i zero = _mm_setzero_si128();
+        const __m128i vmul = _mm_set1_epi16((short)rec16.mul);
+        const int shift16 = rec16.shift;
+        const int len16 = len & ~15;
+
+        for (ii = 0; ii < len; ii++)
+          acc16[ii] = (uint16_t)((uint32_t)src[c0 + ii] * (uint32_t)(size2 + 1));
+        for (kk = 0; kk < size2; kk++) {
+          const unsigned char* row = src + (size_t)(kk < height ? kk : height - 1) * src_strive + c0;
+          for (ii = 0; ii < len; ii++)
+            acc16[ii] = (uint16_t)(acc16[ii] + row[ii]);
+        }
+
+        for (jj = 0; jj < height; jj++) {
+          int er = jj + size2;     if (er > height - 1) er = height - 1;
+          int sr = jj - size2 - 1; if (sr < 0)          sr = 0;
+          const unsigned char* endRow   = src + (size_t)er * src_strive + c0;
+          const unsigned char* startRow = src + (size_t)sr * src_strive + c0;
+          unsigned char* out = dest + (size_t)jj * dest_strive + c0;
+
+          for (ii = 0; ii < len16; ii += 16) {
+            __m128i e8 = _mm_loadu_si128((const __m128i*)(endRow + ii));
+            __m128i s8 = _mm_loadu_si128((const __m128i*)(startRow + ii));
+            __m128i a_lo = _mm_loadu_si128((const __m128i*)(acc16 + ii));
+            __m128i a_hi = _mm_loadu_si128((const __m128i*)(acc16 + ii + 8));
+
+            a_lo = _mm_sub_epi16(_mm_add_epi16(a_lo, _mm_unpacklo_epi8(e8, zero)),
+                                 _mm_unpacklo_epi8(s8, zero));
+            a_hi = _mm_sub_epi16(_mm_add_epi16(a_hi, _mm_unpackhi_epi8(e8, zero)),
+                                 _mm_unpackhi_epi8(s8, zero));
+
+            _mm_storeu_si128((__m128i*)(acc16 + ii), a_lo);
+            _mm_storeu_si128((__m128i*)(acc16 + ii + 8), a_hi);
+
+            __m128i o_lo = _mm_srli_epi16(_mm_mulhi_epu16(a_lo, vmul), shift16);
+            __m128i o_hi = _mm_srli_epi16(_mm_mulhi_epu16(a_hi, vmul), shift16);
+            _mm_storeu_si128((__m128i*)(out + ii), _mm_packus_epi16(o_lo, o_hi));
+          }
+          for (; ii < len; ii++) {
+            uint16_t a = (uint16_t)(acc16[ii] + endRow[ii] - startRow[ii]);
+            acc16[ii] = a;
+            out[ii] = (unsigned char)(((uint32_t)a * rec16.mul) >> (16 + shift16));
+          }
+        }
+        continue;
       }
+#endif
+      {
+        uint32_t acc[512];
+        for(ii=0; ii<len; ii++)
+          acc[ii] = (uint32_t)src[c0 + ii] * (uint32_t)(size2+1);
+        for(kk=0; kk<size2; kk++){
+          const unsigned char* row = src + (size_t)(kk < height ? kk : height-1)*src_strive + c0;
+          for(ii=0; ii<len; ii++)
+            acc[ii] += row[ii];
+        }
 
-      for(jj=0; jj<height; jj++){
-        int er = jj + size2;          if(er > height-1) er = height-1;
-        int sr = jj - size2 - 1;      if(sr < 0)        sr = 0;
-        const unsigned char* endRow   = src + er*src_strive;
-        const unsigned char* startRow = src + sr*src_strive;
-        unsigned char* out = dest + jj*dest_strive;
+        for(jj=0; jj<height; jj++){
+          int er = jj + size2;          if(er > height-1) er = height-1;
+          int sr = jj - size2 - 1;      if(sr < 0)        sr = 0;
+          const unsigned char* endRow   = src + (size_t)er*src_strive + c0;
+          const unsigned char* startRow = src + (size_t)sr*src_strive + c0;
+          unsigned char* out = dest + (size_t)jj*dest_strive + c0;
 
-        for(ii=c0; ii<c1; ii++)
-          acc[ii] += (uint32_t)endRow[ii] - (uint32_t)startRow[ii];
-        if(rec.valid){
-          const uint32_t mul = rec.mul;
-          const int shift = rec.shift;
-          for(ii=c0; ii<c1; ii++)
-            out[ii] = (unsigned char)((acc[ii] * mul) >> shift);
-        }else{
-          for(ii=c0; ii<c1; ii++)
-            out[ii] = (unsigned char)(acc[ii]/size);
+          if(rec.valid){
+            const uint32_t mul = rec.mul;
+            const int shift = rec.shift;
+            for(ii=0; ii<len; ii++){
+              uint32_t a = acc[ii] + (uint32_t)endRow[ii] - (uint32_t)startRow[ii];
+              acc[ii] = a;
+              out[ii] = (unsigned char)((a * mul) >> shift);
+            }
+          }else{
+            for(ii=0; ii<len; ii++){
+              uint32_t a = acc[ii] + (uint32_t)endRow[ii] - (uint32_t)startRow[ii];
+              acc[ii] = a;
+              out[ii] = (unsigned char)(a/(uint32_t)size);
+            }
+          }
         }
       }
     }
   }
-
-  vs_free(acc);
 }
